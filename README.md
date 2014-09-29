@@ -7,8 +7,10 @@ The project name "Tricircle" comes from a fractal. See the blog ["OpenStack casc
 
 Important to know
 -----------
-* the initial source code is for PoC only. Refactory will be done constantly to reach OpenStack acceptance standard.
-* the PoC source code is based on IceHouse version, while Neutron is a master branch snapshot on July 1, 2014 which include DVR feature, not IceHouse version. The Neutron code is download from github when it was still in the developement and review status. The source code of DVR part is not stable, and not all DVR features are included, for example, N-S functions not ready.
+* Only about 15k code lines developed for OpenStack cascading.
+* The initial source code is for PoC only. Refactory will be done constantly to reach OpenStack acceptance standard.
+* DVR-Patch for IceHouse: the PoC source code is based on IceHouse version, while Neutron is a master branch snapshot on July 1, 2014 which include DVR feature, not IceHouse version. The Neutron code is download from github when it was still in the developement and review status. The source code of DVR part is not stable, and not all DVR features are included, for example, N-S functions not ready.
+* DVR-Patch is the majority source code in the repository, about 180k. The patch will be remove if OpenStack cascading is developed base on Juno.
 * The Neutron cascading using the feature of provider network. But horizon doen't support provider network very well. So you have to use Neutron CLI to create a network. Or set default provide network type to VxLAN, or remove "local", "flat", "VLAN", "GRE" network typedriver from ML2 plugin configuration.
 * For Neutron L2/L3 features, only VxLAN/L3 across casacaded OpenStack supported in the current source code. VLAN2VLAN, VLAN2VxLAN and VxLAN2VxLAN across cascaded OpenStack also implemented with IceHouse version but the patch is not ready yet, source code is in the VLAN2VLAN folder.
 * The tunneling network for cross OpenStack piggy data path is using VxLAN, it leads to modification on L2 agent and L3 agent, we will refactory it to using GRE for the tunneling network to reduce patch for Juno version.
