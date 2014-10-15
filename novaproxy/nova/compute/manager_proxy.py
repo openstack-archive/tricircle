@@ -873,7 +873,7 @@ class ComputeManager(manager.Manager):
         # spawn success
         return instance, network_info
 
-    def _heal_proxy_ports(self, context, network_info):
+    def _heal_proxy_ports(self, context, instance, network_info):
         physical_ports = []
         for netObj in network_info:
             net_id = netObj['network']['id']
