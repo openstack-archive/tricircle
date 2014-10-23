@@ -1,5 +1,6 @@
 import base64
 import contextlib
+import datetime
 import functools
 import os
 import sys
@@ -555,6 +556,7 @@ class ComputeManager(manager.Manager):
     @periodic_task.periodic_task(spacing=CONF.sync_instance_state_interval,
                                  run_immediately=True)
     def _heal_instance_state(self, context):
+        time_shift_tolerance = 3
         heal_interval = CONF.sync_instance_state_interval
         if not heal_interval:
             return
@@ -586,7 +588,12 @@ class ComputeManager(manager.Manager):
                 }
                 servers = cascadedNovaCli.servers.list(
                     search_opts=search_opts_args)
-            self._change_since_time = timeutils.isotime()
+            LOG.debug(_('the current time is %s'), timeutils.utcnow())
+            _change_since_time = timeutils.utcnow() - \
+                datetime.timedelta(seconds=time_shift_tolerance)
+            self._change_since_time = timeutils.isotime(_change_since_time)
+            LOG.debug(_('the change since time is %s'),
+                      self._change_since_time)
             if len(servers) > 0:
                 LOG.debug(_('Updated the servers %s '), servers)
 
