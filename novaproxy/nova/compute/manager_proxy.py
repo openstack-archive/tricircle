@@ -35,6 +35,7 @@ import nova.context
 from nova import exception
 from nova import hooks
 from nova.image import glance
+from nova.image import cascading
 from nova import manager
 from nova import network
 from nova.network import model as network_model
@@ -2743,6 +2744,11 @@ class ComputeManager(manager.Manager):
                         cfg.CONF.cascaded_glance_url):
                     cascaded_image_uuid = location['url'].split('/')[-1]
                     return cascaded_image_uuid
+	    #lazy sync image
+	    sync_service = cascading.GlanceCascadingService()
+            return sync_service.sync_image(context,
+                                           cfg.CONF.cascaded_glance_url,
+                                           image)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_("Error while trying to get cascaded"
