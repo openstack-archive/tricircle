@@ -49,6 +49,7 @@ from cinder import quota
 from cinder import utils
 from cinder import volume
 
+from cinder.i18n import _
 from cinder.image import glance
 from cinder.openstack.common import excutils
 from cinder.openstack.common import log as logging
@@ -65,6 +66,7 @@ from eventlet.greenpool import GreenPool
 LOG = logging.getLogger(__name__)
 
 QUOTAS = quota.QUOTAS
+CGQUOTAS = quota.CGQUOTAS
 
 volume_manager_opts = [
     cfg.IntOpt('migration_create_volume_timeout_secs',
@@ -75,6 +77,10 @@ volume_manager_opts = [
                default=5,
                help='seconds between cascading and cascaded cinders'
                     'when synchronizing volume data'),
+    cfg.IntOpt('voltype_sync_interval',
+               default=3600,
+               help='seconds between cascading and cascaded cinders'
+                    'when synchronizing volume type and qos data'),
     cfg.BoolOpt('volume_service_inithost_offload',
                 default=False,
                 help='Offload pending volume delete during '
@@ -165,7 +171,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     """Manages attachable block storage devices."""
 
-    RPC_API_VERSION = '1.16'
+    RPC_API_VERSION = '1.18'
     target = messaging.Target(version=RPC_API_VERSION)
 
     def __init__(self, service_name=None, *args, **kwargs):
@@ -408,7 +414,8 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def create_volume(self, context, volume_id, request_spec=None,
                       filter_properties=None, allow_reschedule=True,
-                      snapshot_id=None, image_id=None, source_volid=None):
+                      snapshot_id=None, image_id=None, source_volid=None,
+                      source_replicaid=None, consistencygroup_id=None):
         """Creates and exports the volume."""
 
         ctx_dict = context.__dict__
@@ -529,7 +536,6 @@ class CinderProxy(manager.SchedulerDependentManager):
             if self._change_since_time is None:
                 search_opt = {'all_tenants': True}
                 volumes = cinderClient.volumes.list(search_opts=search_opt)
-                volumetypes = cinderClient.volume_types.list()
                 LOG.info(_('Cascade info: change since time is none,'
                            'volumes:%s'), volumes)
             else:
@@ -544,7 +550,6 @@ class CinderProxy(manager.SchedulerDependentManager):
                 search_op = {'all_tenants': True,
                              'changes-since': new_change_since_isotime}
                 volumes = cinderClient.volumes.list(search_opts=search_op)
-                volumetypes = cinderClient.volume_types.list()
                 LOG.info(_('Cascade info: search time is not none,'
                            'volumes:%s'), volumes)
 
@@ -563,13 +568,18 @@ class CinderProxy(manager.SchedulerDependentManager):
                                            'attach_time': timeutils.strtime()
                                            })
                 elif volume_status == "available":
+                    if volume._info['bootable'].lower() == 'false':
+                        bv = '0'
+                    else:
+                        bv = '1'
                     self.db.volume_update(context, volume_id,
                                           {'status': volume._info['status'],
                                            'attach_status': 'detached',
                                            'instance_uuid': None,
                                            'attached_host': None,
                                            'mountpoint': None,
-                                           'attach_time': None
+                                           'attach_time': None,
+                                           'bootable': bv
                                            })
                 else:
                     self.db.volume_update(context, volume_id,
@@ -577,18 +587,78 @@ class CinderProxy(manager.SchedulerDependentManager):
                 LOG.info(_('Cascade info: Updated the volume  %s status from'
                            'cinder-proxy'), volume_id)
 
-            vol_types = self.db.volume_type_get_all(context, inactive=False)
-            for volumetype in volumetypes:
-                volume_type_name = volumetype._info['name']
-                if volume_type_name not in vol_types.keys():
-                    extra_specs = volumetype._info['extra_specs']
-                    self.db.volume_type_create(
-                        context,
-                        dict(name=volume_type_name, extra_specs=extra_specs))
-
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys volume status to db.'))
+
+    @periodic_task.periodic_task(spacing=CONF.voltype_sync_interval,
+                                 run_immediately=True)
+    def _heal_volumetypes_and_qos(self, context):
+
+        try:
+
+            cinderClient = self._get_cinder_cascaded_admin_client()
+
+            volumetypes = cinderClient.volume_types.list()
+            qosSpecs = cinderClient.qos_specs.list()
+
+            volname_type_list = []
+            vol_types = self.db.volume_type_get_all(context, inactive=False)
+            LOG.debug(_("cascade info, vol_types cascading :%s"), vol_types)
+            for vol_type in vol_types:
+                volname_type_list.append(vol_type)
+            for volumetype in volumetypes:
+                LOG.debug(_("cascade info, vol types cascaded :%s"),
+                          volumetype)
+                volume_type_name = volumetype._info['name']
+                if volume_type_name not in vol_types.keys():
+                    extraspec = volumetype._info['extra_specs']
+                    self.db.volume_type_create(
+                        context,
+                        dict(name=volume_type_name, extra_specs=extraspec))
+
+            qos_specs = self.db.qos_specs_get_all(context, inactive=False)
+            qosname_list_cascading = []
+            for qos_cascading in qos_specs:
+                qosname_list_cascading.append(qos_cascading['name'])
+                for qos_cascaded in qosSpecs:
+                    qos_name_cascaded = qos_cascaded._info['name']
+                    if qos_name_cascaded not in qosname_list_cascading:
+                        qos_create_val = {}
+                        qos_create_val['name'] = qos_name_cascaded
+                        qos_spec_value = qos_cascaded._info['specs']
+                        qos_spec_value['consumer'] = \
+                            qos_cascaded._info['consumer']
+                        qos_create_val['qos_specs'] = qos_spec_value
+                        LOG.info(_('Cascade info, create qos_spec %sin db'),
+                                 qos_name_cascaded)
+                        self.db.qos_specs_create(context, qos_create_val)
+                        LOG.info(_('Cascade info, qos_spec finished %sin db'),
+                                 qos_create_val)
+
+                    qos_specs_id = qos_cascading['id']
+                    assoc_ccd =\
+                        self.db.volume_type_qos_associations_get(context,
+                                                                 qos_specs_id)
+                    qos_id = qos_cascaded._info['id']
+                    association =\
+                        cinderClient.qos_specs.get_associations(qos_id)
+
+                    for assoc in association:
+                        assoc_name = assoc._info['name']
+                        LOG.debug(_("Cascade info, assoc name %s"), assoc_name)
+                        if assoc_ccd is None or assoc_name not in assoc_ccd:
+                            voltype = \
+                                self.db.volume_type_get_by_name(context,
+                                                                assoc_name)
+                            LOG.debug(_("Cascade info, voltypes %s"), voltype)
+                            self.db.qos_specs_associate(context,
+                                                        qos_cascading['id'],
+                                                        voltype['id'],)
+
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to sys volume type to db.'))
 
     @locked_volume_operation
     def delete_volume(self, context, volume_id, unmanage_only=False):
@@ -606,9 +676,6 @@ class CinderProxy(manager.SchedulerDependentManager):
         if volume_ref['attach_status'] == "attached":
             # Volume is still attached, need to detach first
             raise exception.VolumeAttached(volume_id=volume_id)
-        if volume_ref['host'] != self.host:
-            raise exception.InvalidVolume(
-                reason=_("volume is not local to this node"))
 
         self._notify_about_volume_usage(context, volume_ref, "delete.start")
         self._reset_stats()
@@ -919,6 +986,15 @@ class CinderProxy(manager.SchedulerDependentManager):
             LOG.debug(_('Cascade info:upload volume to image,finish update'
                         'image %s locations %s.'), (image_id, locations))
 
+            volume = self.db.volume_get(context, volume_id)
+            if (volume['instance_uuid'] is None and
+                    volume['attached_host'] is None):
+                self.db.volume_update(context, volume_id,
+                                      {'status': 'available'})
+            else:
+                self.db.volume_update(context, volume_id,
+                                      {'status': 'in-use'})
+
     def accept_transfer(self, context, volume_id, new_user, new_project):
         # NOTE(jdg): need elevated context as we haven't "given" the vol
         # yet
@@ -1021,16 +1097,21 @@ class CinderProxy(manager.SchedulerDependentManager):
     def _report_driver_status(self, context):
         LOG.info(_("Updating fake volume status"))
         fake_location_info = 'LVMVolumeDriver:Huawei:cinder-volumes:default:0'
-        volume_stats = {'QoS_support': False,
-                        'location_info': fake_location_info,
-                        'volume_backend_name': 'LVM_iSCSI',
-                        'free_capacity_gb': 1024,
-                        'driver_version': '2.0.0',
-                        'total_capacity_gb': 1024,
-                        'reserved_percentage': 0,
-                        'vendor_name': 'Open Source',
-                        'storage_protocol': 'iSCSI'
-                        }
+
+        volume_stats = {
+            'pools': [{
+                'pool_name': 'LVM_iSCSI',
+                'QoS_support': False,
+                'free_capacity_gb': 10240.0,
+                'location_info': fake_location_info,
+                'total_capacity_gb': 10240.0,
+                'reserved_percentage': 0
+            }],
+            'driver_version': '2.0.0',
+            'vendor_name': 'OpenSource',
+            'volume_backend_name': 'LVM_iSCSI',
+            'storage_protocol': 'iSCSI'}
+
         self.update_service_capabilities(volume_stats)
 
     def publish_service_capabilities(self, context):

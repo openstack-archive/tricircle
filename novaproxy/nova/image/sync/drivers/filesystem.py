@@ -59,7 +59,10 @@ class Store(object):
                                 from_store_loc['login_password'])
         except Exception:
             LOG.exception("ssh login failed.")
+<<<<<<< HEAD
 	    raise
+=======
+>>>>>>> 9458b6b... Transplant tricircle to Juno
 
         from_ssh.sendline('ls %s' % copy_path)
         from_ssh.prompt()
@@ -75,7 +78,10 @@ class Store(object):
                 msg = _("the image path for copy to is not exists, file copy"
                         "failed: path is %s" % (copy_path))
                 LOG.exception(msg)
+<<<<<<< HEAD
 		raise
+=======
+>>>>>>> 9458b6b... Transplant tricircle to Juno
 
         from_ssh.sendline('scp -P 22 %s %s' % (copy_path, to_path))
         while True:
@@ -92,7 +98,10 @@ class Store(object):
                 msg = _("scp commond execute failed, with copy_path %s and "
                         "to_path %s" % (copy_path, to_path))
                 LOG.exception(msg)
+<<<<<<< HEAD
 		raise
+=======
+>>>>>>> 9458b6b... Transplant tricircle to Juno
                 break
 
         if from_ssh:

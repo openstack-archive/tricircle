@@ -23,8 +23,7 @@ import eventlet
 import os
 import sys
 
-from oslo.config import cfg
-
+from glance.common import utils
 # Monkey patch socket and time
 eventlet.patcher.monkey_patch(all=False, socket=True, time=True, thread=True)
 
@@ -43,6 +42,11 @@ from glance.openstack.common import log
 import glance.sync
 
 
+def fail(returncode, e):
+    sys.stderr.write("ERROR: %s\n" % utils.exception_to_str(e))
+    sys.exit(returncode)
+
+
 def main():
     try:
         config.parse_args(default_config_files='glance-sync.conf')
@@ -51,8 +55,10 @@ def main():
         server = wsgi.Server()
         server.start(config.load_paste_app('glance-sync'), default_port=9595)
         server.wait()
+    except exception.WorkerCreationFailure as e:
+        fail(2, e)
     except RuntimeError as e:
-        sys.exit("ERROR: %s" % e)
+        fail(1, e)
 
 
 if __name__ == '__main__':

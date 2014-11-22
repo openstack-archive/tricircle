@@ -26,10 +26,7 @@ from oslo.config import cfg
 import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
-from glance.common import utils
-from glance.openstack.common import importutils
 from glance.openstack.common import jsonutils
-from glance.openstack.common import threadgroup
 from glance.openstack.common import timeutils
 import glance.openstack.common.log as logging
 

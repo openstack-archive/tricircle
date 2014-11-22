@@ -99,11 +99,12 @@ class OpenStackClients(object):
         extensions = computeshell._discover_extensions("1.1")
 
         args = {
-            'project_id': con.tenant_id,
+            'project_id': con.tenant,
             'auth_url': con.auth_url,
             'service_type': service_type,
-            'username': None,
-            'api_key': None,
+            'username': con.username,
+            'api_key': con.password,
+	    'region_name':con.region_name,
             'extensions': extensions
         }
         if con.password is not None:

@@ -130,7 +130,7 @@ Besides glance-api.conf file, we add some new config files. They are described s
     #will sync to. (e.g. physicalOpenstack001, physicalOpenstack002)
     snapshot_region_names =
 
-   - Last but also important, we add a yaml file for config the store backend's copy : glance_store.yaml in cascading glance.
+   - Last but not least, we add a yaml file for config the store backend's copy : glance_store.yaml in cascading glance.
      these config  correspond to various store scheme (at present, only filesystem is supported), the values
      are based on your environment,  so you have to config it before installation or restart the glance-sync
      when modify it.

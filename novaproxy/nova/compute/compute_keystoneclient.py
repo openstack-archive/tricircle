@@ -101,6 +101,7 @@ class KeystoneClient(object):
             logger.error("Keystone v2 API connection failed, no password or "
                          "auth_token!")
             raise exception.AuthorizationFailure()
+
         client_v2 = kc.Client(**kwargs)
 
         client_v2.authenticate(**auth_kwargs)
