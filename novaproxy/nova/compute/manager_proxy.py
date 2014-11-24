@@ -70,7 +70,6 @@ from nova.i18n import _LW
 from nova import image
 from nova.image import cascading
 from nova.image import glance
-from nova.image import cascading
 from nova import manager
 from nova import network
 from nova.network import model as network_model
@@ -702,7 +701,7 @@ class ComputeManager(manager.Manager):
         self._change_since_time = None
         self._flavor_sync_map = {}
         self._keypair_sync_map = {}
-        self._init_flavor_sync_map()
+	self._init_flavor_sync_map()
 
     """
     add default flavor to the map, these also exist in cascaded nova.
@@ -713,7 +712,6 @@ class ComputeManager(manager.Manager):
         self._flavor_sync_map['3'] = 'm1.medium'
         self._flavor_sync_map['4'] = 'm1.large'
         self._flavor_sync_map['5'] = 'm1.xlarge'
-
 
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
@@ -846,6 +844,7 @@ class ComputeManager(manager.Manager):
                 LOG.error(_('Failed to get nova python client.'))
 
     def _heal_syn_flavor_info(self, context, instance_type):
+        #------------------------------------------<
         flavor_id = instance_type['flavorid']
         if self._flavor_sync_map.get(flavor_id, None) is not None:
             return
@@ -866,12 +865,33 @@ class ComputeManager(manager.Manager):
             rxtx_factor=instance_type['rxtx_factor']
         )
         self._flavor_sync_map[flavor_id] = instance_type['name']
-        LOG.debug(_('create flavor %s .'), flavor_id)
+        LOG.debug(_('create flavor %s.'), flavor_id)
+        #===========================================
+        # cascadedNovaCli = self._get_nova_pythonClient(
+        #     context,
+        #     cfg.CONF.proxy_region_name,
+        #     cfg.CONF.cascaded_nova_url)
+        # try:
+        #     flavors = cascadedNovaCli.flavors.get(instance_type['flavorid'])
+        # except Exception:
+        #     with excutils.save_and_reraise_exception():
+        #         flavors = cascadedNovaCli.flavors.create(
+        #             name=instance_type['name'],
+        #             ram=instance_type['memory_mb'],
+        #             vcpus=instance_type['vcpus'],
+        #             disk=instance_type['root_gb'],
+        #             flavorid=instance_type['flavorid'],
+        #             ephemeral=instance_type['ephemeral_gb'],
+        #             swap=instance_type['swap'],
+        #             rxtx_factor=instance_type['rxtx_factor']
+        #         )
+        #         LOG.debug(_('creat flavor %s .'), instance_type['flavorid'])
 
     def _heal_syn_keypair_info(self, context, instance):
         LOG.debug(_('Start to synchronize keypair %s to cascaded openstack'),
                   instance['key_name'])
 
+        #---------------------------<
         key_name = instance['key_name']
         key_data = instance['key_data']
         LOG.debug(_('Keypair is not updated ,no need to synchronize'),
@@ -889,6 +909,27 @@ class ComputeManager(manager.Manager):
         self._keypair_sync_map[key_name] = key_data
         LOG.debug(_('Finish to synchronize keypair %s to cascaded openstack'),
                   key_name)
+        #=============================
+        # cascadedNovaCli = self._get_nova_pythonClient(
+        #     context,
+        #     cfg.CONF.proxy_region_name,
+        #     cfg.CONF.cascaded_nova_url)
+        # keyPai = cascadedNovaCli.keypairs.list()
+        # keyNam = instance['key_name']
+        # keyDat = instance['key_data']
+        # keyExiFlag = False
+        # for key in keyPai:
+        #     if keyNam == key.name:
+        #         keyExiFlag = True
+        #         break
+        # if keyExiFlag:
+        #     LOG.debug(_('Keypair is not updated ,no need to synchronize'),
+        #               keyNam)
+        #     return
+        # else:
+        #     cascadedNovaCli.keypairs.create(keyNam, keyDat)
+        # LOG.debug(_('Finish to synchronize keypair %s to cascaded openstack'),
+        #           instance['key_name'])
 
     @periodic_task.periodic_task(spacing=CONF.sync_instance_state_interval,
                                  run_immediately=True)
@@ -4802,87 +4843,12 @@ class ComputeManager(manager.Manager):
             context, instance, "live_migration.pre.start",
             network_info=network_info)
 
-<<<<<<< HEAD
-    def _quota_commit(self, context, reservations, project_id=None,
-                      user_id=None):
-        if reservations:
-            self.conductor_api.quota_commit(context, reservations,
-                                            project_id=project_id,
-                                            user_id=user_id)
-
-    def _heal_syn_flavor_info(self, context, instance_type):
-        cascadedNovaCli = self._get_nova_pythonClient(
-            context,
-            cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url)
-        try:
-            flavors = cascadedNovaCli.flavors.get(instance_type['flavorid'])
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                flavors = cascadedNovaCli.flavors.create(
-                    name=instance_type['name'],
-                    ram=instance_type['memory_mb'],
-                    vcpus=instance_type['vcpus'],
-                    disk=instance_type['root_gb'],
-                    flavorid=instance_type['flavorid'],
-                    ephemeral=instance_type['ephemeral_gb'],
-                    swap=instance_type['swap'],
-                    rxtx_factor=instance_type['rxtx_factor']
-                )
-                LOG.debug(_('creat flavor %s .'), instance_type['flavorid'])
-
-    def _heal_syn_keypair_info(self, context, instance):
-        LOG.debug(_('Start to synchronize keypair %s to cascaded openstack'),
-                  instance['key_name'])
-        cascadedNovaCli = self._get_nova_pythonClient(
-            context,
-            cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url)
-        keyPai = cascadedNovaCli.keypairs.list()
-        keyNam = instance['key_name']
-        keyDat = instance['key_data']
-        keyExiFlag = False
-        for key in keyPai:
-            if keyNam == key.name:
-                keyExiFlag = True
-                break
-        if keyExiFlag:
-            LOG.debug(_('Keypair is not updated ,no need to synchronize'),
-                      keyNam)
-            return
-        else:
-            cascadedNovaCli.keypairs.create(keyNam, keyDat)
-        LOG.debug(_('Finish to synchronize keypair %s to cascaded openstack'),
-                  instance['key_name'])
-
-    def _get_cascaded_image_uuid(self, context, image_uuid):
-        try:
-            glanceClient = glance.GlanceClientWrapper()
-            image = glanceClient.call(context, 2, 'get', image_uuid)
-            cascaded_image_uuid = None
-            for location in image['locations']:
-                if location['url'] and location['url'].startswith(
-                        cfg.CONF.cascaded_glance_url):
-                    cascaded_image_uuid = location['url'].split('/')[-1]
-                    return cascaded_image_uuid
-	    #lazy sync image
-	    sync_service = cascading.GlanceCascadingService()
-            return sync_service.sync_image(context,
-                                           cfg.CONF.cascaded_glance_url,
-                                           image)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_("Error while trying to get cascaded"
-                            " image and cascading uuid %s")
-                          % image_uuid)
-=======
         pre_live_migration_data = self.driver.pre_live_migration(context,
                                                                  instance,
                                                                  block_device_info,
                                                                  network_info,
                                                                  disk,
                                                                  migrate_data)
->>>>>>> 9458b6b... Transplant tricircle to Juno
 
         # NOTE(tr3buchet): setup networks on destination host
         self.network_api.setup_networks_on_host(context, instance,
