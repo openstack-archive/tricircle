@@ -22,7 +22,7 @@ Key modules
 
 Requirements
 ------------
-* openstack-nova-compute-2014.1-23.1 has been installed
+* openstack-nova-compute-2014.2(Juno) has been installed
 
 Installation
 ------------

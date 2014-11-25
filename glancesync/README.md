@@ -51,7 +51,7 @@ Installation
         |${glance-patch}| glance/          | ${python_install_dir}/glance               |
         |${glance-patch}|glance.egg-info/entry_points.txt | ${glance_install_egg.info}/ |
         
-        ${glance-patch} = `icehouse-patches/glance/glance_location_patch`   ${python_install_dir} is where the openstack installed, e.g. `/usr/lib64/python2.6/site-packages` .
+        ${glance-patch} = `juno-patches/glance/glance_location_patch`   ${python_install_dir} is where the openstack installed, e.g. `/usr/lib64/python2.6/site-packages` .
     2.  Add/modify the config options
 
         | CONFIG_FILE     | OPTION                                             | ADD or MODIFY  |
@@ -71,7 +71,7 @@ Installation
 
 * **Automatic Installation**
 
-    1.  Enter the glance-patch installation dir: `cd ./tricircle/icehouse-patches/glance/glance_location_patch/installation` .
+    1.  Enter the glance-patch installation dir: `cd ./tricircle/juno-patches/glance/glance_location_patch/installation` .
     2.  Optional, modify the shell script variable: `_PYTHON_INSTALL_DIR` .
     3.  Run the install script: `sh install.sh`
     4.  Enter the glancesync installation dir: `cd ./tricircle/glancesync/installation` .

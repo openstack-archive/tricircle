@@ -19,7 +19,7 @@ Key modules
 
 Requirements
 ------------
-* openstack icehouse has been installed
+* openstack of juno-version has been installed
 
 Installation
 ------------
