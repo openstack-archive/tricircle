@@ -99,7 +99,7 @@ if [ ! -d ${_PYTHON_INSTALL_DIR}/${glanceEggDir} ]; then
     log "glance install dir not exist. Pleas check manually."
     exit 1
 fi
-cp "${_PATCH_DIR}/glance.egg-info/entry_points.txt" "${_PYTHON_INSTALL_DIR}/${glanceEggDir}/"
+cp "${_PATCH_DIR}/glance-egg-info/entry_points.txt" "${_PYTHON_INSTALL_DIR}/${glanceEggDir}/"
 if [ $? -ne 0 ] ; then
     log "Error in copying, aborted. Please install manually."
     exit 1

@@ -154,3 +154,9 @@ os_region_name=$os_region_name
 #The cascading level keystone component service url, by which the nova porxy
 #can access to  cascading level keystone service
 keystone_auth_url=$keystone_auth_url
+
+Note: a few options that belonged to the original nova have to be configured:
+
+.	allow_resize_to_same_host=True
+.	scheduler_default_filters=AvailabilityZoneFilter
+
