@@ -133,6 +133,16 @@ sed -i "s/USER_NAME/$USER_NAME/g" "${_NEUTRON_CONF_DIR}/${_NEUTRON_L2_PROXY_FILE
 sed -i "s/USER_PWD/$USER_PWD/g" "${_NEUTRON_CONF_DIR}/${_NEUTRON_L2_PROXY_FILE}"
 sed -i "s/TENANT_NAME/$TENANT_NAME/g" "${_NEUTRON_CONF_DIR}/${_NEUTRON_L2_PROXY_FILE}"
 
+echo "upgrade and syc neutron DB for cascading-server-l3-patch..."
+_MYSQL_PASS='openstack'
+exec_sql_str="DROP DATABASE if exists neutron;CREATE DATABASE neutron;GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY \"$_MYSQL_PASS\";GRANT ALL PRIVILEGES ON *.* TO 'neutron'@'%'IDENTIFIED BY \"$_MYSQL_PASS\";"
+mysql -u root -p$_MYSQL_PASS -e "$exec_sql_str"
+neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head
+if [ $? -ne 0 ] ; then
+    echo "There was an error in upgrading DB for cascading-server-l3-patch, please check cascacaded neutron server code manually."
+    exit 1
+fi
+
 echo "restarting cascading neutron server..."
 service neutron-server restart
 if [ $? -ne 0 ] ; then
