@@ -100,6 +100,13 @@ def get_id_from_glance_loc(location):
     return loc_meta.get('image_id', None)
 
 
+def get_id_from_glance_loc_url(loc_url):
+    if not is_glance_location(loc_url):
+        return ''
+    _index = loc_url.find('/v2/images/') + len('/v2/images/')
+    return loc_url[_index:]
+
+
 def is_default_location(location):
     try:
         return not is_glance_location(location['url']) \
@@ -117,6 +124,10 @@ def get_snapshot_glance_loc(locations):
 
 def create_ep_by_loc(location):
     loc_url = location['url']
+    return create_ep_by_loc_url(loc_url)
+
+
+def create_ep_by_loc_url(loc_url):
     if not is_glance_location(loc_url):
         return None
     piece = urlparse.urlparse(loc_url)

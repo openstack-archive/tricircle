@@ -48,6 +48,118 @@ CONF.import_opt('snapshot_sleep_interval', 'glance.common.config',
                 group='sync')
 
 
+_IMAGE_LOCS_MAP = {}
+
+
+def get_copy_location_url(image):
+    """
+    choose a best location of an image for sync.
+    """
+    global _IMAGE_LOCS_MAP
+    image_id = image.id
+    locations = image.locations
+    if not locations:
+        return ''
+    #First time store in the cache
+    if image_id not in _IMAGE_LOCS_MAP.keys():
+        _IMAGE_LOCS_MAP[image_id] = {
+            'locations':
+                [{'url': locations[0]['url'],
+                  'count': 1,
+                  'is_using':1
+                 }]
+        }
+        return locations[0]['url']
+    else:
+        recorded_locs = _IMAGE_LOCS_MAP[image_id]['locations']
+        record_urls = [loc['url'] for loc in recorded_locs]
+        for location in locations:
+            #the new, not-used location, cache and just return it.
+            if location['url'] not in record_urls:
+                recorded_locs.append({
+                    'url': location['url'],
+                    'count':1,
+                    'is_using':1
+                })
+                return location['url']
+        #find ever used and at present not used.
+        not_used_locs = [loc for loc in recorded_locs
+                         if not loc['is_using']]
+        if not_used_locs:
+            _loc = not_used_locs[0]
+            _loc['is_using'] = 1
+            _loc['count'] += 1
+            return _loc['url']
+        #the last case, just choose one that has the least using count.
+        _my_loc = sorted(recorded_locs, key=lambda my_loc: my_loc['count'])[0]
+        _my_loc['count'] += 1
+        return _my_loc['url']
+
+
+def remove_invalid_location(id, url):
+    """
+    when sync fail with a location, remove it from the cache.
+    :param id: the image_id
+    :param url: the location's url
+    :return:
+    """
+    global _IMAGE_LOCS_MAP
+    image_map = _IMAGE_LOCS_MAP[id]
+    if not image_map:
+        return
+    locs = image_map['locations'] or []
+    if not locs:
+        return
+    del_locs = [loc for loc in locs if loc['url'] == url]
+    if not del_locs:
+        return
+    locs.remove(del_locs[0])
+
+
+def return_sync_location(id, url):
+    """
+    when sync finish, modify the using count and state.
+    """
+    global _IMAGE_LOCS_MAP
+    image_map = _IMAGE_LOCS_MAP[id]
+    if not image_map:
+        return
+    locs = image_map['locations'] or []
+    if not locs:
+        return
+    selectd_locs = [loc for loc in locs if loc['url'] == url]
+    if not selectd_locs:
+        return
+    selectd_locs[0]['is_using'] = 0
+    selectd_locs[0]['count'] -= 1
+
+
+def choose_a_location(sync_f):
+    """
+    the wrapper for the method which need a location for sync.
+    :param sync_f:
+    :return:
+    """
+    def wrapper(*args, **kwargs):
+        _id = args[1]
+        _auth_token = args[2]
+        _image = create_self_glance_client(_auth_token).images.get(_id)
+        _url = get_copy_location_url(_image)
+        kwargs['src_image_url'] = _url
+        _sync_ok = False
+        while not _sync_ok:
+            try:
+                sync_f(*args, **kwargs)
+                _sync_ok = True
+            except Exception:
+                remove_invalid_location(_id, _url)
+                _url = get_copy_location_url(_image)
+                if not _url:
+                    break
+                kwargs['src_image_url'] = _url
+    return wrapper
+
+
 def get_image_servcie():
     return ImageService
 
@@ -324,6 +436,7 @@ class SyncManagerV2():
             self.task_queue.put_nowait(TaskObject.get_instance('meta_remove',
                                                                kwargs))
 
+    @choose_a_location
     def sync_image_data(self, image_id, auth_token, eps=None, **kwargs):
         if CONF.sync.sync_strategy == 'None':
             return
@@ -331,6 +444,20 @@ class SyncManagerV2():
         kwargs['image_id'] = image_id
         cascading_ep = s_utils.get_cascading_endpoint_url()
         kwargs['cascading_ep'] = cascading_ep
+        copy_url = kwargs.get('src_image_url', None)
+        if not copy_url:
+            LOG.warn(_('No copy url found, for image %s sync, Exit.'),
+                     image_id)
+            return
+        LOG.info(_('choose the copy url %s for sync image %s'),
+                 copy_url, image_id)
+        if s_utils.is_glance_location(copy_url):
+            kwargs['copy_ep'] = s_utils.create_ep_by_loc_url(copy_url)
+            kwargs['copy_id'] = s_utils.get_id_from_glance_loc_url(copy_url)
+        else:
+            kwargs['copy_ep'] = cascading_ep
+            kwargs['copy_id'] = image_id
+
         self.task_queue.put_nowait(TaskObject.get_instance('sync', kwargs))
 
     def adding_locations(self, image_id, auth_token, locs, **kwargs):
@@ -468,32 +595,35 @@ class SyncManagerV2():
         return self.mete_helper.execute(auth_token, cascaded_ep, 'DELETE',
                                         image_id)
 
-    def sync_image(self, auth_token, copy_ep, cascaded_ep, copy_image_id,
-                   cascading_image_id, **kwargs):
+    def sync_image(self, auth_token, copy_ep=None, to_ep=None,
+                   copy_image_id=None, cascading_image_id=None, **kwargs):
         # Firstly, crate an image object with cascading image's properties.
-        cascaded_id = self.mete_helper.execute(auth_token, cascaded_ep,
+        LOG.debug(_('create an image metadata in ep: %s'), to_ep)
+        cascaded_id = self.mete_helper.execute(auth_token, to_ep,
                                                **kwargs)
         try:
             c_path = self._get_candidate_path(auth_token, copy_ep,
                                               copy_image_id)
+            LOG.debug(_('Chose candidate path: %s from ep %s'), c_path, copy_ep)
             # execute copy operation to copy the image data.
             copy_image_loc = self._do_image_data_copy(copy_ep,
-                                                      cascaded_ep,
+                                                      to_ep,
                                                       copy_image_id,
                                                       cascaded_id,
                                                       candidate_path=c_path)
+            LOG.debug(_('Sync image data, synced loc is %s'), copy_image_loc)
             # patch the copied image_data to the image
-            glance_client = create_restful_client(auth_token, cascaded_ep)
+            glance_client = create_restful_client(auth_token, to_ep)
             glance_client.add_location(cascaded_id, copy_image_loc)
             # patch the glance location to cascading glance
 
             msg = _("patch glance location to cascading image, with cascaded "
                     "endpoint : %s, cascaded id: %s, cascading image id: %s." %
-                    (cascaded_ep, cascaded_id, cascading_image_id))
+                    (to_ep, cascaded_id, cascading_image_id))
             LOG.debug(msg)
             self._patch_cascaded_location(auth_token,
                                           cascading_image_id,
-                                          cascaded_ep,
+                                          to_ep,
                                           cascaded_id,
                                           action='upload')
             return cascaded_id
@@ -504,8 +634,9 @@ class SyncManagerV2():
     def do_snapshot(self, auth_token, snapshot_ep, cascaded_ep,
                     snapshot_image_id, cascading_image_id, **kwargs):
 
-        return self.sync_image(auth_token, snapshot_ep, cascaded_ep,
-                               snapshot_image_id, cascading_image_id, **kwargs)
+        return self.sync_image(auth_token, copy_ep=snapshot_ep,
+                to_ep=cascaded_ep, copy_image_id=snapshot_image_id,
+                cascading_image_id=cascading_image_id, **kwargs)
 
     def patch_location(self, image_id, cascaded_id, auth_token, cascaded_ep,
                        location):

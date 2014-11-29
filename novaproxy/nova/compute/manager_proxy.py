@@ -294,16 +294,15 @@ CONF.import_opt('html5_proxy_base_url', 'nova.rdp', group='rdp')
 CONF.import_opt('enabled', 'nova.console.serial', group='serial_console')
 CONF.import_opt('base_url', 'nova.console.serial', group='serial_console')
 
-#cascading
-# CONF.import_opt('neutron_admin_username', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_admin_password', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_admin_tenant_id', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_admin_tenant_name', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_region_name', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_url_timeout', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_admin_auth_url', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_api_insecure', 'nova.network.neutronv2.api')
-# CONF.import_opt('neutron_auth_strategy', 'nova.network.neutronv2.api')
+EXCLUDE_TASK_STATES = (task_states.BLOCK_DEVICE_MAPPING,
+                       task_states.NETWORKING,
+                       task_states.SPAWNING,
+                       task_states.SCHEDULING,
+                       task_states.POWERING_OFF,
+                       task_states.RESIZE_PREP,
+                       task_states.RESIZE_MIGRATING,
+                       task_states.RESIZE_MIGRATED,
+                       task_states.RESIZE_FINISH)
 
 
 LOG = logging.getLogger(__name__)
@@ -402,14 +401,14 @@ def wrap_instance_event(function):
 
     @functools.wraps(function)
     def decorated_function(self, context, *args, **kwargs):
-        wrapped_func = utils.get_wrapped_function(function)
-        keyed_args = safe_utils.getcallargs(wrapped_func, context, *args,
-                                            **kwargs)
-        instance_uuid = keyed_args['instance']['uuid']
-
-        event_name = 'compute_{0}'.format(function.func_name)
-        with compute_utils.EventReporter(context, event_name, instance_uuid):
-            return function(self, context, *args, **kwargs)
+        # wrapped_func = utils.get_wrapped_function(function)
+        # keyed_args = safe_utils.getcallargs(wrapped_func, context, *args,
+        #                                     **kwargs)
+        # instance_uuid = keyed_args['instance']['uuid']
+        #
+        # event_name = 'compute_{0}'.format(function.func_name)
+        # with compute_utils.EventReporter(context, event_name, instance_uuid):
+        return function(self, context, *args, **kwargs)
 
     return decorated_function
 
@@ -495,6 +494,17 @@ def aggregate_object_compat(function):
             kwargs['aggregate'] = aggregate
         return function(self, context, *args, **kwargs)
     return decorated_function
+
+
+def _cmp_as_same(dict1, dict2, compare_keys):
+    if type(dict1) is dict and type(dict2) is dict:
+        if not compare_keys:
+            return False
+        for key in compare_keys:
+            if dict1[key] != dict2[key]:
+                return False
+        return True
+    return False
 
 
 class InstanceEvents(object):
@@ -699,19 +709,62 @@ class ComputeManager(manager.Manager):
         #cascading patch
         self._last_info_instance_state_heal = 0
         self._change_since_time = None
-        self._flavor_sync_map = {}
-        self._keypair_sync_map = {}
-	self._init_flavor_sync_map()
+        self._init_caches()
 
     """
     add default flavor to the map, these also exist in cascaded nova.
     """
-    def _init_flavor_sync_map(self):
-        self._flavor_sync_map['1'] = 'm1.tiny'
-        self._flavor_sync_map['2'] = 'm1.small'
-        self._flavor_sync_map['3'] = 'm1.medium'
-        self._flavor_sync_map['4'] = 'm1.large'
-        self._flavor_sync_map['5'] = 'm1.xlarge'
+    def _init_caches(self):
+        self._flavor_sync_map = {}
+        self._keypair_sync_map = {}
+        csd_nova_client = None
+
+        try:
+            kwargs = {
+                'username': CONF.nova_admin_username,
+                'password': CONF.nova_admin_password,
+                'tenant': CONF.nova_admin_tenant_name,
+                'auth_url': cfg.CONF.keystone_auth_url,
+                'region_name': CONF.proxy_region_name
+            }
+            req_context = compute_context.RequestContext(**kwargs)
+            openstack_clients = clients.OpenStackClients(req_context)
+            csd_nova_client = openstack_clients.nova()
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to get nova python client.'))
+        if csd_nova_client is None:
+            return
+        csd_flavors = csd_nova_client.flavors.list()
+        csd_keypairs = csd_nova_client.keypairs.list()
+        search_opts_args = {
+            'all_tenants': True
+        }
+        #servers = csd_nova_client.servers.list(search_opts_args)
+
+
+        """ for flavors """
+        for flavor in csd_flavors:
+            self._flavor_sync_map[flavor.name] = {
+                'flavorid': flavor.id,
+                'name': flavor.name,
+                'ram': flavor.ram,
+                'vcpus': flavor.vcpus,
+                'swap': flavor.swap,
+                #'is_public': flavor.is_public,
+                'rxtx_factor': flavor.rxtx_factor,
+                'ephemeral': flavor.ephemeral,
+                'disk': flavor.disk
+            }
+        """ for keypairs """
+        for keypair in csd_keypairs:
+            self._keypair_sync_map[keypair.name] = {
+                'id': keypair.id,
+                'key_name': keypair.name,
+                'key_data': keypair.public_key,
+                #'fingerprint': keypair.fingerprint
+            }
+        """ for instances """
 
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
@@ -729,11 +782,11 @@ class ComputeManager(manager.Manager):
 
     def _update_resource_tracker(self, context, instance):
         """Let the resource tracker know that an instance has changed state."""
-
-        if (instance['host'] == self.host and
-                self.driver.node_is_available(instance['node'])):
-            rt = self._get_resource_tracker(instance.get('node'))
-            rt.update_usage(context, instance)
+        pass
+        # if (instance['host'] == self.host and
+        #         self.driver.node_is_available(instance['node'])):
+            # rt = self._get_resource_tracker(instance.get('node'))
+            # rt.update_usage(context, instance)
 
     def _instance_update(self, context, instance_uuid, **kwargs):
         """Update an instance in the database using kwargs as value."""
@@ -744,21 +797,18 @@ class ComputeManager(manager.Manager):
         self._update_resource_tracker(context, instance_ref)
         return instance_ref
 
-##########################################################################
-#    CASCADING FUNCTIONS
-##########################################################################
     def _delete_proxy_instance(self, context, instance):
         proxy_instance_id = instance['mapping_uuid']
         if proxy_instance_id is None:
             LOG.error(_('Delete server %s,but can not find this server'),
                       proxy_instance_id)
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
-            cascadedNovaCli.servers.delete(proxy_instance_id)
+            cascaded_nova_cli.servers.delete(proxy_instance_id)
             self._instance_update(
                 context,
                 instance['uuid'],
@@ -772,12 +822,12 @@ class ComputeManager(manager.Manager):
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to delete server %s'), proxy_instance_id)
 
-    def _get_cascaded_image_uuid(self, context, image_uuid):
+    @staticmethod
+    def _get_cascaded_image_uuid(context, image_uuid):
         try:
-            glanceClient = glance.GlanceClientWrapper()
-            image = glanceClient.call(context, 2, 'get', image_uuid)
-            cascaded_image_uuid = None
-            for location in image['locations']:
+            glance_client = glance.GlanceClientWrapper()
+            cascading_image = glance_client.call(context, 2, 'get', image_uuid)
+            for location in cascading_image['locations']:
                 if location['url'] and location['url'].startswith(
                         cfg.CONF.cascaded_glance_url):
                     cascaded_image_uuid = location['url'].split('/')[-1]
@@ -786,7 +836,7 @@ class ComputeManager(manager.Manager):
             sync_service = cascading.GlanceCascadingService()
             return sync_service.sync_image(context,
                                            cfg.CONF.cascaded_glance_url,
-                                           image)
+                                           cascading_image)
 
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -794,7 +844,8 @@ class ComputeManager(manager.Manager):
                             " image and cascading uuid %s")
                           % image_uuid)
 
-    def _get_neutron_pythonClient(self, context, regNam, neutrol_url):
+    @staticmethod
+    def _get_neutron_python_client(context, regNam, neutrol_url):
         try:
             kwargs = {
                 'endpoint_url': neutrol_url,
@@ -807,24 +858,14 @@ class ComputeManager(manager.Manager):
                 'auth_url': CONF.neutron.admin_auth_url,
                 'auth_strategy': CONF.neutron.auth_strategy
             }
-            neutronClient = clientv20.Client(**kwargs)
-            return neutronClient
+            return clientv20.Client(**kwargs)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get neutron python client.'))
 
-    def _get_nova_pythonClient(self, context, regNam, nova_url):
+    @staticmethod
+    def _get_nova_python_client(context, reg_name, nova_url):
         try:
-            #            kwargs = {'auth_token':None,
-            #                      'username':context.values['user_name'],
-            #                      'password':cfg.CONF.nova_admin_password,
-            #                      'aws_creds':None,'tenant':None,
-            #                      'tenant_id':context.values['tenant'],
-            #                      'auth_url':cfg.CONF.keystone_auth_url,
-            #                      'roles':context.values['roles'],
-            #                      'is_admin':context.values['is_admin'],
-            #                      'region_name':regNam
-            #                      }
             kwargs = {
                 'auth_token': context.auth_token,
                 'username': context.user_name,
@@ -832,27 +873,41 @@ class ComputeManager(manager.Manager):
                 'auth_url': cfg.CONF.keystone_auth_url,
                 'roles': context.roles,
                 'is_admin': context.is_admin,
-                'region_name': regNam,
+                'region_name': reg_name,
                 'nova_url': nova_url
             }
-            reqCon = compute_context.RequestContext(**kwargs)
-            openStackClients = clients.OpenStackClients(reqCon)
-            novaClient = openStackClients.nova()
-            return novaClient
+            req_context = compute_context.RequestContext(**kwargs)
+            openstack_clients = clients.OpenStackClients(req_context)
+            return openstack_clients.nova()
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get nova python client.'))
 
     def _heal_syn_flavor_info(self, context, instance_type):
-        #------------------------------------------<
-        flavor_id = instance_type['flavorid']
-        if self._flavor_sync_map.get(flavor_id, None) is not None:
+        _cmp_keys = ('flavorid', 'name', 'ram', 'vcpus', 'swap',
+                     'ephemeral', 'disk', 'rxtx_factor')
+        flavor_name = instance_type['name']
+        csd_flavor = self._flavor_sync_map.get(flavor_name, None)
+        _update_flavor_flag = False
+        if csd_flavor is None:
+            LOG.info(_('flavor not exists in cascaded, need sync: %s'),
+                     flavor_name)
+        elif not _cmp_as_same(csd_flavor, instance_type, _cmp_keys):
+            _update_flavor_flag = True
+            LOG.info(_('flavor not full same to cascaded, need sync: %s'),
+                     flavor_name)
+        else:
             return
 
-        cascaded_nova_cli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
+        if _update_flavor_flag:
+            # update = delete + create new.
+            LOG.info(_('delete the cascaded flavor %s by id: %s'),
+                     csd_flavor['name'], csd_flavor['flavorid'])
+            cascaded_nova_cli.flavors.delete(csd_flavor['flavorid'])
 
         cascaded_nova_cli.flavors.create(
             name=instance_type['name'],
@@ -864,72 +919,43 @@ class ComputeManager(manager.Manager):
             swap=instance_type['swap'],
             rxtx_factor=instance_type['rxtx_factor']
         )
-        self._flavor_sync_map[flavor_id] = instance_type['name']
-        LOG.debug(_('create flavor %s.'), flavor_id)
-        #===========================================
-        # cascadedNovaCli = self._get_nova_pythonClient(
-        #     context,
-        #     cfg.CONF.proxy_region_name,
-        #     cfg.CONF.cascaded_nova_url)
-        # try:
-        #     flavors = cascadedNovaCli.flavors.get(instance_type['flavorid'])
-        # except Exception:
-        #     with excutils.save_and_reraise_exception():
-        #         flavors = cascadedNovaCli.flavors.create(
-        #             name=instance_type['name'],
-        #             ram=instance_type['memory_mb'],
-        #             vcpus=instance_type['vcpus'],
-        #             disk=instance_type['root_gb'],
-        #             flavorid=instance_type['flavorid'],
-        #             ephemeral=instance_type['ephemeral_gb'],
-        #             swap=instance_type['swap'],
-        #             rxtx_factor=instance_type['rxtx_factor']
-        #         )
-        #         LOG.debug(_('creat flavor %s .'), instance_type['flavorid'])
+        # refresh the cache.
+        self._flavor_sync_map[flavor_name] = instance_type.copy()
+        LOG.debug(_('create/update flavor %s done.'), flavor_name)
 
     def _heal_syn_keypair_info(self, context, instance):
-        LOG.debug(_('Start to synchronize keypair %s to cascaded openstack'),
-                  instance['key_name'])
+        kp_name = instance['key_name']
+        kp_data = instance['key_data']
 
-        #---------------------------<
-        key_name = instance['key_name']
-        key_data = instance['key_data']
-        LOG.debug(_('Keypair is not updated ,no need to synchronize'),
-                  key_name)
-        if self._keypair_sync_map.get(key_name, None) is not None:
-            LOG.debug(_('Keypair is not updated ,no need to synchronize'),
-                      key_name)
+        csd_keypair = self._keypair_sync_map.get(kp_name, None)
+        _update_keypair_flag = False
+        if csd_keypair is None:
+            LOG.info(_('Keypair not exists in cascaded, need sync: %s'),
+                     kp_name)
+        elif kp_data != csd_keypair['key_data']:
+            LOG.info(_('Keypair changed and is different from cascaded,'
+                       'need sync: %s'), kp_name)
+            _update_keypair_flag = True
+        else:
             return
-
-        cascaded_nova_cli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascaded_nova_cli.keypairs.create(key_name, key_data)
-        self._keypair_sync_map[key_name] = key_data
-        LOG.debug(_('Finish to synchronize keypair %s to cascaded openstack'),
-                  key_name)
-        #=============================
-        # cascadedNovaCli = self._get_nova_pythonClient(
-        #     context,
-        #     cfg.CONF.proxy_region_name,
-        #     cfg.CONF.cascaded_nova_url)
-        # keyPai = cascadedNovaCli.keypairs.list()
-        # keyNam = instance['key_name']
-        # keyDat = instance['key_data']
-        # keyExiFlag = False
-        # for key in keyPai:
-        #     if keyNam == key.name:
-        #         keyExiFlag = True
-        #         break
-        # if keyExiFlag:
-        #     LOG.debug(_('Keypair is not updated ,no need to synchronize'),
-        #               keyNam)
-        #     return
-        # else:
-        #     cascadedNovaCli.keypairs.create(keyNam, keyDat)
-        # LOG.debug(_('Finish to synchronize keypair %s to cascaded openstack'),
-        #           instance['key_name'])
+        if _update_keypair_flag:
+            LOG.info(_('delete the cascaded keypair %s by id: %s'),
+                     csd_keypair['name'], csd_keypair['id'])
+            cascaded_nova_cli.keypairs.delete(csd_keypair['id'])
+
+        key_pair = cascaded_nova_cli.keypairs.create(name=kp_name,
+                                                     public_key=kp_data)
+        #refresh the keypair cache
+        self._keypair_sync_map[kp_name] = {
+            'id': key_pair.id,
+            'key_name': key_pair.name,
+            'key_data': key_pair.public_key
+        }
+        LOG.debug(_('create/update keypair %s done.'), kp_name)
 
     @periodic_task.periodic_task(spacing=CONF.sync_instance_state_interval,
                                  run_immediately=True)
@@ -951,24 +977,24 @@ class ComputeManager(manager.Manager):
             'auth_url': cfg.CONF.keystone_auth_url,
             'region_name': cfg.CONF.proxy_region_name
         }
-        reqCon = compute_context.RequestContext(**kwargs)
-        openStackClients = clients.OpenStackClients(reqCon)
-        cascadedNovaCli = openStackClients.nova()
+        req_context = compute_context.RequestContext(**kwargs)
+        openstack_clients = clients.OpenStackClients(req_context)
+        cascaded_nova_cli = openstack_clients.nova()
         try:
             if self._change_since_time is None:
                 search_opts_args = {'all_tenants': True}
-                servers = cascadedNovaCli.servers.list(
+                servers = cascaded_nova_cli.servers.list(
                     search_opts=search_opts_args)
             else:
                 search_opts_args = {
                     'changes-since': self._change_since_time,
                     'all_tenants': True
                 }
-                servers = cascadedNovaCli.servers.list(
+                servers = cascaded_nova_cli.servers.list(
                     search_opts=search_opts_args)
             LOG.debug(_('the current time is %s'), timeutils.utcnow())
             _change_since_time = timeutils.utcnow() - \
-                                 datetime.timedelta(seconds=time_shift_tolerance)
+                        datetime.timedelta(seconds=time_shift_tolerance)
             self._change_since_time = timeutils.isotime(_change_since_time)
             LOG.debug(_('the change since time is %s'),
                       self._change_since_time)
@@ -976,8 +1002,10 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Updated the servers %s '), servers)
 
             for server in servers:
-                # LOG.debug(_('cascaded vm metadata info: %s'), server.metadata)
                 if server.metadata.get('mapping_uuid'):
+                    csd_task_state = server._info['OS-EXT-STS:task_state']
+                    if csd_task_state in EXCLUDE_TASK_STATES:
+                        continue
                     self._instance_update(
                         context,
                         server.metadata['mapping_uuid'],
@@ -999,22 +1027,22 @@ class ComputeManager(manager.Manager):
             physical_net_id = None
             ovs_interface_mac = netObj['address']
             fixed_ips = []
-            physicalNetIdExiFlag = False
+            physical_net_id_exist_flag = False
             if net_id in self.cascading_info_mapping['networks']:
                 physical_net_id = \
                     self.cascading_info_mapping['networks'][net_id]
-                physicalNetIdExiFlag = True
+                physical_net_id_exist_flag = True
                 LOG.debug(_('Physical network has been created in physical'
                             ' leval,logicalNetId:%s, physicalNetId: %s '),
                           net_id, physical_net_id)
-            if not physicalNetIdExiFlag:
+            if not physical_net_id_exist_flag:
                 raise exception.NetworkNotFound(network_id=net_id)
             fixed_ips.append(
                 {'ip_address':
                      netObj['network']['subnets']
                      [0]['ips'][0]['address']}
             )
-            reqbody = {'port':
+            req_body = {'port':
                            {
                                'tenant_id': instance['project_id'],
                                'admin_state_up': True,
@@ -1025,46 +1053,69 @@ class ComputeManager(manager.Manager):
                                    {"cascading_port_id": netObj['ovs_interfaceid']}
                            }
             }
-            neutronClient = self._get_neutron_pythonClient(
+            neutron_client = ComputeManager._get_neutron_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_neutron_url)
             try:
-                bodyReps = neutronClient.create_port(reqbody)
-                physical_ports.append(bodyReps)
-                LOG.debug(_('Finish to create Physical port, bodyReps %s'),
-                          bodyReps)
+                body_repsonse = neutron_client.create_port(req_body)
+                physical_ports.append(body_repsonse)
+                LOG.debug(_('Finish to create Physical port, body_response %s'),
+                          body_repsonse)
             except Exception:
                 with excutils.save_and_reraise_exception():
-                    LOG.error(_('Fail to create physical port reqbody %s .'),
-                              reqbody)
+                    LOG.error(_('Fail to create physical port req_body %s .'),
+                              req_body)
 
         return physical_ports
 
+    def _load_cascaded_net_info(self, context):
+        """
+        Only called when the compute service restarted.Gathering the cascaded
+        network's information(include network, subnet, port).
+
+        :return A dict which store the net mapping between cascading and
+        cascaded.
+        """
+        try:
+            cased_neutron_client = ComputeManager.\
+                _get_neutron_python_client(context,
+                                           cfg.CONF.proxy_region_name,
+                                           cfg.CONF.cascaded_neutron_url)
+            port_search_opts = {'status': 'ACTIVE'}
+            cascaded_ports = cased_neutron_client.list_ports(**port_search_opts)
+
+
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Fail to synchronize the network info when start.'))
+
     def _heal_proxy_networks(self, context, instance, network_info):
         cascaded_network_list = []
-        self.cascading_info_mapping = {}
+        self.cascading_info_mapping = dict()
         self.cascading_info_mapping['networks'] = {}
         cascading_info_mapping_file = os.path.join(
             CONF.instances_path,
             'cascading_info_mapping.json')
+        #load the file content to map
         if os.path.isfile(cascading_info_mapping_file):
             cascading_info_mapping_file_context = libvirt_utils.load_file(
                 cascading_info_mapping_file)
             mapping_networks = jsonutils.loads(
                 cascading_info_mapping_file_context)['networks']
             self.cascading_info_mapping['networks'] = mapping_networks
-        for netObj in network_info:
-            net_id = netObj['network']['id']
-            physicalNetIdExiFlag = False
+
+        for net_obj in network_info:
+            net_id = net_obj['network']['id']
+            physical_net_id_exist_flag = False
             if net_id in self.cascading_info_mapping['networks']:
-                physicalNetIdExiFlag = True
-                physicalNetId = self.cascading_info_mapping['networks'][net_id]
-                cascaded_network_list.append(physicalNetId)
+                physical_net_id_exist_flag = True
+                physical_net_id = self.cascading_info_mapping['networks'][net_id]
+                cascaded_network_list.append(physical_net_id)
                 LOG.debug(_('Physical network has been exist, do not'
                             ' need to create,logicalNetId:%s,'
-                            'physicalNetId: %s '), net_id, physicalNetId)
-            if not physicalNetIdExiFlag:
+                            'physicalNetId: %s '), net_id, physical_net_id)
+            if not physical_net_id_exist_flag:
                 try:
                     LOG.debug(_('Physical network do not be exist,'
                                 'need to create,logicalNetId:%s'),
@@ -1076,53 +1127,55 @@ class ComputeManager(manager.Manager):
                         'auth_url': CONF.neutron.admin_auth_url,
                         'region_name': CONF.os_region_name
                     }
-                    reqCon = compute_context.RequestContext(**kwargs)
-                    neutron = neutronv2.get_client(reqCon, True)
-                    logicalnets = self.network_api._get_available_networks(
-                        reqCon,
+                    req_context = compute_context.RequestContext(**kwargs)
+                    neutron = neutronv2.get_client(req_context, True)
+                    logical_nets = self.network_api._get_available_networks(
+                        req_context,
                         instance['project_id'],
                         [net_id],
                         neutron)
-                    neutronClient = self._get_neutron_pythonClient(
+                    neutron_client = ComputeManager._get_neutron_python_client(
                         context,
                         cfg.CONF.proxy_region_name,
                         cfg.CONF.cascaded_neutron_url)
 
-                    if logicalnets[0]['provider:network_type'] == 'vxlan':
-                        reqNetwork = {
+                    if logical_nets[0]['provider:network_type'] == 'vxlan':
+                        req_network = {
                             'network': {
-                                'provider:network_type': logicalnets[0]['provider:network_type'],
-                                'provider:segmentation_id': logicalnets[0]['provider:segmentation_id'],
+                                'provider:network_type': logical_nets[0]['provider:network_type'],
+                                'provider:segmentation_id': logical_nets[0]['provider:segmentation_id'],
                                 'tenant_id': instance['project_id'],
                                 'admin_state_up': True}}
-                    elif logicalnets[0]['provider:network_type'] == 'flat':
-                        reqNetwork = {
+                    elif logical_nets[0]['provider:network_type'] == 'flat':
+                        req_network = {
                             'network': {
-                                'provider:network_type': logicalnets[0]['provider:network_type'],
-                                'provider:physical_network': logicalnets[0]['provider:physical_network'],
+                                'provider:network_type': logical_nets[0]['provider:network_type'],
+                                'provider:physical_network': logical_nets[0]['provider:physical_network'],
                                 'tenant_id': instance['project_id'],
                                 'admin_state_up': True}}
                     else:
-                        reqNetwork = {
+                        req_network = {
                             'network': {
-                                'provider:network_type': logicalnets[0]['provider:network_type'],
-                                'provider:physical_network': logicalnets[0]['provider:physical_network'],
-                                'provider:segmentation_id': logicalnets[0]['provider:segmentation_id'],
+                                'provider:network_type': logical_nets[0]['provider:network_type'],
+                                'provider:physical_network': logical_nets[0]['provider:physical_network'],
+                                'provider:segmentation_id': logical_nets[0]['provider:segmentation_id'],
                                 'tenant_id': instance['project_id'],
                                 'admin_state_up': True}}
-                    repsNetwork = neutronClient.create_network(reqNetwork)
+                    # create cascaded network and add the mapping relationship.
+                    net_response = neutron_client.create_network(req_network)
                     self.cascading_info_mapping['networks'][net_id] = \
-                        repsNetwork['network']['id']
-                    cascaded_network_list.append(repsNetwork['network']['id'])
+                        net_response['network']['id']
+                    cascaded_network_list.append(net_response['network']['id'])
                     LOG.debug(_('Finish to create Physical network,'
-                                'repsNetwork %s'), reqNetwork)
-                    reqSubnet = {
+                                'net_response %s'), req_network)
+                    # create cascaded subnet based on the created network.
+                    req_subnet = {
                         'subnet': {
-                            'network_id': repsNetwork['network']['id'],
-                            'cidr': netObj['network']['subnets'][0]['cidr'],
-                            'ip_version': netObj['network']['subnets'][0]['version'],
+                            'network_id': net_response['network']['id'],
+                            'cidr': net_obj['network']['subnets'][0]['cidr'],
+                            'ip_version': net_obj['network']['subnets'][0]['version'],
                             'tenant_id': instance['project_id']}}
-                    neutronClient.create_subnet(reqSubnet)
+                    neutron_client.create_subnet(req_subnet)
                 except Exception:
                     with excutils.save_and_reraise_exception():
                         LOG.error(_('Fail to synchronizate physical network'))
@@ -2334,11 +2387,12 @@ class ComputeManager(manager.Manager):
     def _notify_about_instance_usage(self, context, instance, event_suffix,
                                      network_info=None, system_metadata=None,
                                      extra_usage_info=None, fault=None):
-        compute_utils.notify_about_instance_usage(
-            self.notifier, context, instance, event_suffix,
-            network_info=network_info,
-            system_metadata=system_metadata,
-            extra_usage_info=extra_usage_info, fault=fault)
+        pass
+        # compute_utils.notify_about_instance_usage(
+        #     self.notifier, context, instance, event_suffix,
+        #     network_info=network_info,
+        #     system_metadata=system_metadata,
+        #     extra_usage_info=extra_usage_info, fault=fault)
 
     def _deallocate_network(self, context, instance,
                             requested_networks=None):
@@ -2618,8 +2672,8 @@ class ComputeManager(manager.Manager):
                             requested_networks=None, injected_files=None, admin_password=None,
                             is_first_time=False, node=None, legacy_bdm_in_spec=True,
                             physical_ports=None):
-        cascadedNovaCli = self._get_nova_pythonClient(context, cfg.CONF.proxy_region_name,
-                                                      cfg.CONF.cascaded_nova_url)
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(context,
+                            cfg.CONF.proxy_region_name, cfg.CONF.cascaded_nova_url)
         nicsList = []
         for port in physical_ports:
             nicsList.append({'port-id': port['port']['id']})
@@ -2682,11 +2736,11 @@ class ComputeManager(manager.Manager):
                                                    bdm.volume_id)
                             bdm.destroy(context)
                     try:
-                        bodyReps = self.volume_api.get(
+                        volume_response = self.volume_api.get(
                             context,
                             block_device_mapping_value['volume_id'])
                         proxy_volume_id = \
-                            bodyReps['volume_metadata']['mapping_uuid']
+                            volume_response['volume_metadata']['mapping_uuid']
                     except Exception:
                         with excutils.save_and_reraise_exception():
                             LOG.error(_('Failed to get  physical volume id ,'
@@ -2721,7 +2775,7 @@ class ComputeManager(manager.Manager):
                              % block_device_mapping_v2_value)
                     break
 
-            bodyResponse = cascadedNovaCli.servers.create(
+            response = cascaded_nova_cli.servers.create(
                 name=request_spec['instance_properties']['display_name'],
                 image=image_uuid,
                 flavor=request_spec['instance_type']['flavorid'],
@@ -2734,9 +2788,10 @@ class ComputeManager(manager.Manager):
                 nics=nicsList,
                 files=files,
                 availability_zone=availability_zone_info)
+            # save the cascaded instance uuid
             self._instance_update(context, instance['uuid'],
                                   vm_state=vm_states.BUILDING,
-                                  mapping_uuid=bodyResponse.id,
+                                  mapping_uuid=response.id,
                                   task_state=None)
         except Exception:
             # Avoid a race condition where the thread could be cancelled
@@ -3146,11 +3201,11 @@ class ComputeManager(manager.Manager):
                             ' in cascaded layer.'),
                           instance['uuid'])
                 return
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
-            cascadedNovaCli.servers.stop(cascaded_instance_id)
+            cascaded_nova_cli.servers.stop(cascaded_instance_id)
             self._notify_about_instance_usage(context, instance,
                                               "power_off.end")
 
@@ -3179,11 +3234,11 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedNovaCli.servers.start(cascaded_instance_id)
+        cascaded_nova_cli.servers.start(cascaded_instance_id)
         self._notify_about_instance_usage(context, instance, "power_on.end")
 
     @wrap_exception()
@@ -3291,15 +3346,15 @@ class ComputeManager(manager.Manager):
                           instance['uuid'])
                 return
             if cfg.CONF.cascaded_glance_flag:
-                image_uuid = self._get_cascaded_image_uuid(context,
-                                                           image_ref)
+                image_uuid = ComputeManager._get_cascaded_image_uuid(context,
+                                                                image_ref)
             else:
                 image_uuid = image_ref
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
-            cascadedNovaCli.servers.rebuild(cascaded_instance_id, image_uuid,
+            cascaded_nova_cli.servers.rebuild(cascaded_instance_id, image_uuid,
                                             new_pass, disk_config, **kwargs)
 
     def _heal_syn_server_metadata(self, context,
@@ -3309,14 +3364,14 @@ class ComputeManager(manager.Manager):
         needs to synchronize server metadata between
         logical and physical openstack.
         """
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedSerInf = cascadedNovaCli.servers.get(cascadedInsId)
+        cascadedSerInf = cascaded_nova_cli.servers.get(cascadedInsId)
         cascadedSerMedInf = cascadedSerInf.metadata
 
-        cascadingNovCli = self._get_nova_pythonClient(
+        cascadingNovCli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.os_region_name,
             cfg.CONF.cascading_nova_url)
@@ -3340,10 +3395,10 @@ class ComputeManager(manager.Manager):
                 if key != 'mapping_uuid' and key not in cascadingSerMedInf:
                     delKeys.append(key)
             if len(delKeys) > 0:
-                cascadedNovaCli.servers.delete_meta(cascadedInsId, delKeys)
+                cascaded_nova_cli.servers.delete_meta(cascadedInsId, delKeys)
             cascadingSerMedInf['mapping_uuid'] = \
                 cascadedSerMedInf['mapping_uuid']
-            cascadedNovaCli.servers.set_meta(cascadedInsId, cascadingSerMedInf)
+            cascaded_nova_cli.servers.set_meta(cascadedInsId, cascadingSerMedInf)
 
 
     @wrap_exception()
@@ -3360,14 +3415,14 @@ class ComputeManager(manager.Manager):
         if cascaded_instance_id is None:
             LOG.error(_('Reboot can not find server %s.'), instance)
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
             self._heal_syn_server_metadata(context, instance['uuid'],
                                            cascaded_instance_id)
-            cascadedNovaCli.servers.reboot(cascaded_instance_id, reboot_type)
+            cascaded_nova_cli.servers.reboot(cascaded_instance_id, reboot_type)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to reboot server %s .'),
@@ -3405,11 +3460,11 @@ class ComputeManager(manager.Manager):
             LOG.error(_('can not snapshot instance server %s.'),
                       instance['uuid'])
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        resp_image_id = cascadedNovaCli.servers.create_image(
+        resp_image_id = cascaded_nova_cli.servers.create_image(
             cascaded_instance_id,
             image['name'])
         # update image's location
@@ -3708,12 +3763,12 @@ class ComputeManager(manager.Manager):
                           instance['uuid'])
                 return
 
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             try:
-                cascadedNovaCli.servers.confirm_resize(cascaded_instance_id)
+                cascaded_nova_cli.servers.confirm_resize(cascaded_instance_id)
             except Exception:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_('Failed to confirm resize server %s .'),
@@ -3865,12 +3920,12 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Revert resize can not find server %s.'),
                           instance['uuid'])
                 return
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             try:
-                cascadedNovaCli.servers.revert_resize(cascaded_instance_id)
+                cascaded_nova_cli.servers.revert_resize(cascaded_instance_id)
             except Exception:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_('Failed to resize server %s .'),
@@ -4182,12 +4237,12 @@ class ComputeManager(manager.Manager):
                       instance['uuid'])
             return
 
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
-            cascadedNovaCli.servers.resize(
+            cascaded_nova_cli.servers.resize(
                 cascaded_instance_id,
                 instance.system_metadata['new_instance_type_flavorid'])
         except Exception:
@@ -4307,11 +4362,11 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         'in cascaded layer.'), instance['uuid'])
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedNovaCli.servers.pause(cascaded_instance_id)
+        cascaded_nova_cli.servers.pause(cascaded_instance_id)
         self._notify_about_instance_usage(context, instance, 'pause.end')
 
     @wrap_exception()
@@ -4328,11 +4383,11 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedNovaCli.servers.unpause(cascaded_instance_id)
+        cascaded_nova_cli.servers.unpause(cascaded_instance_id)
         self._notify_about_instance_usage(context, instance, 'unpause.end')
 
     @wrap_exception()
@@ -4352,11 +4407,11 @@ class ComputeManager(manager.Manager):
                         'in cascaded layer.'),
                       instance['uuid'])
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedNovaCli.servers.suspend(cascaded_instance_id)
+        cascaded_nova_cli.servers.suspend(cascaded_instance_id)
         self._notify_about_instance_usage(context, instance, 'suspend')
 
     @wrap_exception()
@@ -4375,12 +4430,12 @@ class ComputeManager(manager.Manager):
                       instance['uuid'])
             return
 
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
-            cascadedNovaCli.servers.resume(cascaded_instance_id)
+            cascaded_nova_cli.servers.resume(cascaded_instance_id)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to resume server %s .'),
@@ -4407,13 +4462,13 @@ class ComputeManager(manager.Manager):
                         ' cascading_info_mapping %s .'),
                       instance['uuid'], self.cascading_info_mapping)
             return
-        cascadedNovaCli = self._get_nova_pythonClient(
+        cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
 
         try:
-            output = cascadedNovaCli.servers.get_console_output(
+            output = cascaded_nova_cli.servers.get_console_output(
                 cascaded_instance_id, tail_length)
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -4483,12 +4538,12 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Get vnc_console can not find server %s .'),
                           instance['uuid'])
                 return
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             try:
-                bodyReps = cascadedNovaCli.servers.get_vnc_console(
+                body_response = cascaded_nova_cli.servers.get_vnc_console(
                     cascaded_instance_id, console_type)
             except Exception:
                 with excutils.save_and_reraise_exception():
@@ -4500,7 +4555,7 @@ class ComputeManager(manager.Manager):
                 raise exception.ConsoleTypeInvalid(console_type=console_type)
 
             connect_info['token'] = token
-            connect_info['access_url'] = bodyReps['console']['url']
+            connect_info['access_url'] = body_response['console']['url']
             connect_info['host'] = CONF.vncserver_proxyclient_address
             connect_info['port'] = CONF.novncproxy_port
             connect_info['internal_access_path'] = None
@@ -4583,8 +4638,8 @@ class ComputeManager(manager.Manager):
                                    instance['uuid'], bdm['mount_device'])
             proxy_volume_id = None
             try:
-                bodyReps = self.volume_api.get(context, bdm.volume_id)
-                proxy_volume_id = bodyReps['volume_metadata']['mapping_uuid']
+                body_response = self.volume_api.get(context, bdm.volume_id)
+                proxy_volume_id = body_response['volume_metadata']['mapping_uuid']
             except Exception:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_('Failed to get  physical volume id ,logical'
@@ -4596,11 +4651,11 @@ class ComputeManager(manager.Manager):
                           instance['uuid'], bdm.volume_id)
                 return
 
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
-            bodyReps = cascadedNovaCli.volumes.create_server_volume(
+            body_response = cascaded_nova_cli.volumes.create_server_volume(
                 instance['mapping_uuid'],
                 proxy_volume_id, bdm['mount_device'])
         except Exception:  # pylint: disable=W0702
@@ -4634,8 +4689,8 @@ class ComputeManager(manager.Manager):
             #cascading patch
             proxy_volume_id = None
             try:
-                bodyReps = self.volume_api.get(context, volume_id)
-                proxy_volume_id = bodyReps['volume_metadata']['mapping_uuid']
+                body_response = self.volume_api.get(context, volume_id)
+                proxy_volume_id = body_response['volume_metadata']['mapping_uuid']
             except Exception:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_('Failed to get  physical volume id ,logical'
@@ -4645,11 +4700,11 @@ class ComputeManager(manager.Manager):
                             'in physical opensack lay,logical volume id %s'),
                           instance['uuid'], volume_id)
                 return
-            cascadedNovaCli = self._get_nova_pythonClient(
+            cascaded_nova_cli = ComputeManager._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
-            bodyReps = cascadedNovaCli.volumes.delete_server_volume(
+            body_response = cascaded_nova_cli.volumes.delete_server_volume(
                 instance['mapping_uuid'], proxy_volume_id)
 
             # if not self.driver.instance_exists(instance):
@@ -4677,9 +4732,8 @@ class ComputeManager(manager.Manager):
     @wrap_instance_fault
     def detach_volume(self, context, volume_id, instance):
         """Detach a volume from an instance."""
-        bdm = objects.BlockDeviceMapping.get_by_volume_id(
-            context, volume_id)
-	LOG.debug(_('detach bmd info is %s') %bdm)
+        bdm = objects.BlockDeviceMapping.get_by_volume_id(context, volume_id)
+        LOG.debug(_('detach bmd info is %s') % bdm)
         if CONF.volume_usage_poll_interval > 0:
             vol_stats = []
             mp = bdm.device_name
@@ -4921,7 +4975,7 @@ class ComputeManager(manager.Manager):
                                    self._rollback_live_migration,
                                    block_migration, migrate_data)
     
-    @periodic_task.periodic_task
+    #periodic_task.periodic_task
     def update_available_resource(self, context):
         """See driver.get_available_resource()
 

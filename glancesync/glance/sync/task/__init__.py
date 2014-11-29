@@ -154,14 +154,19 @@ class MetaDeleteTask(TaskObject):
 
 
 class ImageActiveTask(TaskObject):
-
+    """
+    sync data task.
+    """
     def __init__(self, input):
         super(ImageActiveTask, self).__init__('sync', input)
 
     def do_checkInput(self):
         image_data = self.input.get('body')
         self.cascading_endpoint = self.input.get('cascading_ep')
-        return image_data and self.cascading_endpoint
+        self.copy_endpoint = self.input.pop('copy_ep', None)
+        self.copy_image_id = self.input.pop('copy_id', None)
+        return image_data and self.cascading_endpoint and \
+                self.copy_endpoint and self.copy_image_id
 
     def create_green_threads(self, sync_manager, auth_token):
         green_threads = []
@@ -169,17 +174,19 @@ class ImageActiveTask(TaskObject):
         for cascaded_ep in cascaded_eps:
             green_threads.append(eventlet.spawn(sync_manager.sync_image,
                                                 auth_token,
-                                                self.cascading_endpoint,
-                                                cascaded_ep,
-                                                self.image_id,
-                                                self.image_id,
+                                                copy_ep=self.copy_endpoint,
+                                                to_ep=cascaded_ep,
+                                                copy_image_id=self.copy_image_id,
+                                                cascading_image_id=self.image_id,
                                                 **self.input))
 
         return green_threads
 
 
 class PatchSnapshotLocationTask(TaskObject):
-
+    """
+    sync data task
+    """
     def __init__(self, input):
         super(PatchSnapshotLocationTask, self).__init__('snapshot', input)
 
