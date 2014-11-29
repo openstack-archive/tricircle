@@ -53,6 +53,7 @@ from neutron.plugins.l2_proxy.common import config  # noqa
 from neutron.plugins.l2_proxy.common import constants
 from neutron.plugins.l2_proxy.agent import neutron_proxy_context
 from neutron.plugins.l2_proxy.agent import clients
+from neutron.openstack.common import timeutils
 
 
 LOG = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ class QueryPortsInfoInterface:
     def __init__(self):
         self.context = n_context.get_admin_context_without_session()
 
-    def _list_ports(self):
+    def _list_ports(self, since_time=None):
         keystone_auth_url = cfg.CONF.AGENT.keystone_auth_url
         kwargs = {'auth_token': None,
                   'username': cfg.CONF.AGENT.neutron_user_name,
@@ -87,14 +88,23 @@ class QueryPortsInfoInterface:
         neutronClient = openStackClients.neutron()
         #filters = {'status': 'ACTIVE'}
         #bodyResponse = neutronClient.list_ports(filters = filters)
-        bodyResponse = neutronClient.list_ports(status='ACTIVE')
-        LOG.debug(_('list ports, Response:%s'), str(bodyResponse))
+        if(since_time == None):
+            bodyResponse = neutronClient.list_ports(status='ACTIVE')
+            LOG.debug(_('First list ports, Response:%s'), str(bodyResponse))
+        else:
+            bodyResponse = neutronClient.list_ports(status='ACTIVE',
+                                                    changes_since=since_time)
+            LOG.debug(_('list ports,since_time:%s, Response:%s'), 
+                      str(since_time), str(bodyResponse))
         return bodyResponse
 
     def get_update_net_port_info(self):
         ports = self._list_ports()
         return ports.get("ports", [])
 
+    def get_update_port_info_since(self, since_time):
+        ports = self._list_ports(since_time)
+        return ports.get("ports", [])
 
 class RemotePort:
 
@@ -258,6 +268,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         self.query_ports_info_inter = QueryPortsInfoInterface()
         self.cascaded_port_info = {}
         self.cascaded_host_map = {}
+        self.first_scan_flag = True
 
         # Keep track of int_br's device count for use by _report_state()
         self.int_br_device_count = 0
@@ -456,6 +467,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         bodyResponse = neutronClient.delete_port(port_id)
         LOG.debug(_('destroy port, Response:%s'), str(bodyResponse))
         return bodyResponse
+
     def fdb_add(self, context, fdb_entries):
         LOG.debug("fdb_add received")
         for lvm, agent_ports in self.get_agent_ports(fdb_entries,
@@ -463,7 +475,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
             cascaded_net_id = lvm.cascaded_net_id
             if not cascaded_net_id:
                 continue
-            #agent_ports = values.get('ports')
+            
             agent_ports.pop(self.local_ip, None)
             if len(agent_ports):
                 for agent_ip, ports in agent_ports.items():
@@ -515,15 +527,18 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         LOG.debug("fdb_remove received")
         for lvm, agent_ports in self.get_agent_ports(fdb_entries,
                                                      self.local_vlan_map):
-            #agent_ports = values.get('ports')
             agent_ports.pop(self.local_ip, None)
             if len(agent_ports):
                 for agent_ip, ports in agent_ports.items():
                     for port in ports:
-                        rp = lvm.remote_ports.pop(port[0], None)
-                        if not rp:
+                        local_p = lvm.vif_ports.pop(port[0], None)
+                        if(local_p and local_p.port_id):
+                            self.cascaded_port_info.pop(local_p.port_id, None)
                             continue
-                        self._destroy_port(context, rp.port_id)
+                        remote_p = lvm.remote_ports.pop(port[0], None)
+                        if not remote_p:
+                            continue
+                        self._destroy_port(context, remote_p.port_id)
 
     def add_fdb_flow(self, br, port_info, remote_ip, lvm, ofport):
         if port_info == q_const.FLOODING_ENTRY:
@@ -1023,8 +1038,17 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         return cur_ports
 
     def scan_ports(self, registered_ports, updated_ports=None):
-        ports_info = self.query_ports_info_inter.get_update_net_port_info()
-        cur_ports = self.analysis_ports_info(ports_info)
+        if(self.first_scan_flag == True):
+            ports_info = self.query_ports_info_inter.get_update_net_port_info()
+            self.first_scan_flag = False
+        else:
+            pre_time = time.time() - self.polling_interval - 1
+            since_time = time.strftime("%Y-%m-%d %H:%M:%S",
+                                       time.gmtime(pre_time))
+            ports_info = self.query_ports_info_inter.get_update_port_info_since(
+                                                                since_time)
+        added_or_updated_ports = self.analysis_ports_info(ports_info)
+        cur_ports = set(self.cascaded_port_info.keys()) | added_or_updated_ports
         self.int_br_device_count = len(cur_ports)
         port_info = {'current': cur_ports}
         if updated_ports is None:
@@ -1276,7 +1300,8 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                                "Because port info in cascading and cascaded layer"
                                "are different, Details: %(details)s"),
                              {'device': device, 'details': details})
-                    return
+                    skipped_devices.add(device)
+                    return skipped_devices
                 LOG.info(_("Port %(device)s updated. Details: %(details)s"),
                          {'device': device, 'details': details})
                 self.treat_vif_port(device, details['port_id'],
@@ -1541,7 +1566,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                 ancillary_ports.clear()
                 sync = False
                 polling_manager.force_polling()
-            ovs_restarted = self.check_ovs_restart()
+            #ovs_restarted = self.check_ovs_restart()
             if ovs_restarted:
                 self.setup_integration_br()
                 self.setup_physical_bridges(self.bridge_mappings)
@@ -1575,6 +1600,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                     updated_ports_copy = self.updated_ports
                     self.updated_ports = set()
                     reg_ports = (set() if ovs_restarted else ports)
+                    #import pdb;pdb.set_trace()
                     port_info = self.scan_ports(reg_ports, updated_ports_copy)
                     LOG.debug(_("Agent rpc_loop - iteration:%(iter_num)d - "
                                 "port information retrieved. "
