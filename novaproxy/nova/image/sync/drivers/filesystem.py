@@ -5,7 +5,8 @@ from oslo.config import cfg
 import pxssh
 import pexpect
 
-from nova.openstack.common.gettextutils import _
+from nova.i18n import _
+from nova.image import exception
 
 LOG = logging.getLogger(__name__)
 
@@ -58,8 +59,13 @@ class Store(object):
                                 from_store_loc['login_user'],
                                 from_store_loc['login_password'])
         except Exception:
-            LOG.exception("ssh login failed.")
-	    raise
+            msg = _('ssh login failed to %(user):%(passwd)@%(host)',
+                    {'user': from_store_loc['login_user'],
+                     'passwd': from_store_loc['login_password'],
+                     'host': from_store_loc['host']
+                    })
+            LOG.exception(msg)
+            raise exception.GlanceSyncException(reason=msg)
 
         from_ssh.sendline('ls %s' % copy_path)
         from_ssh.prompt()
@@ -73,9 +79,9 @@ class Store(object):
                     copy_path = candidate_path
             else:
                 msg = _("the image path for copy to is not exists, file copy"
-                        "failed: path is %s" % (copy_path))
+                        "failed: path is %s" % copy_path)
                 LOG.exception(msg)
-		raise
+                raise exception.GlanceSyncException(reason=msg)
 
         from_ssh.sendline('scp -P 22 %s %s' % (copy_path, to_path))
         while True:
@@ -92,8 +98,7 @@ class Store(object):
                 msg = _("scp commond execute failed, with copy_path %s and "
                         "to_path %s" % (copy_path, to_path))
                 LOG.exception(msg)
-		raise
-                break
+                raise exception.GlanceSyncException(reason=msg)
 
         if from_ssh:
             from_ssh.logout()

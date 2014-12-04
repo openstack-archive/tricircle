@@ -76,7 +76,7 @@ from nova.network import model as network_model
 from nova.network.security_group import openstack_driver
 from nova import objects
 from nova.objects import base as obj_base
-from nova.objects import instance as instance_obj
+from nova.objects import flavor as flavor_obj
 from nova.objects import quotas as quotas_obj
 from nova.objects import block_device as block_device_obj
 from nova.openstack.common import excutils
@@ -717,6 +717,7 @@ class ComputeManager(manager.Manager):
     def _init_caches(self):
         self._flavor_sync_map = {}
         self._keypair_sync_map = {}
+        self._uuid_mapping = {}
         csd_nova_client = None
 
         try:
@@ -740,21 +741,20 @@ class ComputeManager(manager.Manager):
         search_opts_args = {
             'all_tenants': True
         }
-        #servers = csd_nova_client.servers.list(search_opts_args)
-
+        servers = csd_nova_client.servers.list(search_opts_args)
 
         """ for flavors """
         for flavor in csd_flavors:
             self._flavor_sync_map[flavor.name] = {
                 'flavorid': flavor.id,
                 'name': flavor.name,
-                'ram': flavor.ram,
+                'memory_mb': flavor.ram,
                 'vcpus': flavor.vcpus,
                 'swap': flavor.swap,
                 #'is_public': flavor.is_public,
                 'rxtx_factor': flavor.rxtx_factor,
-                'ephemeral': flavor.ephemeral,
-                'disk': flavor.disk
+                'ephemeral_gb': flavor.ephemeral,
+                'root_gb': flavor.disk
             }
         """ for keypairs """
         for keypair in csd_keypairs:
@@ -765,6 +765,28 @@ class ComputeManager(manager.Manager):
                 #'fingerprint': keypair.fingerprint
             }
         """ for instances """
+        # def extract_instance_uuid(csd_name):
+        #     if len(csd_name) > 37 and csd_name[-37] == '@':
+        #         return csd_name[-36:]
+        #     return ''
+
+        for server in servers:
+            csg_instance_uuid = ComputeManager._extract_csg_uuid(server)
+            self._uuid_mapping[csg_instance_uuid] = server.id
+
+    @staticmethod
+    def _extract_csg_uuid(server):
+        csd_name = server.name
+        if len(csd_name) > 37 and csd_name[-37] == '@':
+            return csd_name[-36:]
+        try:
+            return server.metadata['mapping_uuid']
+        except KeyError:
+            return ''
+
+    @staticmethod
+    def _gen_csd_instance_name(name, instance):
+        return name + '@' + instance['uuid']
 
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
@@ -798,7 +820,8 @@ class ComputeManager(manager.Manager):
         return instance_ref
 
     def _delete_proxy_instance(self, context, instance):
-        proxy_instance_id = instance['mapping_uuid']
+        proxy_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+
         if proxy_instance_id is None:
             LOG.error(_('Delete server %s,but can not find this server'),
                       proxy_instance_id)
@@ -884,8 +907,8 @@ class ComputeManager(manager.Manager):
                 LOG.error(_('Failed to get nova python client.'))
 
     def _heal_syn_flavor_info(self, context, instance_type):
-        _cmp_keys = ('flavorid', 'name', 'ram', 'vcpus', 'swap',
-                     'ephemeral', 'disk', 'rxtx_factor')
+        _cmp_keys = ('flavorid', 'name', 'memory_mb', 'vcpus', 'swap',
+                     'ephemeral_gb', 'root_gb', 'rxtx_factor')
         flavor_name = instance_type['name']
         csd_flavor = self._flavor_sync_map.get(flavor_name, None)
         _update_flavor_flag = False
@@ -1002,13 +1025,14 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Updated the servers %s '), servers)
 
             for server in servers:
-                if server.metadata.get('mapping_uuid'):
+                csg_uuid = ComputeManager._extract_csg_uuid(server)
+                if csg_uuid:
                     csd_task_state = server._info['OS-EXT-STS:task_state']
                     if csd_task_state in EXCLUDE_TASK_STATES:
                         continue
                     self._instance_update(
                         context,
-                        server.metadata['mapping_uuid'],
+                        csg_uuid,
                         vm_state=server._info['OS-EXT-STS:vm_state'],
                         task_state=server._info['OS-EXT-STS:task_state'],
                         power_state=server._info['OS-EXT-STS:power_state'],
@@ -1070,6 +1094,7 @@ class ComputeManager(manager.Manager):
         return physical_ports
 
     def _load_cascaded_net_info(self, context):
+        """ ToDO """
         """
         Only called when the compute service restarted.Gathering the cascaded
         network's information(include network, subnet, port).
@@ -2680,7 +2705,7 @@ class ComputeManager(manager.Manager):
         #        for net in requested_networks:
         #            nicsList.append({'net-id':net[0]})
         metadata = request_spec['instance_properties']['metadata']
-        metadata['mapping_uuid'] = instance['uuid']
+        # metadata['mapping_uuid'] = instance['uuid']
 
         try:
             self._heal_syn_flavor_info(context, request_spec['instance_type'])
@@ -2774,9 +2799,10 @@ class ComputeManager(manager.Manager):
                     LOG.info(_("block_device_mapping_v2_value is:%s")
                              % block_device_mapping_v2_value)
                     break
-
+            _name = request_spec['instance_properties']['display_name']
+            csd_name = ComputeManager._gen_csd_instance_name(_name, instance)
             response = cascaded_nova_cli.servers.create(
-                name=request_spec['instance_properties']['display_name'],
+                name=csd_name,
                 image=image_uuid,
                 flavor=request_spec['instance_type']['flavorid'],
                 meta=metadata,
@@ -2789,10 +2815,11 @@ class ComputeManager(manager.Manager):
                 files=files,
                 availability_zone=availability_zone_info)
             # save the cascaded instance uuid
-            self._instance_update(context, instance['uuid'],
-                                  vm_state=vm_states.BUILDING,
-                                  mapping_uuid=response.id,
-                                  task_state=None)
+            self._uuid_mapping[instance['uuid']] = response.id
+            # self._instance_update(context, instance['uuid'],
+            #                       vm_state=vm_states.BUILDING,
+            #                       mapping_uuid=response.id,
+            #                       task_state=None)
         except Exception:
             # Avoid a race condition where the thread could be cancelled
             # before the ID is stored
@@ -3143,6 +3170,7 @@ class ComputeManager(manager.Manager):
         def do_terminate_instance(instance, bdms):
             try:
                 self._delete_instance(context, instance, bdms, quotas)
+                self._uuid_mapping.pop(instance['uuid'], '')
             except exception.InstanceNotFound:
                 LOG.info(_("Instance disappeared during terminate"),
                          instance=instance)
@@ -3195,7 +3223,7 @@ class ComputeManager(manager.Manager):
 
             self._notify_about_instance_usage(context, instance,
                                               "power_off.start")
-            cascaded_instance_id = instance['mapping_uuid']
+            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
             if cascaded_instance_id is None:
                 LOG.error(_LE('stop vm failed,can not find server'
                             ' in cascaded layer.'),
@@ -3229,7 +3257,7 @@ class ComputeManager(manager.Manager):
     def start_instance(self, context, instance):
         """Starting an instance on this host."""
         self._notify_about_instance_usage(context, instance, "power_on.start")
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
@@ -3340,7 +3368,7 @@ class ComputeManager(manager.Manager):
             disk_config = None
             if len(injected_files) > 0:
                 kwargs['personality'] = injected_files
-            cascaded_instance_id = instance['mapping_uuid']
+            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
             if cascaded_instance_id is None:
                 LOG.error(_('Rebuild failed,can not find server %s '),
                           instance['uuid'])
@@ -3357,8 +3385,9 @@ class ComputeManager(manager.Manager):
             cascaded_nova_cli.servers.rebuild(cascaded_instance_id, image_uuid,
                                             new_pass, disk_config, **kwargs)
 
-    def _heal_syn_server_metadata(self, context,
-                                  cascadingInsId, cascadedInsId):
+    @staticmethod
+    def _heal_syn_server_metadata(context,
+                                  cascading_ins_id, cascaded_ins_id):
         """
         when only reboots the server scenario,
         needs to synchronize server metadata between
@@ -3368,37 +3397,38 @@ class ComputeManager(manager.Manager):
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        cascadedSerInf = cascaded_nova_cli.servers.get(cascadedInsId)
-        cascadedSerMedInf = cascadedSerInf.metadata
+        cascaded_ser_inf = cascaded_nova_cli.servers.get(cascaded_ins_id)
+        cascaded_ser_med_inf = cascaded_ser_inf.metadata
 
-        cascadingNovCli = ComputeManager._get_nova_python_client(
+        cascading_nov_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.os_region_name,
             cfg.CONF.cascading_nova_url)
-        cascadingSerInf = cascadingNovCli.servers.get(cascadingInsId)
-        cascadingSerMedInf = cascadingSerInf.metadata
+        cascading_ser_inf = cascading_nov_cli.servers.get(cascading_ins_id)
+        cascading_ser_med_inf = cascading_ser_inf.metadata
 
-        tmpCascadedSerMedInf = dict(cascadedSerMedInf)
-        del tmpCascadedSerMedInf['mapping_uuid']
+        tmp_csd_meta_inf = dict(cascaded_ser_med_inf)
+        # del tmp_csd_meta_inf['mapping_uuid']
 
-        if tmpCascadedSerMedInf == cascadingSerMedInf:
+        if tmp_csd_meta_inf == cascading_ser_med_inf:
             LOG.debug(_("Don't need to synchronize server metadata between"
                         "logical and physical openstack."))
             return
         else:
             LOG.debug(_('synchronize server metadata between logical and'
                         'physical openstack,cascadingSerMedInf %s,cascadedSerMedInf %s'),
-                      cascadingSerMedInf,
-                      cascadedSerMedInf)
-            delKeys = []
-            for key in cascadedSerMedInf:
-                if key != 'mapping_uuid' and key not in cascadingSerMedInf:
-                    delKeys.append(key)
-            if len(delKeys) > 0:
-                cascaded_nova_cli.servers.delete_meta(cascadedInsId, delKeys)
-            cascadingSerMedInf['mapping_uuid'] = \
-                cascadedSerMedInf['mapping_uuid']
-            cascaded_nova_cli.servers.set_meta(cascadedInsId, cascadingSerMedInf)
+                      cascading_ser_med_inf,
+                      cascaded_ser_med_inf)
+            del_keys = []
+            for key in cascaded_ser_med_inf:
+                if key not in cascading_ser_med_inf:
+                    del_keys.append(key)
+            if len(del_keys) > 0:
+                cascaded_nova_cli.servers.delete_meta(cascaded_ins_id, del_keys)
+            # cascading_ser_med_inf['mapping_uuid'] = \
+            #     cascaded_ser_med_inf['mapping_uuid']
+            cascaded_nova_cli.servers.set_meta(cascaded_ins_id,
+                                               cascading_ser_med_inf)
 
 
     @wrap_exception()
@@ -3411,7 +3441,7 @@ class ComputeManager(manager.Manager):
         #cascading patch
         self._notify_about_instance_usage(context, instance, "reboot.start")
         context = context.elevated()
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('Reboot can not find server %s.'), instance)
             return
@@ -3420,8 +3450,32 @@ class ComputeManager(manager.Manager):
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
-            self._heal_syn_server_metadata(context, instance['uuid'],
-                                           cascaded_instance_id)
+            ComputeManager._heal_syn_server_metadata(context, instance['uuid'],
+                                                     cascaded_instance_id)
+            try:
+                flavor_name = instance['system_metadata']['instance_type_name']
+                # Get the active flavor by flavor_name in the instance.
+                active_flavor = flavor_obj.Flavor.get_by_name(context,
+                                                              flavor_name)
+                instance_type = {
+                    'flavorid': active_flavor.flavorid,
+                    'name': active_flavor.name,
+                    'memory_mb': active_flavor.memory_mb,
+                    'vcpus': active_flavor.vcpus,
+                    'swap': active_flavor.swap,
+                    'rxtx_factor': active_flavor.rxtx_factor,
+                    'ephemeral_gb': active_flavor.ephemeral_gb,
+                    'root_gb': active_flavor.root_gb
+                }
+                self._heal_syn_flavor_info(context, instance_type)
+            except KeyError:
+                LOG.error(_('Can not find flavor info in instance %s when reboot.'),
+                          instance['uuid'])
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    LOG.error(_('Fail to get/sync flavor %s when reboot.'),
+                              flavor_name)
+
             cascaded_nova_cli.servers.reboot(cascaded_instance_id, reboot_type)
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -3455,7 +3509,7 @@ class ComputeManager(manager.Manager):
         glanceClient = glance.GlanceClientWrapper()
         image = glanceClient.call(context, 2, 'get', image_id)
 
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('can not snapshot instance server %s.'),
                       instance['uuid'])
@@ -3757,7 +3811,7 @@ class ComputeManager(manager.Manager):
 
             network_info = self._get_instance_nw_info(context, instance)
             #cascading patch
-            cascaded_instance_id = instance['mapping_uuid']
+            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
             if cascaded_instance_id is None:
                 LOG.debug(_('Confirm resize can not find server %s.'),
                           instance['uuid'])
@@ -3915,7 +3969,7 @@ class ComputeManager(manager.Manager):
             #                                     block_device_info, power_on)
 
             #cascading patch
-            cascaded_instance_id = instance['mapping_uuid']
+            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
             if cascaded_instance_id is None:
                 LOG.debug(_('Revert resize can not find server %s.'),
                           instance['uuid'])
@@ -4231,7 +4285,7 @@ class ComputeManager(manager.Manager):
         #                                      old_instance_type, sys_meta)
 
         #cascading patch
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('Finish resize can not find server %s %s .'),
                       instance['uuid'])
@@ -4357,7 +4411,7 @@ class ComputeManager(manager.Manager):
         # instance.vm_state = vm_states.PAUSED
         # instance.task_state = None
         # instance.save(expected_task_state=task_states.PAUSING)
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         'in cascaded layer.'), instance['uuid'])
@@ -4378,7 +4432,7 @@ class ComputeManager(manager.Manager):
         context = context.elevated()
         LOG.audit(_('Unpausing'), context=context, instance=instance)
         self._notify_about_instance_usage(context, instance, 'unpause.start')
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
@@ -4401,7 +4455,7 @@ class ComputeManager(manager.Manager):
         # Store the old state
         instance.system_metadata['old_vm_state'] = instance.vm_state
 
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server '
                         'in cascaded layer.'),
@@ -4424,7 +4478,7 @@ class ComputeManager(manager.Manager):
         context = context.elevated()
         LOG.audit(_('Resuming'), context=context, instance=instance)
 
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.error(_('resume server,but can not find server'),
                       instance['uuid'])
@@ -4456,7 +4510,7 @@ class ComputeManager(manager.Manager):
         # output = self.driver.get_console_output(context, instance)
 
         #cascading patch
-        cascaded_instance_id = instance['mapping_uuid']
+        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
         if cascaded_instance_id is None:
             LOG.debug(_('get_vnc_console can not find server %s in'
                         ' cascading_info_mapping %s .'),
@@ -4533,7 +4587,7 @@ class ComputeManager(manager.Manager):
         connect_info = {}
         try:
             # access info token
-            cascaded_instance_id = instance['mapping_uuid']
+            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
             if cascaded_instance_id is None:
                 LOG.debug(_('Get vnc_console can not find server %s .'),
                           instance['uuid'])
@@ -4656,7 +4710,7 @@ class ComputeManager(manager.Manager):
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             body_response = cascaded_nova_cli.volumes.create_server_volume(
-                instance['mapping_uuid'],
+                self._uuid_mapping.get(instance['uuid'], ''),
                 proxy_volume_id, bdm['mount_device'])
         except Exception:  # pylint: disable=W0702
             with excutils.save_and_reraise_exception():
@@ -4705,7 +4759,7 @@ class ComputeManager(manager.Manager):
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             body_response = cascaded_nova_cli.volumes.delete_server_volume(
-                instance['mapping_uuid'], proxy_volume_id)
+                self._uuid_mapping.get(instance['uuid'], ''), proxy_volume_id)
 
             # if not self.driver.instance_exists(instance):
             #     LOG.warn(_('Detaching volume from unknown instance'),
