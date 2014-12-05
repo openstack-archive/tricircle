@@ -153,7 +153,7 @@ def get_endpoints(auth_token=None, tenant_id=None, **kwargs):
     find which glance should be sync by strategy config
     """
     strategy = CONF.sync.sync_strategy
-    if strategy not in ['All', 'User']:
+    if strategy not in ['All', 'User', 'nova']:
         return None
 
     openstack_clients = clients(auth_token, tenant_id)
@@ -164,7 +164,7 @@ def get_endpoints(auth_token=None, tenant_id=None, **kwargs):
     cascaded glacne endpoints are 'internal'
     '''
     regions = kwargs.pop('region_names', [])
-    if strategy == 'All' and not regions:
+    if strategy in ['All', 'nova'] and not regions:
         urls = ksclient.service_catalog.get_urls(service_type='image',
                                                  endpoint_type='publicURL')
         if urls:

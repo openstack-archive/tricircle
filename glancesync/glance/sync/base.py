@@ -438,7 +438,7 @@ class SyncManagerV2():
 
     @choose_a_location
     def sync_image_data(self, image_id, auth_token, eps=None, **kwargs):
-        if CONF.sync.sync_strategy == 'None':
+        if CONF.sync.sync_strategy in ['None', 'nova']:
             return
 
         kwargs['image_id'] = image_id
