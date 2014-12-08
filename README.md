@@ -320,5 +320,5 @@ Upgrade to Glance cascading
 5. Experience Glance cascading
   - Restart all related service
   - Use Glance V2 api to create Image, Upload Image or patch location for Image. Image should be able to sync to distributed Glance if sync_enabled is setting to True
-  - Sync image only during first time usage but not uploading or patch location is still in testing phase, may not work properly.
+  - Sync image only during first time usage but not uploading or patch location can works by just modify the option 'sync_strategy=nova' in /etc/glance-sync.conf file and restart the glance sync service.
   - Create VM/Volume/etc from Horizon

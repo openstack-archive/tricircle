@@ -711,9 +711,6 @@ class ComputeManager(manager.Manager):
         self._change_since_time = None
         self._init_caches()
 
-    """
-    add default flavor to the map, these also exist in cascaded nova.
-    """
     def _init_caches(self):
         self._flavor_sync_map = {}
         self._keypair_sync_map = {}
@@ -745,16 +742,24 @@ class ComputeManager(manager.Manager):
 
         """ for flavors """
         for flavor in csd_flavors:
+            # try:
+            #     flavor_accesses = csd_nova_client.flavor_access. \
+            #                       list(flavor=flavor.id)
+            # except Exception:
+            #     flavor_accesses = []
+            """ 'extra_specs' is a dict, and 'projects' is a list """
             self._flavor_sync_map[flavor.name] = {
                 'flavorid': flavor.id,
                 'name': flavor.name,
                 'memory_mb': flavor.ram,
                 'vcpus': flavor.vcpus,
-                'swap': flavor.swap,
+                'swap': flavor.swap or 0,
                 #'is_public': flavor.is_public,
                 'rxtx_factor': flavor.rxtx_factor,
-                'ephemeral_gb': flavor.ephemeral,
-                'root_gb': flavor.disk
+                'ephemeral_gb': flavor.ephemeral or 0,
+                'root_gb': flavor.disk,
+                'extra_specs': flavor.get_keys(),
+                #'projects': [f_a.tenant_id for f_a in flavor_accesses]
             }
         """ for keypairs """
         for keypair in csd_keypairs:
@@ -909,39 +914,65 @@ class ComputeManager(manager.Manager):
     def _heal_syn_flavor_info(self, context, instance_type):
         _cmp_keys = ('flavorid', 'name', 'memory_mb', 'vcpus', 'swap',
                      'ephemeral_gb', 'root_gb', 'rxtx_factor')
+
         flavor_name = instance_type['name']
-        csd_flavor = self._flavor_sync_map.get(flavor_name, None)
-        _update_flavor_flag = False
-        if csd_flavor is None:
+        csd_flavor = self._flavor_sync_map.get(flavor_name, {})
+
+        _no_exist_flag = not csd_flavor
+        _update_flag = not _no_exist_flag and not _cmp_as_same(csd_flavor,
+                                                       instance_type,
+                                                       _cmp_keys)
+        _extra_specs_change_flag = csd_flavor.get('extra_specs', {}) \
+                                   != instance_type['extra_specs']
+
+        if _no_exist_flag:
             LOG.info(_('flavor not exists in cascaded, need sync: %s'),
                      flavor_name)
-        elif not _cmp_as_same(csd_flavor, instance_type, _cmp_keys):
-            _update_flavor_flag = True
+
+        if _update_flag:
             LOG.info(_('flavor not full same to cascaded, need sync: %s'),
                      flavor_name)
-        else:
+
+        if _extra_specs_change_flag:
+            """check the extra_specs changed or not.
+            """
+            LOG.info(_('flavor extra_specs not full same to cascaded,'
+                       'need sync: %s'),
+                     flavor_name)
+
+        if not (_no_exist_flag or _update_flag or _extra_specs_change_flag):
             return
 
         cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
-        if _update_flavor_flag:
+
+        if _update_flag:
             # update = delete + create new.
             LOG.info(_('delete the cascaded flavor %s by id: %s'),
                      csd_flavor['name'], csd_flavor['flavorid'])
             cascaded_nova_cli.flavors.delete(csd_flavor['flavorid'])
 
-        cascaded_nova_cli.flavors.create(
-            name=instance_type['name'],
-            ram=instance_type['memory_mb'],
-            vcpus=instance_type['vcpus'],
-            disk=instance_type['root_gb'],
-            flavorid=instance_type['flavorid'],
-            ephemeral=instance_type['ephemeral_gb'],
-            swap=instance_type['swap'],
-            rxtx_factor=instance_type['rxtx_factor']
-        )
+        if _update_flag or _no_exist_flag:
+            my_flavor = cascaded_nova_cli.flavors.create(
+                name=instance_type['name'],
+                ram=instance_type['memory_mb'],
+                vcpus=instance_type['vcpus'],
+                disk=instance_type['root_gb'],
+                flavorid=instance_type['flavorid'],
+                ephemeral=instance_type['ephemeral_gb'],
+                swap=instance_type['swap'],
+                rxtx_factor=instance_type['rxtx_factor']
+            )
+            if instance_type['extra_specs']:
+                my_flavor.set_keys(instance_type['extra_specs'])
+        else:
+            my_flavor = cascaded_nova_cli.flavors.get(instance_type['flavorid'])
+            if _extra_specs_change_flag:
+                my_flavor.unset_keys(csd_flavor['extra_specs'])
+                my_flavor.set_keys(instance_type['extra_specs'])
+
         # refresh the cache.
         self._flavor_sync_map[flavor_name] = instance_type.copy()
         LOG.debug(_('create/update flavor %s done.'), flavor_name)
