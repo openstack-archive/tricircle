@@ -117,7 +117,7 @@ core_opts = [
                       'there are any events to send.')),
     
     # add by j00209498
-    cfg.StrOpt('cascade_str', default='cascaded',
+    cfg.StrOpt('cascade_str', default='cascading',
                help=_('cascade_str identity cascading openstack or cascaded'
                       'openstack, value = cascaded or cascading.')),
 ]
