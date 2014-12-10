@@ -534,7 +534,11 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         try:
             if self._change_since_time is None:
-                search_opt = {'all_tenants': True}
+                search_opt = {'all_tenants': True,
+                              'sort_key': 'updated_at',
+                              'sort_dir': 'desc',
+                              'limit': '50',
+                              }
                 volumes = cinderClient.volumes.list(search_opts=search_opt)
                 LOG.info(_('Cascade info: change since time is none,'
                            'volumes:%s'), volumes)
@@ -915,11 +919,16 @@ class CinderProxy(manager.SchedulerDependentManager):
             # TODO(jdg): attach_time column is currently varchar
             # we should update this to a date-time object
             # also consider adding detach_time?
-            self.db.volume_update(context, volume_id,
-                                  {"instance_uuid": instance_uuid,
-                                   "mountpoint": mountpoint,
-                                   "attached_host": host_name
-                                   })
+            if instance_uuid is not None:
+                self.db.volume_update(context, volume_id,
+                                      {"instance_uuid": instance_uuid,
+                                       "mountpoint": mountpoint
+                                       })
+            elif host_name is not None:
+                self.db.volume_update(context, volume_id,
+                                      {"attached_host": host_name,
+                                       "mountpoint": mountpoint,
+                                       })
 
             self.db.volume_admin_metadata_update(context.elevated(),
                                                  volume_id,
