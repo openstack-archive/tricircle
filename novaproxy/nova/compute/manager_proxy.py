@@ -672,6 +672,8 @@ class ComputeManager(manager.Manager):
     # signal to a instance during power off.  The overall
     # time to wait is set by CONF.shutdown_timeout.
     SHUTDOWN_RETRY_INTERVAL = 10
+    QUERY_PER_PAGE_LIMIT = 30
+    INSTANCE_UUID_LENGTH = 36
 
     def __init__(self, compute_driver=None, *args, **kwargs):
         """Load configuration options and connect to the hypervisor."""
@@ -735,10 +737,6 @@ class ComputeManager(manager.Manager):
             return
         csd_flavors = csd_nova_client.flavors.list()
         csd_keypairs = csd_nova_client.keypairs.list()
-        search_opts_args = {
-            'all_tenants': True
-        }
-        servers = csd_nova_client.servers.list(search_opts_args)
 
         """ for flavors """
         for flavor in csd_flavors:
@@ -770,20 +768,28 @@ class ComputeManager(manager.Manager):
                 #'fingerprint': keypair.fingerprint
             }
         """ for instances """
-        # def extract_instance_uuid(csd_name):
-        #     if len(csd_name) > 37 and csd_name[-37] == '@':
-        #         return csd_name[-36:]
-        #     return ''
-
-        for server in servers:
-            csg_instance_uuid = ComputeManager._extract_csg_uuid(server)
-            self._uuid_mapping[csg_instance_uuid] = server.id
+        search_opts_args = {
+            'all_tenants': True
+        }
+        marker = None
+        while True:
+            servers = csd_nova_client.servers.list(search_opts_args,
+                                           limit=self.QUERY_PER_PAGE_LIMIT,
+                                           marker=marker)
+            if servers:
+                marker = servers[-1].id
+            else:
+                break
+            for server in servers:
+                csg_instance_uuid = ComputeManager._extract_csg_uuid(server)
+                self._uuid_mapping[csg_instance_uuid] = server.id
 
     @staticmethod
     def _extract_csg_uuid(server):
         csd_name = server.name
-        if len(csd_name) > 37 and csd_name[-37] == '@':
-            return csd_name[-36:]
+        uuid_len = ComputeManager.INSTANCE_UUID_LENGTH
+        if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
+            return csd_name[-uuid_len:]
         try:
             return server.metadata['mapping_uuid']
         except KeyError:
@@ -911,7 +917,39 @@ class ComputeManager(manager.Manager):
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get nova python client.'))
 
-    def _heal_syn_flavor_info(self, context, instance_type):
+    def _sync_instance_flavor(self, context, instance):
+        try:
+            flavor_name = instance['system_metadata']['instance_type_name']
+            # Get the active flavor by flavor_name in the instance.
+            active_flavor = flavor_obj.Flavor.get_by_name(context,
+                                                          flavor_name)
+            if not active_flavor:
+                LOG.info(_('the flavor %s not exists, may be deleted.'),
+                         flavor_name)
+                #(todo) Should delete the cascaed flavor accordingly and
+                #remove it from the cache?
+                return
+            instance_type = {
+                'flavorid': active_flavor.flavorid,
+                'name': active_flavor.name,
+                'memory_mb': active_flavor.memory_mb,
+                'vcpus': active_flavor.vcpus,
+                'swap': active_flavor.swap,
+                'rxtx_factor': active_flavor.rxtx_factor,
+                'ephemeral_gb': active_flavor.ephemeral_gb,
+                'root_gb': active_flavor.root_gb,
+                'extra_specs': active_flavor.extra_specs
+            }
+            self._heal_syn_flavor_info(context, instance_type)
+        except KeyError:
+            LOG.error(_('Can not find flavor info in instance %s when reboot.'),
+                      instance['uuid'])
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Fail to get/sync flavor %s when reboot.'),
+                          flavor_name)
+
+    def _heal_syn_flavor_info(self, context, instance_type, check_extra=True):
         _cmp_keys = ('flavorid', 'name', 'memory_mb', 'vcpus', 'swap',
                      'ephemeral_gb', 'root_gb', 'rxtx_factor')
 
@@ -922,8 +960,8 @@ class ComputeManager(manager.Manager):
         _update_flag = not _no_exist_flag and not _cmp_as_same(csd_flavor,
                                                        instance_type,
                                                        _cmp_keys)
-        _extra_specs_change_flag = csd_flavor.get('extra_specs', {}) \
-                                   != instance_type['extra_specs']
+        _extra_specs_change_flag = check_extra and \
+               csd_flavor.get('extra_specs', {}) != instance_type['extra_specs']
 
         if _no_exist_flag:
             LOG.info(_('flavor not exists in cascaded, need sync: %s'),
@@ -1696,7 +1734,7 @@ class ComputeManager(manager.Manager):
         the service up by listening on RPC queues, make sure to update
         our available resources (and indirectly our available nodes).
         """
-        self.update_available_resource(nova.context.get_admin_context())
+        # self.update_available_resource(nova.context.get_admin_context())
 
     def _get_power_state(self, context, instance):
         """Retrieve the power state for the given instance."""
@@ -3483,29 +3521,7 @@ class ComputeManager(manager.Manager):
         try:
             ComputeManager._heal_syn_server_metadata(context, instance['uuid'],
                                                      cascaded_instance_id)
-            try:
-                flavor_name = instance['system_metadata']['instance_type_name']
-                # Get the active flavor by flavor_name in the instance.
-                active_flavor = flavor_obj.Flavor.get_by_name(context,
-                                                              flavor_name)
-                instance_type = {
-                    'flavorid': active_flavor.flavorid,
-                    'name': active_flavor.name,
-                    'memory_mb': active_flavor.memory_mb,
-                    'vcpus': active_flavor.vcpus,
-                    'swap': active_flavor.swap,
-                    'rxtx_factor': active_flavor.rxtx_factor,
-                    'ephemeral_gb': active_flavor.ephemeral_gb,
-                    'root_gb': active_flavor.root_gb
-                }
-                self._heal_syn_flavor_info(context, instance_type)
-            except KeyError:
-                LOG.error(_('Can not find flavor info in instance %s when reboot.'),
-                          instance['uuid'])
-            except Exception:
-                with excutils.save_and_reraise_exception():
-                    LOG.error(_('Fail to get/sync flavor %s when reboot.'),
-                              flavor_name)
+            self._sync_instance_flavor(context, instance)
 
             cascaded_nova_cli.servers.reboot(cascaded_instance_id, reboot_type)
         except Exception:
@@ -4274,6 +4290,9 @@ class ComputeManager(manager.Manager):
         if old_instance_type_id != new_instance_type_id:
             instance_type = flavors.extract_flavor(instance, prefix='new_')
             self._save_instance_info(instance, instance_type, sys_meta)
+            # the instance_type contains no extra_specs.
+            instance_type['extra_specs'] = {}
+            self._heal_syn_flavor_info(context, instance_type, check_extra=False)
             resize_instance = True
 
         # NOTE(tr3buchet): setup networks on destination host
@@ -4332,8 +4351,11 @@ class ComputeManager(manager.Manager):
                 instance.system_metadata['new_instance_type_flavorid'])
         except Exception:
             with excutils.save_and_reraise_exception():
-                LOG.error(_('Failed to resize server %s .'),
+                LOG.error(_('Failed to resize server %s, rollback flavor.'),
                           cascaded_instance_id)
+                flavors.delete_flavor_info(sys_meta, 'old_')
+                if resize_instance:
+                    self._save_instance_info(instance, old_instance_type, sys_meta)
 
         migration.status = 'finished'
         migration.save(context.elevated())
@@ -5069,23 +5091,23 @@ class ComputeManager(manager.Manager):
 
         :param context: security context
         """
-        new_resource_tracker_dict = {}
-        nodenames = set(self.driver.get_available_nodes())
-        for nodename in nodenames:
-            rt = self._get_resource_tracker(nodename)
-            rt.update_available_resource(context)
-            new_resource_tracker_dict[nodename] = rt
-
-        # Delete orphan compute node not reported by driver but still in db
-        compute_nodes_in_db = self._get_compute_nodes_in_db(context,
-                                                            use_slave=True)
-
-        for cn in compute_nodes_in_db:
-            if cn.hypervisor_hostname not in nodenames:
-                LOG.audit(_("Deleting orphan compute node %s") % cn.id)
-                cn.destroy()
-
-        self._resource_tracker_dict = new_resource_tracker_dict
+        # new_resource_tracker_dict = {}
+        # nodenames = set(self.driver.get_available_nodes())
+        # for nodename in nodenames:
+        #     rt = self._get_resource_tracker(nodename)
+        #     rt.update_available_resource(context)
+        #     new_resource_tracker_dict[nodename] = rt
+        #
+        # # Delete orphan compute node not reported by driver but still in db
+        # compute_nodes_in_db = self._get_compute_nodes_in_db(context,
+        #                                                     use_slave=True)
+        #
+        # for cn in compute_nodes_in_db:
+        #     if cn.hypervisor_hostname not in nodenames:
+        #         LOG.audit(_("Deleting orphan compute node %s") % cn.id)
+        #         cn.destroy()
+        #
+        # self._resource_tracker_dict = new_resource_tracker_dict
 
     def _get_compute_nodes_in_db(self, context, use_slave=False):
         service = objects.Service.get_by_compute_host(context, self.host,
