@@ -118,6 +118,9 @@ agent_opts = [
                help=_("access neutron password to use")),
     cfg.StrOpt('cascading_tenant_name',
                help=_("access neutron tenant to use")),
+    cfg.IntOpt('pagination_limit', default=-1,
+               help=_("list ports pagination limit, default value is -1,"
+                      "means no pagination")),
 ]
 
 

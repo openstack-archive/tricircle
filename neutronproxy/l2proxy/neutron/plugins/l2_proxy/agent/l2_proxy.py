@@ -72,7 +72,8 @@ class QueryPortsInfoInterface:
     def __init__(self):
         self.context = n_context.get_admin_context_without_session()
 
-    def _list_ports(self, since_time=None):
+    def _get_cascaded_neutron_client(self):
+        context = n_context.get_admin_context_without_session()
         keystone_auth_url = cfg.CONF.AGENT.keystone_auth_url
         kwargs = {'auth_token': None,
                   'username': cfg.CONF.AGENT.neutron_user_name,
@@ -80,30 +81,76 @@ class QueryPortsInfoInterface:
                   'aws_creds': None,
                   'tenant': cfg.CONF.AGENT.neutron_tenant_name,
                   'auth_url': keystone_auth_url,
-                  'roles': self.context.roles,
-                  'is_admin': self.context.is_admin,
+                  'roles': context.roles,
+                  'is_admin': context.is_admin,
                   'region_name': cfg.CONF.AGENT.os_region_name}
         reqCon = neutron_proxy_context.RequestContext(**kwargs)
         openStackClients = clients.OpenStackClients(reqCon)
         neutronClient = openStackClients.neutron()
-        #filters = {'status': 'ACTIVE'}
-        #bodyResponse = neutronClient.list_ports(filters = filters)
-        if(since_time == None):
-            bodyResponse = neutronClient.list_ports(status='ACTIVE')
-            LOG.debug(_('First list ports, Response:%s'), str(bodyResponse))
+        return neutronClient
+
+    def _list_ports(self, since_time=None,
+                    pagination_limit=None,
+                    pagination_marker=None):
+        
+        filters = {'status': 'ACTIVE'}
+        if(since_time):
+            filters['changes_since'] = since_time
+        if(pagination_limit):
+            filters['limit'] = pagination_limit
+            filters['page_reverse'] = 'False'
+        if(pagination_marker):
+            filters['marker'] = pagination_marker
+            
+        neutronClient = self._get_cascaded_neutron_client()
+        portResponse = neutronClient.get('/ports', params=filters)
+        LOG.debug(_('list ports, filters:%s, since_time:%s, limit=%s, marker=%s,'
+                    'Response:%s'), str(filters), str(since_time), 
+                  str(pagination_limit), str(pagination_marker), str(portResponse))
+        if(not portResponse or 
+           (portResponse and ('ports' not in portResponse.keys()))):
+            LOG.error(_("ERR: list ports failed, Response: %s."),
+                        str(portResponse))
+            return None
+        return portResponse
+        
+    def _get_ports_pagination(self, since_time=None):
+        ports_info = {'ports': []}
+        if cfg.CONF.AGENT.pagination_limit == -1:
+            port_ret = self._list_ports(since_time)
+            if port_ret:
+                ports_info['ports'].extend(port_ret.get('ports', []))
+            return ports_info
         else:
-            bodyResponse = neutronClient.list_ports(status='ACTIVE',
-                                                    changes_since=since_time)
-            LOG.debug(_('list ports,since_time:%s, Response:%s'), 
-                      str(since_time), str(bodyResponse))
-        return bodyResponse
+            pagination_limit = cfg.CONF.AGENT.pagination_limit
+            first_page = self._list_ports(since_time, pagination_limit)
+            if(not first_page):
+                return ports_info
+            ports_info['ports'].extend(first_page.get('ports', []))
+            ports_links_list = first_page.get('ports_links', [])
+            while(True):
+                last_port_id = None
+                current_page = None
+                for pl in ports_links_list:
+                    if (pl.get('rel', None) == 'next'):
+                        port_count = len(ports_info['ports'])
+                        last_port_id = ports_info['ports'][port_count - 1].get('id')
+                if(last_port_id):
+                    current_page = self._list_ports(since_time,
+                                                    pagination_limit,
+                                                    last_port_id)
+                if(not current_page):
+                    return ports_info
+                ports_info['ports'].extend(current_page.get('ports', []))
+                ports_links_list = current_page.get('ports_links', [])
+            
 
     def get_update_net_port_info(self):
-        ports = self._list_ports()
+        ports = self._get_ports_pagination()
         return ports.get("ports", [])
 
     def get_update_port_info_since(self, since_time):
-        ports = self._list_ports(since_time)
+        ports = self._get_ports_pagination(since_time)
         return ports.get("ports", [])
 
 class RemotePort:
