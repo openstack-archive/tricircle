@@ -91,8 +91,7 @@ class QueryPortsInfoInterface:
 
     def _list_ports(self, since_time=None,
                     pagination_limit=None,
-                    pagination_marker=None):
-        
+                    pagination_marker=None): 
         filters = {'status': 'ACTIVE'}
         if(since_time):
             filters['changes_since'] = since_time
@@ -101,13 +100,12 @@ class QueryPortsInfoInterface:
             filters['page_reverse'] = 'False'
         if(pagination_marker):
             filters['marker'] = pagination_marker
-            
         neutronClient = self._get_cascaded_neutron_client()
         portResponse = neutronClient.get('/ports', params=filters)
         LOG.debug(_('list ports, filters:%s, since_time:%s, limit=%s, marker=%s,'
-                    'Response:%s'), str(filters), str(since_time), 
+                    'Response:%s'), str(filters), str(since_time),
                   str(pagination_limit), str(pagination_marker), str(portResponse))
-        if(not portResponse or 
+        if(not portResponse or
            (portResponse and ('ports' not in portResponse.keys()))):
             LOG.error(_("ERR: list ports failed, Response: %s."),
                         str(portResponse))
@@ -143,7 +141,6 @@ class QueryPortsInfoInterface:
                     return ports_info
                 ports_info['ports'].extend(current_page.get('ports', []))
                 ports_links_list = current_page.get('ports_links', [])
-            
 
     def get_update_net_port_info(self):
         ports = self._get_ports_pagination()
