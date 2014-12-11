@@ -91,7 +91,7 @@ class QueryPortsInfoInterface:
 
     def _list_ports(self, since_time=None,
                     pagination_limit=None,
-                    pagination_marker=None): 
+                    pagination_marker=None):
         filters = {'status': 'ACTIVE'}
         if(since_time):
             filters['changes_since'] = since_time
