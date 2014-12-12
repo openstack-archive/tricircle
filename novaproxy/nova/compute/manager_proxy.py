@@ -672,7 +672,7 @@ class ComputeManager(manager.Manager):
     # signal to a instance during power off.  The overall
     # time to wait is set by CONF.shutdown_timeout.
     SHUTDOWN_RETRY_INTERVAL = 10
-    QUERY_PER_PAGE_LIMIT = 30
+    QUERY_PER_PAGE_LIMIT = 50
     INSTANCE_UUID_LENGTH = 36
 
     def __init__(self, compute_driver=None, *args, **kwargs):
@@ -736,7 +736,6 @@ class ComputeManager(manager.Manager):
         if csd_nova_client is None:
             return
         csd_flavors = csd_nova_client.flavors.list()
-        csd_keypairs = csd_nova_client.keypairs.list()
 
         """ for flavors """
         for flavor in csd_flavors:
@@ -760,6 +759,8 @@ class ComputeManager(manager.Manager):
                 #'projects': [f_a.tenant_id for f_a in flavor_accesses]
             }
         """ for keypairs """
+        # sync keypair when operating instance to check if it's necessary.
+        csd_keypairs = csd_nova_client.keypairs.list()
         for keypair in csd_keypairs:
             self._keypair_sync_map[keypair.name] = {
                 'id': keypair.id,
@@ -1073,42 +1074,60 @@ class ComputeManager(manager.Manager):
         openstack_clients = clients.OpenStackClients(req_context)
         cascaded_nova_cli = openstack_clients.nova()
         try:
-            if self._change_since_time is None:
-                search_opts_args = {'all_tenants': True}
-                servers = cascaded_nova_cli.servers.list(
-                    search_opts=search_opts_args)
-            else:
-                search_opts_args = {
-                    'changes-since': self._change_since_time,
-                    'all_tenants': True
-                }
-                servers = cascaded_nova_cli.servers.list(
-                    search_opts=search_opts_args)
+            # if self._change_since_time is None:
+            #     search_opts_args = {'all_tenants': True}
+            #     servers = cascaded_nova_cli.servers.list(
+            #         search_opts=search_opts_args)
+            # else:
+
+            # In first time query, the self._change_since_time is
+            # None, but has not affect.
+            search_opts_args = {
+                'changes-since': self._change_since_time,
+                'all_tenants': True
+            }
+            # (jd):update change_since time for next search, it's done before
+            # the state-sync handle in case of the handle spend too much
+            # time which results in missing some instance the next time to
+            # search.
             LOG.debug(_('the current time is %s'), timeutils.utcnow())
             _change_since_time = timeutils.utcnow() - \
-                        datetime.timedelta(seconds=time_shift_tolerance)
+                             datetime.timedelta(seconds=time_shift_tolerance)
             self._change_since_time = timeutils.isotime(_change_since_time)
-            LOG.debug(_('the change since time is %s'),
+            LOG.debug(_('the change since time update to %s'),
                       self._change_since_time)
-            if len(servers) > 0:
+
+            marker = None
+            while True:
+                servers = cascaded_nova_cli.servers.list(
+                    search_opts=search_opts_args,
+                    limit=self.QUERY_PER_PAGE_LIMIT,
+                    marker=marker)
+                if servers:
+                    marker = servers[-1].id
+                else:
+                    break
+
                 LOG.debug(_('Updated the servers %s '), servers)
 
-            for server in servers:
-                csg_uuid = ComputeManager._extract_csg_uuid(server)
-                if csg_uuid:
-                    csd_task_state = server._info['OS-EXT-STS:task_state']
-                    if csd_task_state in EXCLUDE_TASK_STATES:
-                        continue
-                    self._instance_update(
-                        context,
-                        csg_uuid,
-                        vm_state=server._info['OS-EXT-STS:vm_state'],
-                        task_state=server._info['OS-EXT-STS:task_state'],
-                        power_state=server._info['OS-EXT-STS:power_state'],
-                        launched_at=server._info['OS-SRV-USG:launched_at']
-                    )
-                    LOG.debug(_('Updated the server %s from nova-proxy'),
-                              server.id)
+                for server in servers:
+                    csg_uuid = ComputeManager._extract_csg_uuid(server)
+                    if csg_uuid:
+                        csd_task_state = server._info['OS-EXT-STS:task_state']
+                        if csd_task_state in EXCLUDE_TASK_STATES:
+                            continue
+                        self._instance_update(
+                            context,
+                            csg_uuid,
+                            vm_state=server._info['OS-EXT-STS:vm_state'],
+                            task_state=server._info['OS-EXT-STS:task_state'],
+                            power_state=server._info['OS-EXT-STS:power_state'],
+                            launched_at=server._info['OS-SRV-USG:launched_at']
+                        )
+                        LOG.debug(_('Updated the server %s from nova-proxy'),
+                                  server.id)
+        except exception.InstanceNotFound:
+            pass
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys server status to db.'))
@@ -3158,6 +3177,64 @@ class ComputeManager(manager.Manager):
                                                  'exc': unicode(exc)})
         if exc_info is not None and raise_exc:
             six.reraise(exc_info[0], exc_info[1], exc_info[2])
+
+    @periodic_task.periodic_task(
+            spacing=CONF.running_deleted_instance_poll_interval)
+    def _cleanup_running_deleted_instances(self, context):
+        try:
+            kwargs = {
+                'username': CONF.nova_admin_username,
+                'password': CONF.nova_admin_password,
+                'tenant': CONF.nova_admin_tenant_name,
+                'auth_url': cfg.CONF.keystone_auth_url,
+                'region_name': CONF.proxy_region_name
+            }
+            req_context = compute_context.RequestContext(**kwargs)
+            openstack_clients = clients.OpenStackClients(req_context)
+            csd_nova_client = openstack_clients.nova()
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to get nova python client.'))
+
+        with utils.temporary_mutation(context, read_deleted="yes"):
+            for instance in self._running_deleted_instances(context):
+                csd_instance_uuid = self._uuid_mapping.get(instance.uuid, '')
+                if not csd_instance_uuid:
+                    continue
+                LOG.debug(_('Get cascaded instance %s that should be deleted'),
+                          csd_instance_uuid)
+                try:
+                    csd_instance = csd_nova_client.servers.get(csd_instance_uuid)
+                    if csd_instance._info['OS-EXT-STS:vm_state'] != 'deleted':
+                        csd_nova_client.servers.delete(csd_instance)
+                        self._uuid_mapping.pop(instance.uuid, '')
+                        LOG.debug(_('delete the cascaded instance %s in'
+                                    'periodic_task'), csd_instance.id)
+                except Exception:
+                    pass
+
+    def _running_deleted_instances(self, context):
+        """Returns a list of instances nova thinks is deleted,
+        but the hypervisor thinks is still running.
+        """
+        timeout = CONF.running_deleted_instance_timeout
+        filters = {'deleted': True,
+                   'soft_deleted': False,
+                   # 'host': self.host
+                  }
+        instances = self._get_instances_on_db(context, filters)
+        return [i for i in instances if self._deleted_old_enough(i, timeout)]
+
+    def _deleted_old_enough(self, instance, timeout):
+        deleted_at = instance['deleted_at']
+        if isinstance(instance, obj_base.NovaObject) and deleted_at:
+            deleted_at = deleted_at.replace(tzinfo=None)
+        return (not deleted_at or timeutils.is_older_than(deleted_at, timeout))
+
+    def _get_instances_on_db(self, context, filters):
+
+        return objects.InstanceList.get_by_filters(context, filters,
+                                                   use_slave=True)
 
     @hooks.add_hook("delete_instance")
     def _delete_instance(self, context, instance, bdms, quotas):
