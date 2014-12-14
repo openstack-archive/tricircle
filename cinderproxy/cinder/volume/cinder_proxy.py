@@ -77,6 +77,10 @@ volume_manager_opts = [
                default=5,
                help='seconds between cascading and cascaded cinders'
                     'when synchronizing volume data'),
+    cfg.IntOpt('pagination_limit',
+               default=50,
+               help='pagination limit query for volume between cascading'
+                    'and cascaded volume'),
     cfg.IntOpt('voltype_sync_interval',
                default=3600,
                help='seconds between cascading and cascaded cinders'
@@ -534,12 +538,27 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         try:
             if self._change_since_time is None:
-                search_opt = {'all_tenants': True,
-                              'sort_key': 'updated_at',
-                              'sort_dir': 'desc',
-                              'limit': '50',
-                              }
-                volumes = cinderClient.volumes.list(search_opts=search_opt)
+                page_limit = CONF.pagination_limit
+                LOG.debug(_('cascade info, pagination_limit: %s'), page_limit)
+                marker = None
+                volumes = []
+                while True:
+                    search_opt = {'all_tenants': True,
+                                  'sort_key': 'updated_at',
+                                  'sort_dir': 'desc',
+                                  'marker': marker,
+                                  'limit': page_limit,
+                                  }
+                    vols = cinderClient.volumes.list(search_opts=search_opt)
+                    LOG.debug(_('cascade info, pagination volumes query.marker'
+                                '%s,  vols:%s'), marker,  vols)
+                    if (vols):
+                        volumes.extend(vols)
+                        marker = vols[-1]._info['id']
+                        LOG.debug(_('cascade info, marker: %s'), marker)
+                        continue
+                    else:
+                        break
                 LOG.info(_('Cascade info: change since time is none,'
                            'volumes:%s'), volumes)
             else:
