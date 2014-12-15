@@ -79,8 +79,8 @@ volume_manager_opts = [
                     'when synchronizing volume data'),
     cfg.IntOpt('pagination_limit',
                default=50,
-               help='pagination limit query for volume between cascading'
-                    'and cascaded volume'),
+               help='pagination limit query for volumes between'
+                    'cascading and cascaded openstack'),
     cfg.IntOpt('voltype_sync_interval',
                default=3600,
                help='seconds between cascading and cascaded cinders'
@@ -550,17 +550,17 @@ class CinderProxy(manager.SchedulerDependentManager):
                                   'limit': page_limit,
                                   }
                     vols = cinderClient.volumes.list(search_opts=search_opt)
-                    LOG.debug(_('cascade info, pagination volumes query.marker'
-                                '%s,  vols:%s'), marker,  vols)
+                    LOG.debug(_('cascade info: pagination volumes query.'
+                                'marker: %s,  vols: %s'), marker,  vols)
                     if (vols):
                         volumes.extend(vols)
                         marker = vols[-1]._info['id']
-                        LOG.debug(_('cascade info, marker: %s'), marker)
+                        LOG.debug(_('cascade info: marker: %s'), marker)
                         continue
                     else:
                         break
                 LOG.info(_('Cascade info: change since time is none,'
-                           'volumes:%s'), volumes)
+                           'volumes: %s'), volumes)
             else:
                 change_since_isotime = \
                     timeutils.parse_isotime(self._change_since_time)
