@@ -4941,7 +4941,6 @@ class ComputeManager(manager.Manager):
 
         self._detach_volume(context, instance, bdm)
         connector = self.driver.get_volume_connector(instance)
-        #self.volume_api.terminate_connection(context, volume_id, connector)
         bdm.destroy()
         info = dict(volume_id=volume_id)
         self._notify_about_instance_usage(
