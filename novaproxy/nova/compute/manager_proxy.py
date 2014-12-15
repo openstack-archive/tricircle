@@ -101,6 +101,7 @@ from nova.volume import encryptors
 from nova.virt.libvirt import utils as libvirt_utils
 from nova.network import neutronv2
 from neutronclient.v2_0 import client as clientv20
+from novaclient.exceptions import Unauthorized as Client_Unauthorized
 
 
 compute_opts = [
@@ -674,6 +675,7 @@ class ComputeManager(manager.Manager):
     SHUTDOWN_RETRY_INTERVAL = 10
     QUERY_PER_PAGE_LIMIT = 50
     INSTANCE_UUID_LENGTH = 36
+    sync_nova_client = None
 
     def __init__(self, compute_driver=None, *args, **kwargs):
         """Load configuration options and connect to the hypervisor."""
@@ -1072,7 +1074,9 @@ class ComputeManager(manager.Manager):
         }
         req_context = compute_context.RequestContext(**kwargs)
         openstack_clients = clients.OpenStackClients(req_context)
-        cascaded_nova_cli = openstack_clients.nova()
+        if not self.sync_nova_client:
+            self.sync_nova_client = openstack_clients.nova()
+        # cascaded_nova_cli = openstack_clients.nova()
         try:
             # if self._change_since_time is None:
             #     search_opts_args = {'all_tenants': True}
@@ -1099,10 +1103,16 @@ class ComputeManager(manager.Manager):
 
             marker = None
             while True:
-                servers = cascaded_nova_cli.servers.list(
-                    search_opts=search_opts_args,
-                    limit=self.QUERY_PER_PAGE_LIMIT,
-                    marker=marker)
+                try:
+                    servers = self.sync_nova_client.servers.list(
+                        search_opts=search_opts_args,
+                        limit=self.QUERY_PER_PAGE_LIMIT,
+                        marker=marker)
+                except Client_Unauthorized:
+                    self.sync_nova_client = openstack_clients.nova()
+                    LOG.debug(_('the token is timed out in sync_nova_client,'
+                                'fetch a new token form keystone.'))
+                    continue
                 if servers:
                     marker = servers[-1].id
                 else:
