@@ -54,6 +54,8 @@ from neutron.plugins.l2_proxy.common import constants
 from neutron.plugins.l2_proxy.agent import neutron_proxy_context
 from neutron.plugins.l2_proxy.agent import clients
 from neutron.openstack.common import timeutils
+from neutronclient.common import exceptions
+from neutron.openstack.common import excutils
 
 
 LOG = logging.getLogger(__name__)
@@ -68,6 +70,8 @@ class DeviceListRetrievalError(exceptions.NeutronException):
 
 
 class QueryPortsInfoInterface:
+
+    cascaded_neutron_client = None
 
     def __init__(self):
         self.context = n_context.get_admin_context_without_session()
@@ -100,18 +104,29 @@ class QueryPortsInfoInterface:
             filters['page_reverse'] = 'False'
         if(pagination_marker):
             filters['marker'] = pagination_marker
-        neutronClient = self._get_cascaded_neutron_client()
-        portResponse = neutronClient.get('/ports', params=filters)
-        LOG.debug(_('list ports, filters:%s, since_time:%s, limit=%s, marker=%s,'
-                    'Response:%s'), str(filters), str(since_time),
-                  str(pagination_limit), str(pagination_marker), str(portResponse))
-        if(not portResponse or
-           (portResponse and ('ports' not in portResponse.keys()))):
-            LOG.error(_("ERR: list ports failed, Response: %s."),
-                        str(portResponse))
+        portResponse = None
+        if(not QueryPortsInfoInterface.cascaded_neutron_client):
+            QueryPortsInfoInterface.cascaded_neutron_client = \
+            self._get_cascaded_neutron_client()
+        try:
+            portResponse = QueryPortsInfoInterface.\
+            cascaded_neutron_client.get('/ports', params=filters)
+            LOG.debug(_('list ports, filters:%s, since_time:%s, limit=%s, '
+                        'marker=%s, Response:%s'), str(filters),
+                      str(since_time), str(pagination_limit),
+                      str(pagination_marker), str(portResponse))
+        except exceptions.Unauthorized:
+            QueryPortsInfoInterface.cascaded_neutron_client = \
+            self._get_cascaded_neutron_client()
+            return self._list_ports(since_time,
+                                    pagination_limit,
+                                    pagination_marker)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('ERR: list ports failed!'))
             return None
         return portResponse
-        
+
     def _get_ports_pagination(self, since_time=None):
         ports_info = {'ports': []}
         if cfg.CONF.AGENT.pagination_limit == -1:
@@ -149,6 +164,7 @@ class QueryPortsInfoInterface:
     def get_update_port_info_since(self, since_time):
         ports = self._get_ports_pagination(since_time)
         return ports.get("ports", [])
+
 
 class RemotePort:
 
@@ -459,6 +475,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         if not self.l2_pop:
             self._setup_tunnel_port(self.tun_br, tun_name, tunnel_ip,
                                     tunnel_type)
+
     def _create_port(self, context, network_id, binding_profile, port_name,
                      mac_address, ips):
         if(not network_id):
@@ -519,7 +536,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
             cascaded_net_id = lvm.cascaded_net_id
             if not cascaded_net_id:
                 continue
-            
+
             agent_ports.pop(self.local_ip, None)
             if len(agent_ports):
                 for agent_ip, ports in agent_ports.items():
@@ -679,8 +696,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                 LOG.error(_("No local VLAN available for net-id=%s"), net_uuid)
                 return
             lvid = self.available_local_vlans.pop()
-            self.local_vlan_map[net_uuid] = LocalVLANMapping(
-                                                             network_type,
+            self.local_vlan_map[net_uuid] = LocalVLANMapping(network_type,
                                                              physical_network,
                                                              segmentation_id,
                                                              cascaded_net_id)
@@ -775,8 +791,6 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
             LocalPort(port,
                       cascaded_port_info['id'],
                       cascaded_port_info['mac_address'])
-
-
 
     def port_unbound(self, vif_id, net_uuid=None):
         '''Unbind port.
@@ -1082,7 +1096,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
         return cur_ports
 
     def scan_ports(self, registered_ports, updated_ports=None):
-        if(self.first_scan_flag == True):
+        if(self.first_scan_flag):
             ports_info = self.query_ports_info_inter.get_update_net_port_info()
             self.first_scan_flag = False
         else:
