@@ -60,6 +60,7 @@ from cinder.volume import rpcapi as volume_rpcapi
 from cinder.volume import utils as volume_utils
 from cinderclient import service_catalog
 from cinderclient.v2 import client as cinder_client
+from cinderclient import exceptions as cinder_exception
 from keystoneclient.v2_0 import client as kc
 
 from eventlet.greenpool import GreenPool
@@ -192,16 +193,15 @@ class CinderProxy(manager.SchedulerDependentManager):
         self._last_info_volume_state_heal = 0
         self._change_since_time = None
         self.volumes_mapping_cache = {'volumes': {}, 'snapshots': {}}
-        self._init_volume_mapping_cache()
         self.image_service = glance.get_default_image_service()
+        self.adminCinderClient = self._get_cinder_cascaded_admin_client()
+        self._init_volume_mapping_cache()
 
     def _init_volume_mapping_cache(self):
 
-        cinderClient = self._get_cinder_cascaded_admin_client()
-
         try:
-            search_op = {'all_tenants': True}
-            volumes = cinderClient.volumes.list(search_opts=search_op)
+            sear_op = {'all_tenants': True}
+            volumes = self.adminCinderClient.volumes.list(search_opts=sear_op)
             for volume in volumes:
                 if 'logicalVolumeId' in volume._info['metadata']:
                     volumeId = volume._info['metadata']['logicalVolumeId']
@@ -210,7 +210,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                         physicalVolumeId
 
             snapshots = \
-                cinderClient.volume_snapshots.list(search_opts=search_op)
+                self.adminCinderClient.volume_snapshots.list(search_opts=sear_op)
             for snapshot in snapshots:
                 if 'logicalSnapshotId' in snapshot._info['metadata']:
                     snapshotId = \
@@ -534,8 +534,6 @@ class CinderProxy(manager.SchedulerDependentManager):
             return
         self._last_info_volume_state_heal = curr_time
 
-        cinderClient = self._get_cinder_cascaded_admin_client()
-
         try:
             if self._change_since_time is None:
                 page_limit = CONF.pagination_limit
@@ -543,13 +541,14 @@ class CinderProxy(manager.SchedulerDependentManager):
                 marker = None
                 volumes = []
                 while True:
-                    search_opt = {'all_tenants': True,
-                                  'sort_key': 'updated_at',
-                                  'sort_dir': 'desc',
-                                  'marker': marker,
-                                  'limit': page_limit,
-                                  }
-                    vols = cinderClient.volumes.list(search_opts=search_opt)
+                    sopt = {'all_tenants': True,
+                            'sort_key': 'updated_at',
+                            'sort_dir': 'desc',
+                            'marker': marker,
+                            'limit': page_limit,
+                            }
+                    vols = \
+                        self.adminCinderClient.volumes.list(search_opts=sopt)
                     LOG.debug(_('cascade info: pagination volumes query.'
                                 'marker: %s,  vols: %s'), marker,  vols)
                     if (vols):
@@ -570,9 +569,10 @@ class CinderProxy(manager.SchedulerDependentManager):
                 new_change_since_isotime = \
                     timeutils.iso8601_from_timestamp(timestr)
 
-                search_op = {'all_tenants': True,
-                             'changes-since': new_change_since_isotime}
-                volumes = cinderClient.volumes.list(search_opts=search_op)
+                sopt = {'all_tenants': True,
+                        'changes-since': new_change_since_isotime}
+                volumes = \
+                    self.adminCinderClient.volumes.list(search_opts=sopt)
                 LOG.info(_('Cascade info: search time is not none,'
                            'volumes:%s'), volumes)
 
@@ -609,10 +609,14 @@ class CinderProxy(manager.SchedulerDependentManager):
                                           {'status': volume._info['status']})
                 LOG.info(_('Cascade info: Updated the volume  %s status from'
                            'cinder-proxy'), volume_id)
-
+                return
+        except cinder_exception.Unauthorized:
+            self.adminCinderClient = self._get_cinder_cascaded_admin_client()
+            return self._heal_volume_status(context)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys volume status to db.'))
+                return
 
     @periodic_task.periodic_task(spacing=CONF.voltype_sync_interval,
                                  run_immediately=True)
@@ -620,10 +624,8 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         try:
 
-            cinderClient = self._get_cinder_cascaded_admin_client()
-
-            volumetypes = cinderClient.volume_types.list()
-            qosSpecs = cinderClient.qos_specs.list()
+            volumetypes = self.adminCinderClient.volume_types.list()
+            qosSpecs = self.adminCinderClient.qos_specs.list()
 
             volname_type_list = []
             vol_types = self.db.volume_type_get_all(context, inactive=False)
@@ -663,9 +665,9 @@ class CinderProxy(manager.SchedulerDependentManager):
                     assoc_ccd =\
                         self.db.volume_type_qos_associations_get(context,
                                                                  qos_specs_id)
-                    qos_id = qos_cascaded._info['id']
+                    qos = qos_cascaded._info['id']
                     association =\
-                        cinderClient.qos_specs.get_associations(qos_id)
+                        self.adminCinderClient.qos_specs.get_associations(qos)
 
                     for assoc in association:
                         assoc_name = assoc._info['name']
