@@ -1763,7 +1763,7 @@ class ComputeManager(manager.Manager):
         the service up by listening on RPC queues, make sure to update
         our available resources (and indirectly our available nodes).
         """
-        # self.update_available_resource(nova.context.get_admin_context())
+        self.update_available_resource(nova.context.get_admin_context())
 
     def _get_power_state(self, context, instance):
         """Retrieve the power state for the given instance."""
@@ -5168,7 +5168,7 @@ class ComputeManager(manager.Manager):
                                    self._rollback_live_migration,
                                    block_migration, migrate_data)
     
-    #periodic_task.periodic_task
+    @periodic_task.periodic_task
     def update_available_resource(self, context):
         """See driver.get_available_resource()
 
@@ -5177,23 +5177,21 @@ class ComputeManager(manager.Manager):
 
         :param context: security context
         """
-        # new_resource_tracker_dict = {}
-        # nodenames = set(self.driver.get_available_nodes())
-        # for nodename in nodenames:
-        #     rt = self._get_resource_tracker(nodename)
-        #     rt.update_available_resource(context)
-        #     new_resource_tracker_dict[nodename] = rt
+        new_resource_tracker_dict = {}
+        nodenames = set(self.driver.get_available_nodes())
+        for nodename in nodenames:
+            rt = self._get_resource_tracker(nodename)
+            rt.update_available_resource(context)
+            new_resource_tracker_dict[nodename] = rt
+        # Delete orphan compute node not reported by driver but still in db
+        compute_nodes_in_db = self._get_compute_nodes_in_db(context,
+                                                            use_slave=True)
+        for cn in compute_nodes_in_db:
+            if cn.hypervisor_hostname not in nodenames:
+                LOG.audit(_("Deleting orphan compute node %s") % cn.id)
+                cn.destroy()
         #
-        # # Delete orphan compute node not reported by driver but still in db
-        # compute_nodes_in_db = self._get_compute_nodes_in_db(context,
-        #                                                     use_slave=True)
-        #
-        # for cn in compute_nodes_in_db:
-        #     if cn.hypervisor_hostname not in nodenames:
-        #         LOG.audit(_("Deleting orphan compute node %s") % cn.id)
-        #         cn.destroy()
-        #
-        # self._resource_tracker_dict = new_resource_tracker_dict
+        self._resource_tracker_dict = new_resource_tracker_dict
 
     def _get_compute_nodes_in_db(self, context, use_slave=False):
         service = objects.Service.get_by_compute_host(context, self.host,
