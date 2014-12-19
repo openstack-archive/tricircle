@@ -252,22 +252,10 @@ class CinderProxy(manager.SchedulerDependentManager):
                       }
 
             client_v2 = kc.Client(**kwargs)
-            # sCatalog = getattr(client_v2, 'auth_ref').get('serviceCatalog')
-
-            # compat_catalog = {
-            #    'access': {'serviceCatalog': sCatalog}
-            # }
-
-            # sc = service_catalog.ServiceCatalog(compat_catalog)
-            # url = sc.url_for(attr='region',
-            #                filter_value=cfg.CONF.cascaded_region_name,
-            #                 service_type='volume',
-            #                 service_name='cinder',
-            #                 endpoint_type='publicURL')
             cinderclient = cinder_client.Client(
                 username=cfg.CONF.cinder_username,
                 api_key=cfg.CONF.cinder_password,
-                tenant_name=cfg.CONF.cinder_tenant_name,
+                project_id=cfg.CONF.cinder_tenant_id,
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = client_v2.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
@@ -494,12 +482,12 @@ class CinderProxy(manager.SchedulerDependentManager):
                     continue
                 else:
                     break
-            LOG.info(_('Cascade info: change since time is none,'
-                       'volumes: %s'), volumes)
+            LOG.debug(_('Cascade info: change since time is none,'
+                        'volumes: %s'), volumes)
             return volumes
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
-            raise cinder_exception.Unauthorized
+            return self._query_vol_cascaded_pagination()
 
     def _query_snapshot_cascaded_all_tenant(self):
         try:
@@ -525,10 +513,10 @@ class CinderProxy(manager.SchedulerDependentManager):
             return
 
         curr_time = time.time()
-        LOG.info(_('Cascade info: last volume update time:%s'),
-                 self._last_info_volume_state_heal)
-        LOG.info(_('Cascade info: heal interval:%s'), heal_interval)
-        LOG.info(_('Cascade info: curr_time:%s'), curr_time)
+        LOG.debug(_('Cascade info: last volume update time:%s'),
+                  self._last_info_volume_state_heal)
+        LOG.debug(_('Cascade info: heal interval:%s'), heal_interval)
+        LOG.debug(_('Cascade info: curr_time:%s'), curr_time)
 
         if self._last_info_volume_state_heal + heal_interval > curr_time:
             return
@@ -561,6 +549,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 LOG.debug(_('Updated the volumes %s'), volumes)
 
             for volume in volumes:
+                LOG.debug(_("Cascade info: update volume:%s"), volume._info)
                 volume_id = volume._info['metadata']['logicalVolumeId']
                 volume_status = volume._info['status']
                 if volume_status == "in-use":
@@ -586,15 +575,13 @@ class CinderProxy(manager.SchedulerDependentManager):
                 else:
                     self.db.volume_update(context, volume_id,
                                           {'status': volume._info['status']})
-                LOG.info(_('Cascade info: Updated the volume  %s status from'
-                           'cinder-proxy'), volume_id)
+                LOG.debug(_('Cascade info: Updated the volume  %s status from'
+                            'cinder-proxy'), volume_id)
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
-            return
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys volume status to db.'))
-                return
 
     @periodic_task.periodic_task(spacing=CONF.voltype_sync_interval,
                                  run_immediately=True)
@@ -660,11 +647,9 @@ class CinderProxy(manager.SchedulerDependentManager):
                                                         voltype['id'],)
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
-            return
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys volume type to db.'))
-                return
 
     @locked_volume_operation
     def delete_volume(self, context, volume_id, unmanage_only=False):
