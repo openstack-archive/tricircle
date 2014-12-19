@@ -267,7 +267,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             cinderclient = cinder_client.Client(
                 username=cfg.CONF.cinder_username,
                 api_key=cfg.CONF.cinder_password,
-                tenant_id=cfg.CONF.cinder_tenant_name,
+                tenant_name=cfg.CONF.cinder_tenant_name,
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = client_v2.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
@@ -588,8 +588,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                                           {'status': volume._info['status']})
                 LOG.info(_('Cascade info: Updated the volume  %s status from'
                            'cinder-proxy'), volume_id)
-                return
         except cinder_exception.Unauthorized:
+            self.adminCinderClient = self._get_cinder_cascaded_admin_client()
             return
         except Exception:
             with excutils.save_and_reraise_exception():
