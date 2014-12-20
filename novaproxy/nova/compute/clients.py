@@ -104,7 +104,7 @@ class OpenStackClients(object):
             'service_type': service_type,
             'username': con.username,
             'api_key': con.password,
-	    'region_name':con.region_name,
+            'region_name':con.region_name,
             'extensions': extensions
         }
         if con.password is not None:

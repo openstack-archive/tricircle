@@ -1109,6 +1109,7 @@ class ComputeManager(manager.Manager):
                         limit=self.QUERY_PER_PAGE_LIMIT,
                         marker=marker)
                 except Client_Unauthorized:
+                    openstack_clients = clients.OpenStackClients(req_context)
                     self.sync_nova_client = openstack_clients.nova()
                     LOG.debug(_('the token is timed out in sync_nova_client,'
                                 'fetch a new token form keystone.'))

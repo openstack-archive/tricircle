@@ -59,7 +59,7 @@ class Store(object):
                                 from_store_loc['login_user'],
                                 from_store_loc['login_password'])
         except Exception:
-            msg = _('ssh login failed to %(user):%(passwd)@%(host)',
+            msg = _('ssh login failed to %(user)s:%(passwd)s %(host)s' %
                     {'user': from_store_loc['login_user'],
                      'passwd': from_store_loc['login_password'],
                      'host': from_store_loc['host']
