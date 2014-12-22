@@ -438,7 +438,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             if 'logicalVolumeId' in metadata:
                 metadata.pop('logicalVolumeId')
-            metadata['mapping_uuid'] = bodyResponse._info['id']
+            # metadata['mapping_uuid'] = bodyResponse._info['id']
             self.db.volume_metadata_update(context, volume_id, metadata, True)
 
             if bodyResponse._info['status'] == 'creating':
