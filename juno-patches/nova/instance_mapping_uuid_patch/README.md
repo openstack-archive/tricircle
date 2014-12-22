@@ -28,7 +28,7 @@ We provide two ways to install the instance_mapping_uuid patch code. In this sec
 
 * **Note:**
 
-    - Make sure you have an existing installation of **Openstack Icehouse**.
+    - Make sure you have an existing installation of **Openstack Juno**.
     - We recommend that you Do backup at least the following files before installation, because they are to be overwritten or modified:
 
 * **Manual Installation**

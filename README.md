@@ -10,7 +10,7 @@ Important to know
 * Only about 15k code lines developed for OpenStack cascading.
 * The source code now based on Juno is for PoC only. Refactory will be done constantly to reach OpenStack acceptance standard.
 * The Neutron cascading using the feature of provider network. But horizon doen't support provider network very well. So you have to use Neutron CLI to create a network.
-* Support L2 networking(VxLAN) across cascaded OpenStack, but only p2p remote host IP tunneling supported now.L2 networking through L2GW to reduce population traffic and simplify networking topology will be developed in the near future.
+* Support L2 networking(VxLAN) across cascaded OpenStack, but only point2point remote host IP tunneling supported now.L2 networking through L2GW to reduce population traffic and simplify networking topology will be developed in the near future.
 * The L3 networking across casacaded OpenStack will set up tunneling network for piggy data path, useing GRE tunneling over extra_route to brige the router in different cascaded OpenStack.Therefore, the loca L2 network (VLAN,VxLAN) in one cascaded OpenStack can reach L2 network(VLAN,VxLAN) located in another cascaded OpenStack.
 * Glance cascading using Glance V2 API. Only CLI/pythonclient support V2 API, the Horizon doesn't support that version. So image management should be done through CLI, and using V2 only. Otherwise, the glance cascading cannot work properly.
 * Glance cascading is not used by default, eg, useing global Glance by default. If Glance cascading is required, configuration is required.
@@ -59,7 +59,6 @@ Feature Supported
 
 Known Issues
 ------------------
-* Use "admin" role to experience these feature first, multi-tenancy has not been tested well.
 * Launch VM only support "boot from image", "boot from volume", "boot from snapshot"
 * Flavor only support new created flavor synchronized to the cascaded OpenStack, does not support flavor update synchronization to cascaded OpenStack yet.
 
@@ -94,26 +93,6 @@ Installation without Glance cascading
 * **Juno pachtes installation step by step**
 
 1. Node1
-  - Patches for Nova - instance_mapping_uuid_patch
-
-    This patch is to make the Nova proxy being able to translate the cascading level VM's uuid to cascadede level VM's uuid
-
-    Navigate to the folder
-    ```
-    cd ./tricircle/juno-patches/nova/instance_mapping_uuid_patch
-    ```
-    follow README.md instruction to install the patch
-
-  - Patches for Cinder - Volume/SnapShot/Backup UUID mapping patch
-
-    This patch is to make the Cinder proxy being able to translate the cascading level (Volume/Snapshot/backup)'s uuid to cascaded level (Volume/Snapshot/backup)'s uuid
-
-    Navigate to the folder
-    ```
-    cd ./tricircle/juno-patches/cinder/uuid-mapping-patch
-    ```
-    follow README.md instruction to install the patch
-
   - Patches for Neutron - neutron_cascading_l3_patch
 
     This patch is to enable cross cascaded OpenStack L3 routing over extra route.The mapping between cascaded OpenStack and it's onlink external network which is used for GRE tunneling data path
@@ -135,6 +114,16 @@ Installation without Glance cascading
     ```
     follow README.md instruction to install the patch
 
+  - Patches for Neutron - neutron_timestamp_cascaded_patch
+
+    This patch is to make Neutron being able to provide timestamp based port query.
+
+    Navigate to the folder
+    ```
+    cd ./tricircle/juno-patches/neutron/neutron_timestamp_cascaded_patch
+    ```
+    follow README.md instruction to install the patch
+
   - Patches for Neutron - neutron_cascaded_l3_patch
 
     This patch is to enable cross cascaded OpenStack L3 routing over extra route..
@@ -153,6 +142,16 @@ Installation without Glance cascading
     Navigate to the folder
     ```
     cd ./tricircle/juno-patches/cinder/timestamp-query-patch
+    ```
+    follow README.md instruction to install the patch
+
+  - Patches for Neutron - neutron_timestamp_cascaded_patch
+
+    This patch is to make Neutron being able to provide timestamp based port query.
+
+    Navigate to the folder
+    ```
+    cd ./tricircle/juno-patches/neutron/neutron_timestamp_cascaded_patch
     ```
     follow README.md instruction to install the patch
 
@@ -209,14 +208,7 @@ Installation without Glance cascading
     cd ./tricircle/novaproxy
     ```
     follow README.md instruction to install the proxy. Please change the configuration value in the install.sh according to your environment setting
-
-    Navigate to the  folder
-    ```
-    cd ./tricircle/icehouse-patches/nova/instance_mapping_uuid_patch/nova/objects
-    cp instance.py $python_installation_path/site-packages/nova/objects/
-    ```
-    This file is a patch for instance UUID mapping used in the proxy nodes.
-
+    
   - Cinder proxy
 
     Navigate to the folder
@@ -224,14 +216,6 @@ Installation without Glance cascading
     cd ./tricircle/cinderproxy
     ```
     follow README.md instruction to install the proxy. Please change the configuration value in the install.sh according to your environment setting
-
-    Navigate to the  folder
-    ```
-    cd ./tricircle/icehouse-patches/cinder/uuid-mapping-patch/cinder/db/sqlalchemy
-    cp models.py $python_installation_path/site-packages/cinder/db/sqlalchemy
-    ```
-    This file is a patch for instance UUID mapping used in the proxy nodes.
-
 
   - L2 proxy
 
@@ -320,5 +304,5 @@ Upgrade to Glance cascading
 5. Experience Glance cascading
   - Restart all related service
   - Use Glance V2 api to create Image, Upload Image or patch location for Image. Image should be able to sync to distributed Glance if sync_enabled is setting to True
-  - Sync image only during first time usage but not uploading or patch location can works by just modify the option 'sync_strategy=nova' in /etc/glance-sync.conf file and restart the glance sync service.
+  - Sync image only during first time usage but not uploading or patch location is still in testing phase, may not work properly.
   - Create VM/Volume/etc from Horizon

@@ -13,7 +13,7 @@ Introduction
    glance/common/config.py
    glance/common/exception.py
 
-**Because in Juno, the code of glance store part is move out of the glance as an independent python project, the modification in Icehouse about the glance store is moved to the glance_store in Juno. **
+**Because in Juno, the code of glance store part is move out of the glance as an independent python project, the modification in Juno about the glance store is moved to the glance_store in Juno. **
 
  Install
  ------------------------------

@@ -31,7 +31,7 @@ We provide two ways to install the nova proxy code. In this section, we will gui
 
 * **Note:**
 
-    - Make sure you have an existing installation of **Openstack Icehouse**.
+    - Make sure you have an existing installation of **Openstack Juno**.
     - We recommend that you Do backup at least the following files before installation, because they are to be overwritten or modified:
         $NOVA_CONFIG_PARENT_DIR/nova.conf
         (replace the $... with actual directory names.)
@@ -97,7 +97,7 @@ We provide two ways to install the nova proxy code. In this section, we will gui
 
     In case the automatic installation process is not complete, please check the followings:
 
-    - Make sure your OpenStack version is Icehouse.
+    - Make sure your OpenStack version is Juno.
 
     - Check the variables in the beginning of the install.sh scripts. Your installation directories may be different from the default values we provide.
 
