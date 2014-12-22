@@ -43,7 +43,10 @@ We provide two ways to install the cinder proxy code. In this section, we will g
       ###configuration for Cinder cascading ###
       volume_manager=cinder.volume.cinder_proxy.CinderProxy
       volume_sync_interval=5
+      voltype_sync_interval=3600
+      pagination_limit=50
       cinder_tenant_name=$CASCADED_ADMIN_TENANT
+      cinder_tenant_id=$CASCADED_ADMIN_ID
       cinder_username=$CASCADED_ADMIN_NAME
       cinder_password=$CASCADED_ADMIN_PASSWORD
       keystone_auth_url=http://$GLOBAL_KEYSTONE_IP:5000/v2.0/
@@ -78,7 +81,10 @@ We provide two ways to install the cinder proxy code. In this section, we will g
       ###configuration for Cinder cascading ###
       volume_manager=cinder.volume.cinder_proxy.CinderProxy
       volume_sync_interval=5
+      voltype_sync_interval=3600
+      pagination_limit=50
       cinder_tenant_name=$CASCADED_ADMIN_TENANT
+      cinder_tenant_id=$CASCADED_ADMIN_ID
       cinder_username=$CASCADED_ADMIN_NAME
       cinder_password=$CASCADED_ADMIN_PASSWORD
       keystone_auth_url=http://$GLOBAL_KEYSTONE_IP:5000/v2.0/
