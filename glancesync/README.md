@@ -37,7 +37,7 @@ Installation
     - Please install the python package: pexpect>=2.3 ( because we use pxssh for loginng and there is a bug in pxssh, see           https://mail.python.org/pipermail/python-list/2008-February/510054.html, you should fix this before launch the service. )
 
 * **Manual Installation**
-
+    - Please **make sure you have installed the glance patches in /juno-patches**.
     - Make sure you have performed backups properly.
 * **Manual Installation**
 
@@ -70,14 +70,13 @@ Installation
         `python /usr/bin/glance-sync --config-file=/etc/glance/glance-sync.conf & `
 
 * **Automatic Installation**
-
-    1.  Enter the glance-patch installation dir: `cd ./tricircle/juno-patches/glance/glance_location_patch/installation` .
+    0.  run `source envrc`.
+    1.  **make sure you have installed the glance patches in /juno-patches**: Enter the glance-patch installation dir: `cd ./tricircle/juno-patches/glance/glance_location_patch/installation` .
     2.  Optional, modify the shell script variable: `_PYTHON_INSTALL_DIR` .
     3.  Run the install script: `sh install.sh`
     4.  Enter the glancesync installation dir: `cd ./tricircle/glancesync/installation` .
     5.  Modify the cascading&cascaded glances' store scheme configuration, which is in the file: `./tricircle/glancesync/etc/glance/glance_store.yaml` .
-    6.  Optional, modify the config options in shell script: `sync_enabled=True`, `sync_server_port=9595`, `sync_server_host=127.0.0.1` with the proper values.
-    7.  Run the install script: `sh install.sh`
+    6.  Run the install script: `sh install.sh`
 
 Configurations
 --------------

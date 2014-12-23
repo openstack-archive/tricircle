@@ -15,7 +15,10 @@
 
 _NOVA_CONF_DIR="/etc/nova"
 _NOVA_CONF_FILE="nova.conf"
-_NOVA_INSTALL="/usr/lib64/python2.6/site-packages"
+_NOVA_INSTALL=${OPENSTACK_INSTALL_DIR}
+if [ ! -n ${_NOVA_INSTALL} ];then
+    _NOVA_INSTALL="/usr/lib/python2.7/dist-packages"
+fi
 _NOVA_DIR="${_NOVA_INSTALL}/nova"
 
 # if you did not make changes to the installation files,
@@ -25,7 +28,6 @@ _BACKUP_DIR="${_NOVA_INSTALL}/.nova-proxy-installation-backup"
 
 _SCRIPT_LOGFILE="/var/log/nova-proxy/installation/install.log"
 
-config_option_list="nova_admin_username=nova nova_admin_password=openstack nova_admin_tenant_name=service proxy_region_name=AZ1 cascading_nova_url=http://cascading_host:8774/v2 cascaded_nova_url=http://cascaded_host:8774/v2 cascaded_neutron_url=http://cascaded_host:9696 cascaded_glance_flag=False cascaded_glance_url=http://cascaded_host:9292 os_region_name=Cascading_Openstack keystone_auth_url=http://cascading_host:5000/v2.0/ cinder_endpoint_template=http://cascading_host:8776/v1/%(project_id)s compute_manager=nova.compute.manager_proxy.ComputeManager image_copy_dest_location_url=file:///var/lib/glance/images image_copy_dest_host=cascaded_host image_copy_dest_user=glance image_copy_dest_password=openstack image_copy_source_location_url=file:///var/lib/glance/images image_copy_source_host=copy_image_host image_copy_source_user=glance image_copy_source_password=openstack"
 
 function log()
 {
@@ -44,6 +46,11 @@ fi
 
 
 cd `dirname $0`
+
+if [ ! -d "/var/log/nova-proxy/installation" ]; then
+    mkdir -p /var/log/nova-proxy/installation
+    touch _SCRIPT_LOGFILE
+fi
 
 log "checking installation directories..."
 if [ ! -d "${_NOVA_DIR}" ] ; then
@@ -87,19 +94,16 @@ if [ $? -ne 0 ] ; then
     exit 1
 fi
 
-log "updating config file..."
-for option in $config_option_list
-do
-    option_key=`echo $option|awk -F "=" '{print $1}'`
-    option_value=`echo $option|awk -F "=" '{print $2}'`
-    sed -i.backup -e "/$option_key *=/d" "${_NOVA_CONF_DIR}/${_NOVA_CONF_FILE}"
-    echo "$option_key,***************$option_value"
-    echo $option_key=$option_value >> "${_NOVA_CONF_DIR}/${_NOVA_CONF_FILE}"
-
-done
+cd `dirname $0`/../../script
+python config.py nova
+if [ $? -ne 0 ] ; then
+    log "configurate the nova options error."
+    exit 1
+fi
+cd -
 
 log "restarting nova compute..."
-service openstack-nova-compute restart
+service nova-compute restart
 if [ $? -ne 0 ] ; then
     log "There was an error in restarting the service, please restart nova scheduler manually."
     exit 1

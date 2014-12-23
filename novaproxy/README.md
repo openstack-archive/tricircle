@@ -40,6 +40,7 @@ We provide two ways to install the nova proxy code. In this section, we will gui
 
     - Make sure you have performed backups properly.
 
+
     - Navigate to the local repository and copy the contents in 'nova' sub-directory to the corresponding places in existing nova, e.g.
       ```cp -r $LOCAL_REPOSITORY_DIR/nova $NOVA_PARENT_DIR```
       (replace the $... with actual directory name.)
@@ -69,6 +70,8 @@ We provide two ways to install the nova proxy code. In this section, we will gui
 * **Automatic Installation**
 
     - Make sure you have performed backups properly.
+
+    - run `source envrc`
 
     - Navigate to the installation directory and run installation script.
       ```
