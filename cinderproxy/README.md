@@ -98,7 +98,7 @@ We provide two ways to install the cinder proxy code. In this section, we will g
 
     In case the automatic installation process is not complete, please check the followings:
 
-    - Make sure your OpenStack version is Icehouse.
+    - Make sure your OpenStack version is Juno.
 
     - Check the variables in the beginning of the install.sh scripts. Your installation directories may be different from the default values we provide.
 

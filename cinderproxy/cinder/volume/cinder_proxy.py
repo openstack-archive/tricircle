@@ -26,8 +26,8 @@ intact.
 
 :volume_topic:  What :mod:`rpc` topic to listen to (default: `cinder-volume`).
 :volume_manager:  The module name of a class derived from
-                  :class:`manager.Manager` (default:
-                  :class:`cinder.volume.manager.Manager`).
+                  :class:`cinder.Manager` (default:
+                  :class:`cinder.volume.cinder_proxy.CinderProxy`).
 :volume_group:  Name of the group that will contain exported volumes (default:
                 `cinder-volumes`)
 :num_shell_tries:  Number of times to attempt to run commands (default: 3)
@@ -182,6 +182,11 @@ class CinderProxy(manager.SchedulerDependentManager):
     RPC_API_VERSION = '1.18'
     target = messaging.Target(version=RPC_API_VERSION)
 
+    VOLUME_NAME_LENGTH = 255
+    VOLUME_UUID_LENGTH = 36
+    SNAPSHOT_NAME_LENGTH = 255
+    SNAPSHOT_UUID_LENGTH = 36
+
     def __init__(self, service_name=None, *args, **kwargs):
         """Load the specified in args, or flags."""
         # update_service_capabilities needs service_name to be volume
@@ -221,9 +226,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             LOG.exception(ex)
 
     def _get_ccding_volume_id(self, volume):
-        VOLUME_UUID_LENGTH = 36
         csd_name = volume._info["name"]
-        uuid_len = VOLUME_UUID_LENGTH
+        uuid_len = self.VOLUME_UUID_LENGTH
         if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
             return csd_name[-uuid_len:]
         try:
@@ -231,10 +235,23 @@ class CinderProxy(manager.SchedulerDependentManager):
         except KeyError:
             return ''
 
+    def _gen_ccding_volume_name(self, volume_name, volume_id):
+        max_len = self.VOLUME_NAME_LENGTH - self.VOLUME_UUID_LENGTH - 1
+        if (len(volume_name) <= max_len):
+            return volume_name + "@" + volume_id
+        else:
+            return volume_name[0:max_len] + "@" + volume_id
+
+    def _gen_ccding_snapshot_name(self, snapshot_name, snapshot_id):
+        max_len = self.SNAPSHOT_NAME_LENGTH - self.SNAPSHOT_UUID_LENGTH - 1
+        if (len(snapshot_name) <= max_len):
+            return snapshot_name + "@" + snapshot_id
+        else:
+            return snapshot_name[0:max_len] + "@" + snapshot_id
+
     def _get_ccding_snapsot_id(self, snapshot):
-        SNAPSHOT_UUID_LENGTH = 36
         csd_name = snapshot._info["name"]
-        uuid_len = SNAPSHOT_UUID_LENGTH
+        uuid_len = self.SNAPSHOT_UUID_LENGTH
         if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
             return csd_name[-uuid_len:]
         try:
@@ -272,9 +289,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             ctx_dict = context.to_dict()
             cinderclient = cinder_client.Client(
-                username=ctx_dict.get('user_id'),
                 api_key=ctx_dict.get('auth_token'),
-                project_id=ctx_dict.get('project_name'),
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = ctx_dict.get('auth_token')
             cinderclient.client.management_url = \
@@ -367,7 +382,8 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             volume_properties = request_spec.get('volume_properties')
             size = volume_properties.get('size')
-            display_name = volume_properties.get('display_name')+"@"+volume_id
+            volume_name = volume_properties.get('display_name')
+            display_name = self._gen_ccding_volume_name(volume_name, volume_id)
             display_description = volume_properties.get('display_description')
             volume_type_id = volume_properties.get('volume_type_id')
             user_id = ctx_dict.get('user_id')
@@ -375,8 +391,6 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             cascaded_snapshot_id = None
             if snapshot_id is not None:
-                # snapshot_ref = self.db.snapshot_get(context, snapshot_id)
-                # cascaded_snapshot_id = snapshot_ref['mapping_uuid']
                 cascaded_snapshot_id = \
                     self.volumes_mapping_cache['volumes'].get(snapshot_id, '')
                 LOG.info(_('Cascade info: create volume from snapshot, '
@@ -384,8 +398,6 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             cascaded_source_volid = None
             if source_volid is not None:
-                # vol_ref = self.db.volume_get(context, source_volid)
-                # cascaded_source_volid = vol_ref['mapping_uuid']
                 cascaded_source_volid = \
                     self.volumes_mapping_cache['volumes'].get(volume_id, '')
                 LOG.info(_('Cascade info: create volume from source volume, '
@@ -436,19 +448,9 @@ class CinderProxy(manager.SchedulerDependentManager):
                 metadata=metadata,
                 imageRef=cascaded_image_id)
 
-            if 'logicalVolumeId' in metadata:
-                metadata.pop('logicalVolumeId')
-            # metadata['mapping_uuid'] = bodyResponse._info['id']
-            self.db.volume_metadata_update(context, volume_id, metadata, True)
-
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['volumes'][volume_id] = \
                     bodyResponse._info['id']
-
-                # self.db.volume_update(
-                # context,
-                # volume_id,
-                # {'mapping_uuid': bodyResponse._info['id']})
 
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -592,11 +594,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             volumetypes = self.adminCinderClient.volume_types.list()
             qosSpecs = self.adminCinderClient.qos_specs.list()
 
-            volname_type_list = []
             vol_types = self.db.volume_type_get_all(context, inactive=False)
             LOG.debug(_("cascade info, vol_types cascading :%s"), vol_types)
-            for vol_type in vol_types:
-                volname_type_list.append(vol_type)
             for volumetype in volumetypes:
                 LOG.debug(_("cascade info, vol types cascaded :%s"),
                           volumetype)
@@ -673,8 +672,23 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         try:
             self._delete_cascaded_volume(context, volume_id)
+        except exception.VolumeIsBusy:
+            LOG.error(_("Cannot delete volume %s: volume is busy"),
+                      volume_ref['id'])
+            self.db.volume_update(context, volume_ref['id'],
+                                  {'status': 'available'})
+            return True
         except Exception:
-            LOG.exception(_("Failed to deleting volume"))
+            with excutils.save_and_reraise_exception():
+                self.db.volume_update(context,
+                                      volume_ref['id'],
+                                      {'status': 'error_deleting'})
+
+        # If deleting the source volume in a migration, we want to skip quotas
+        # and other database updates.
+        if volume_ref['migration_status']:
+            return True
+
         # Get reservations
         try:
             reserve_opts = {'volumes': -1, 'gigabytes': -volume_ref['size']}
@@ -735,6 +749,9 @@ class CinderProxy(manager.SchedulerDependentManager):
             return
         except Exception:
             with excutils.save_and_reraise_exception():
+                self.db.volume_update(context,
+                                      volume_id,
+                                      {'status': 'error_deleting'})
                 LOG.error(_('Cascade info: failed to delete cascaded'
                             ' volume %s'), cascaded_volume_id)
 
@@ -743,7 +760,8 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         context = context.elevated()
         snapshot_ref = self.db.snapshot_get(context, snapshot_id)
-        display_name = snapshot_ref['display_name'] + "@" + snapshot_id
+        snap_name = snapshot_ref['display_name']
+        display_name = self._gen_ccding_snapshot_name(snap_name, snapshot_id)
         display_description = snapshot_ref['display_description']
         LOG.info(_("snapshot %s: creating"), snapshot_ref['id'])
 
@@ -877,11 +895,11 @@ class CinderProxy(manager.SchedulerDependentManager):
                      cascaded_snapshot_id)
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
-            cinderClient.volume_snapshots.get(snapshot_id)
-            cinderClient.volume_snapshots.delete(cascaded_snapshot_id)
+            cinderClient.volume_snapshots.get(cascaded_snapshot_id)
+            resp = cinderClient.volume_snapshots.delete(cascaded_snapshot_id)
             self.volumes_mapping_cache['snapshots'].pop(snapshot_id, '')
-            LOG.info(_("delete casecade snapshot %s successfully."),
-                     cascaded_snapshot_id)
+            LOG.info(_("delete casecade snapshot %s successfully. resp :%s"),
+                     cascaded_snapshot_id, resp)
             return
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['snapshots'].pop(snapshot_id, '')
@@ -890,6 +908,9 @@ class CinderProxy(manager.SchedulerDependentManager):
             return
         except Exception:
             with excutils.save_and_reraise_exception():
+                self.db.snapshot_update(context,
+                                        snapshot_id,
+                                        {'status': 'error_deleting'})
                 LOG.error(_("failed to delete cascade snapshot %s"),
                           cascaded_snapshot_id)
 
@@ -1115,15 +1136,15 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         volume_stats = {
             'pools': [{
-                'pool_name': 'LVM_iSCSI',
-                'QoS_support': False,
+                'pool_name': 'Huawei_Cascade',
+                'QoS_support': True,
                 'free_capacity_gb': 10240.0,
                 'location_info': fake_location_info,
                 'total_capacity_gb': 10240.0,
                 'reserved_percentage': 0
             }],
             'driver_version': '2.0.0',
-            'vendor_name': 'OpenSource',
+            'vendor_name': 'Huawei',
             'volume_backend_name': 'LVM_iSCSI',
             'storage_protocol': 'iSCSI'}
 

@@ -2,7 +2,7 @@ Cinder timestamp-query-patch
 ===============================
 it will be patched in cascaded level's control node
 
-cinder icehouse version database has update_at attribute for change_since
+cinder juno version database has update_at attribute for change_since
 query filter function, however cinder db api this version don't support
 timestamp query function. So it is needed to make this patch in cascaded level
 while syncronization  state between cascading and cascaded openstack level
@@ -17,7 +17,7 @@ Key modules
 
 Requirements
 ------------
-* openstack icehouse has been installed
+* openstack juno has been installed
 
 Installation
 ------------
@@ -26,7 +26,7 @@ We provide two ways to install the timestamp query patch code. In this section, 
 
 * **Note:**
 
-    - Make sure you have an existing installation of **Openstack Icehouse**.
+    - Make sure you have an existing installation of **Openstack Juno**.
     - We recommend that you Do backup at least the following files before installation, because they are to be overwritten or modified:
 
 * **Manual Installation**
