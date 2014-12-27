@@ -1211,7 +1211,4 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         QUOTAS.commit(context, reservations)
         self.db.volume_update(context, volume['id'], {'size': int(new_size),
-                                                      'status': 'extending'})
-        self._notify_about_volume_usage(
-            context, volume, "resize.end",
-            extra_usage_info={'size': int(new_size)})
+                                                      'status
