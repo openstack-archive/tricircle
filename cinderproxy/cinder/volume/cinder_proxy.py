@@ -26,7 +26,7 @@ intact.
 
 :volume_topic:  What :mod:`rpc` topic to listen to (default: `cinder-volume`).
 :volume_manager:  The module name of a class derived from
-                  :class:`cinder.Manager` (default:
+                  :class:`volume.Manager` (default:
                   :class:`cinder.volume.cinder_proxy.CinderProxy`).
 :volume_group:  Name of the group that will contain exported volumes (default:
                 `cinder-volumes`)
@@ -268,13 +268,13 @@ class CinderProxy(manager.SchedulerDependentManager):
                       'auth_url': cfg.CONF.keystone_auth_url
                       }
 
-            client_v2 = kc.Client(**kwargs)
+            keystoneclient = kc.Client(**kwargs)
             cinderclient = cinder_client.Client(
                 username=cfg.CONF.cinder_username,
                 api_key=cfg.CONF.cinder_password,
                 project_id=cfg.CONF.cinder_tenant_id,
                 auth_url=cfg.CONF.keystone_auth_url)
-            cinderclient.client.auth_token = client_v2.auth_ref.auth_token
+            cinderclient.client.auth_token = keystoneclient.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
             cinderclient.client.management_url = \
                 cfg.CONF.cascaded_cinder_url % diction
@@ -289,7 +289,6 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             ctx_dict = context.to_dict()
             cinderclient = cinder_client.Client(
-                api_key=ctx_dict.get('auth_token'),
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = ctx_dict.get('auth_token')
             cinderclient.client.management_url = \
@@ -317,12 +316,12 @@ class CinderProxy(manager.SchedulerDependentManager):
         if not self.image_service._is_image_available(context, image_meta):
             raise exception.ImageNotFound(image_id=image_id)
 
-        locations = getattr(image_meta, 'locations', None)
-        LOG.debug(_("Cascade info: image glance get_image_cascaded,"
-                    "locations:%s"), locations)
         LOG.debug(_("Cascade info: image glance get_image_cascaded,"
                     "cascaded_glance_url:%s"), cascaded_glance_url)
 
+        locations = getattr(image_meta, 'locations', None)
+        LOG.debug(_("Cascade info: image glance get_image_cascaded,"
+                    "locations:%s"), locations)
         cascaded_image_id = None
         for loc in locations:
             image_url = loc.get('url')

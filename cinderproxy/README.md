@@ -23,7 +23,7 @@ We provide two ways to install the cinder proxy code. In this section, we will g
 
 * **Note:**
 
-    - Make sure you have an existing installation of **Openstack Icehouse**.
+    - Make sure you have an existing installation of **Openstack Juno**.
     - We recommend that you Do backup at least the following files before installation, because they are to be overwritten or modified:
         $CINDER_CONFIG_PARENT_DIR/cinder.conf
         (replace the $... with actual directory names.)
