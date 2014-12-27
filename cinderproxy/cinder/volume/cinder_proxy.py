@@ -270,9 +270,6 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             keystoneclient = kc.Client(**kwargs)
             cinderclient = cinder_client.Client(
-                username=cfg.CONF.cinder_username,
-                api_key=cfg.CONF.cinder_password,
-                project_id=cfg.CONF.cinder_tenant_id,
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = keystoneclient.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
@@ -1211,4 +1208,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         QUOTAS.commit(context, reservations)
         self.db.volume_update(context, volume['id'], {'size': int(new_size),
-                                                      'status
+                                                      'status': 'extending'})
+        self._notify_about_volume_usage(
+            context, volume, "resize.end",
+            extra_usage_info={'size': int(new_size)})
