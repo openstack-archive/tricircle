@@ -741,11 +741,13 @@ class ComputeManager(manager.Manager):
 
         """ for flavors """
         for flavor in csd_flavors:
-            # try:
-            #     flavor_accesses = csd_nova_client.flavor_access. \
-            #                       list(flavor=flavor.id)
-            # except Exception:
-            #     flavor_accesses = []
+            flavor_accesses = []
+            try:
+                if not flavor.is_public:
+                    flavor_accesses = (csd_nova_client.flavor_access.list(
+                        flavor=flavor.id))
+            except Exception:
+                pass
             """ 'extra_specs' is a dict, and 'projects' is a list """
             self._flavor_sync_map[flavor.name] = {
                 'flavorid': flavor.id,
@@ -753,12 +755,12 @@ class ComputeManager(manager.Manager):
                 'memory_mb': flavor.ram,
                 'vcpus': flavor.vcpus,
                 'swap': flavor.swap or 0,
-                #'is_public': flavor.is_public,
+                'is_public': flavor.is_public,
                 'rxtx_factor': flavor.rxtx_factor,
                 'ephemeral_gb': flavor.ephemeral or 0,
                 'root_gb': flavor.disk,
                 'extra_specs': flavor.get_keys(),
-                #'projects': [f_a.tenant_id for f_a in flavor_accesses]
+                'projects': [f_a.tenant_id for f_a in flavor_accesses]
             }
         """ for keypairs """
         # sync keypair when operating instance to check if it's necessary.
@@ -914,8 +916,17 @@ class ComputeManager(manager.Manager):
                 LOG.error(_('Failed to get neutron python client.'))
 
     @staticmethod
-    def _get_nova_python_client(context, reg_name, nova_url):
+    def _get_nova_python_client(context, reg_name, nova_url, is_admin=False):
         try:
+            admin_kwargs = {
+                'username': CONF.nova_admin_username,
+                'password': CONF.nova_admin_password,
+                'tenant': CONF.nova_admin_tenant_name,
+                'auth_url': CONF.keystone_auth_url,
+                'region_name': reg_name,
+                'nova_url': nova_url,
+            }
+
             kwargs = {
                 'auth_token': context.auth_token,
                 'username': context.user_name,
@@ -924,9 +935,12 @@ class ComputeManager(manager.Manager):
                 'roles': context.roles,
                 'is_admin': context.is_admin,
                 'region_name': reg_name,
-                'nova_url': nova_url
+                'nova_url': nova_url,
             }
-            req_context = compute_context.RequestContext(**kwargs)
+            if is_admin:
+                req_context = compute_context.RequestContext(**admin_kwargs)
+            else:
+                req_context = compute_context.RequestContext(**kwargs)
             openstack_clients = clients.OpenStackClients(req_context)
             return openstack_clients.nova()
         except Exception:
@@ -939,6 +953,7 @@ class ComputeManager(manager.Manager):
             # Get the active flavor by flavor_name in the instance.
             active_flavor = flavor_obj.Flavor.get_by_name(context,
                                                           flavor_name)
+            active_flavor._load_projects(context)
             if not active_flavor:
                 LOG.info(_('the flavor %s not exists, may be deleted.'),
                          flavor_name)
@@ -954,7 +969,9 @@ class ComputeManager(manager.Manager):
                 'rxtx_factor': active_flavor.rxtx_factor,
                 'ephemeral_gb': active_flavor.ephemeral_gb,
                 'root_gb': active_flavor.root_gb,
-                'extra_specs': active_flavor.extra_specs
+                'extra_specs': active_flavor.extra_specs,
+                'projects': active_flavor.projects,
+                'is_public': active_flavor.is_public,
             }
             self._heal_syn_flavor_info(context, instance_type)
         except KeyError:
@@ -965,9 +982,9 @@ class ComputeManager(manager.Manager):
                 LOG.error(_('Fail to get/sync flavor %s when reboot.'),
                           flavor_name)
 
-    def _heal_syn_flavor_info(self, context, instance_type, check_extra=True):
+    def _heal_syn_flavor_info(self, context, instance_type):
         _cmp_keys = ('flavorid', 'name', 'memory_mb', 'vcpus', 'swap',
-                     'ephemeral_gb', 'root_gb', 'rxtx_factor')
+                     'is_public', 'ephemeral_gb', 'root_gb', 'rxtx_factor')
 
         flavor_name = instance_type['name']
         csd_flavor = self._flavor_sync_map.get(flavor_name, {})
@@ -976,8 +993,13 @@ class ComputeManager(manager.Manager):
         _update_flag = not _no_exist_flag and not _cmp_as_same(csd_flavor,
                                                        instance_type,
                                                        _cmp_keys)
-        _extra_specs_change_flag = check_extra and \
-               csd_flavor.get('extra_specs', {}) != instance_type['extra_specs']
+        _extra_specs_change_flag = (csd_flavor and
+                                    csd_flavor.get('extra_specs', {}) !=
+                                    instance_type['extra_specs'])
+
+        _projects_changed_flag = (csd_flavor and
+                                  set(csd_flavor.get('projects', [])) !=
+                                  instance_type['projects'])
 
         if _no_exist_flag:
             LOG.info(_('flavor not exists in cascaded, need sync: %s'),
@@ -994,13 +1016,15 @@ class ComputeManager(manager.Manager):
                        'need sync: %s'),
                      flavor_name)
 
-        if not (_no_exist_flag or _update_flag or _extra_specs_change_flag):
+        if not (_no_exist_flag or _update_flag or _extra_specs_change_flag or
+                _projects_changed_flag):
             return
 
         cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url)
+            cfg.CONF.cascaded_nova_url,
+            is_admin=True)
 
         if _update_flag:
             # update = delete + create new.
@@ -1014,18 +1038,44 @@ class ComputeManager(manager.Manager):
                 ram=instance_type['memory_mb'],
                 vcpus=instance_type['vcpus'],
                 disk=instance_type['root_gb'],
+                is_public=instance_type['is_public'],
                 flavorid=instance_type['flavorid'],
                 ephemeral=instance_type['ephemeral_gb'],
                 swap=instance_type['swap'],
                 rxtx_factor=instance_type['rxtx_factor']
             )
+
             if instance_type['extra_specs']:
                 my_flavor.set_keys(instance_type['extra_specs'])
+
+            for project in instance_type['projects']:
+                try:
+                    cascaded_nova_cli.flavor_access.add_tenant_access(my_flavor, project)
+                except Exception:
+                    LOG.exception(_('Modified flavor information, '
+                                    'but unable to modify flavor access.'))
+
         else:
             my_flavor = cascaded_nova_cli.flavors.get(instance_type['flavorid'])
             if _extra_specs_change_flag:
-                my_flavor.unset_keys(csd_flavor['extra_specs'])
+                my_flavor.unset_keys(csd_flavor.get('extra_specs', {}))
                 my_flavor.set_keys(instance_type['extra_specs'])
+
+            if _projects_changed_flag:
+                for project in csd_flavor['projects']:
+                    if project in instance_type['projects']:
+                        continue
+                    try:
+                        cascaded_nova_cli.flavor_access.remove_tenant_access(my_flavor, project)
+                    except Exception:
+                        LOG.exception(_('Unable to delete flavor access'))
+                for project in instance_type['projects']:
+                    if project in csd_flavor['projects']:
+                        continue
+                    try:
+                        cascaded_nova_cli.flavor_access.add_tenant_access(my_flavor, project)
+                    except Exception:
+                        LOG.exception(_('Unable to add flavor access'))
 
         # refresh the cache.
         self._flavor_sync_map[flavor_name] = instance_type.copy()
@@ -1049,7 +1099,8 @@ class ComputeManager(manager.Manager):
         cascaded_nova_cli = ComputeManager._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url)
+            cfg.CONF.cascaded_nova_url,
+            is_admin=True)
         if _update_keypair_flag:
             LOG.info(_('delete the cascaded keypair %s by id: %s'),
                      csd_keypair['name'], csd_keypair['id'])
@@ -2851,7 +2902,13 @@ class ComputeManager(manager.Manager):
         # metadata['mapping_uuid'] = instance['uuid']
 
         try:
-            self._heal_syn_flavor_info(context, request_spec['instance_type'])
+            instance_type = request_spec['instance_type']
+            flavor_name = instance_type['name']
+            active_flavor = flavor_obj.Flavor.get_by_name(context, flavor_name)
+            active_flavor._load_projects(context)
+            instance_type['projects'] = active_flavor.projects
+            instance_type['is_public'] = active_flavor.is_public
+            self._heal_syn_flavor_info(context, instance_type)
         except Exception:
             pass
 
@@ -4422,9 +4479,14 @@ class ComputeManager(manager.Manager):
         if old_instance_type_id != new_instance_type_id:
             instance_type = flavors.extract_flavor(instance, prefix='new_')
             self._save_instance_info(instance, instance_type, sys_meta)
-            # the instance_type contains no extra_specs.
-            instance_type['extra_specs'] = {}
-            self._heal_syn_flavor_info(context, instance_type, check_extra=False)
+            # the instance_type contains no extra_specs and flavor_accesses.
+            flavor_name = instance_type['name']
+            active_flavor = flavor_obj.Flavor.get_by_name(context, flavor_name)
+            active_flavor._load_projects(context)
+            instance_type['extra_specs'] = active_flavor.extra_specs
+            instance_type['projects'] = active_flavor.projects
+            instance_type['is_public'] = active_flavor.is_public
+            self._heal_syn_flavor_info(context, instance_type)
             resize_instance = True
 
         # NOTE(tr3buchet): setup networks on destination host
