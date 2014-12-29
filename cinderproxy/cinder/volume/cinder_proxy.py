@@ -26,7 +26,7 @@ intact.
 
 :volume_topic:  What :mod:`rpc` topic to listen to (default: `cinder-volume`).
 :volume_manager:  The module name of a class derived from
-                  :class:`volume.Manager` (default:
+                  :class:`manager.Manager` (default:
                   :class:`cinder.volume.cinder_proxy.CinderProxy`).
 :volume_group:  Name of the group that will contain exported volumes (default:
                 `cinder-volumes`)
@@ -270,6 +270,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             keystoneclient = kc.Client(**kwargs)
             cinderclient = cinder_client.Client(
+                username=cfg.CONF.cinder_username,
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = keystoneclient.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
@@ -286,6 +287,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             ctx_dict = context.to_dict()
             cinderclient = cinder_client.Client(
+                username=ctx_dict.get('user_id'),
                 auth_url=cfg.CONF.keystone_auth_url)
             cinderclient.client.auth_token = ctx_dict.get('auth_token')
             cinderclient.client.management_url = \
