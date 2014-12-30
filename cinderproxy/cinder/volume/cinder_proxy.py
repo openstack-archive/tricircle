@@ -207,7 +207,8 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _init_volume_mapping_cache(self):
         try:
-            volumes = self._query_vol_cascaded_pagination()
+            volumes =\
+                self._query_vol_cascaded_pagination(change_since_time=None)
             for vol in volumes:
                 ccding_volume_id = self._get_ccding_volume_id(vol)
                 self.volumes_mapping_cache['volumes'][ccding_volume_id] = \
@@ -235,6 +236,16 @@ class CinderProxy(manager.SchedulerDependentManager):
         except KeyError:
             return ''
 
+    def _get_ccding_snapsot_id(self, snapshot):
+        csd_name = snapshot._info["name"]
+        uuid_len = self.SNAPSHOT_UUID_LENGTH
+        if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
+            return csd_name[-uuid_len:]
+        try:
+            return snapshot._info['metadata']['logicalVolumeId']
+        except KeyError:
+            return ''
+
     def _gen_ccding_volume_name(self, volume_name, volume_id):
         max_len = self.VOLUME_NAME_LENGTH - self.VOLUME_UUID_LENGTH - 1
         if (len(volume_name) <= max_len):
@@ -248,16 +259,6 @@ class CinderProxy(manager.SchedulerDependentManager):
             return snapshot_name + "@" + snapshot_id
         else:
             return snapshot_name[0:max_len] + "@" + snapshot_id
-
-    def _get_ccding_snapsot_id(self, snapshot):
-        csd_name = snapshot._info["name"]
-        uuid_len = self.SNAPSHOT_UUID_LENGTH
-        if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
-            return csd_name[-uuid_len:]
-        try:
-            return snapshot._info['metadata']['logicalVolumeId']
-        except KeyError:
-            return ''
 
     def _get_cinder_cascaded_admin_client(self):
 
@@ -455,7 +456,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         return volume_id
 
-    def _query_vol_cascaded_pagination(self, change_since_time):
+    def _query_vol_cascaded_pagination(self, change_since_time=None):
         try:
             page_limit = CONF.pagination_limit
             marker = None
@@ -550,49 +551,51 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _update_volume_qos(self, context, qosSpecs):
         qos_specs = self.db.qos_specs_get_all(context, inactive=False)
+
         qosname_list_cascading = []
         for qos_cascading in qos_specs:
             qosname_list_cascading.append(qos_cascading['name'])
-            for qos_cascaded in qosSpecs:
-                qos_name_cascaded = qos_cascaded._info['name']
 
-                """update qos from cascaded cinder
-                """
-                if qos_name_cascaded not in qosname_list_cascading:
-                    qos_create_val = {}
-                    qos_create_val['name'] = qos_name_cascaded
-                    qos_spec_value = qos_cascaded._info['specs']
-                    qos_spec_value['consumer'] = \
-                        qos_cascaded._info['consumer']
-                    qos_create_val['qos_specs'] = qos_spec_value
-                    LOG.info(_('Cascade info, create qos_spec %sin db'),
-                             qos_name_cascaded)
-                    self.db.qos_specs_create(context, qos_create_val)
-                    LOG.info(_('Cascade info, qos_spec finished %sin db'),
-                             qos_create_val)
+        for qos_cascaded in qosSpecs:
+            qos_name_cascaded = qos_cascaded._info['name']
 
-                """update qos specs association with vol types from cascaded
-                """
-                qos_specs_id = qos_cascading['id']
-                assoc_ccd =\
-                    self.db.volume_type_qos_associations_get(context,
-                                                             qos_specs_id)
-                qos = qos_cascaded._info['id']
-                association =\
-                    self.adminCinderClient.qos_specs.get_associations(qos)
+            """update qos from cascaded cinder
+            """
+            if qos_name_cascaded not in qosname_list_cascading:
+                qos_create_val = {}
+                qos_create_val['name'] = qos_name_cascaded
+                qos_spec_value = qos_cascaded._info['specs']
+                qos_spec_value['consumer'] = \
+                    qos_cascaded._info['consumer']
+                qos_create_val['qos_specs'] = qos_spec_value
+                LOG.info(_('Cascade info, create qos_spec %sin db'),
+                         qos_name_cascaded)
+                self.db.qos_specs_create(context, qos_create_val)
+                LOG.info(_('Cascade info, qos_spec finished %sin db'),
+                         qos_create_val)
 
-                for assoc in association:
-                    assoc_name = assoc._info['name']
-                    LOG.debug(_("Cascade info, assoc name %s"), assoc_name)
-                    if assoc_ccd is None or assoc_name not in assoc_ccd:
-                        voltype = \
-                            self.db.volume_type_get_by_name(context,
-                                                            assoc_name)
-                        LOG.debug(_("Cascade info, voltypes %s"), voltype)
-                        self.db.qos_specs_associate(context,
-                                                    qos_cascading['id'],
-                                                    voltype['id'],)
-        LOG.debug(_("Cascade info, update qos from cascaded cinder finished"))
+            """update qos specs association with vol types from cascaded
+            """
+            qos_specs_id = qos_cascading['id']
+            assoc_ccd =\
+                self.db.volume_type_qos_associations_get(context,
+                                                         qos_specs_id)
+            qos = qos_cascaded._info['id']
+            association =\
+                self.adminCinderClient.qos_specs.get_associations(qos)
+
+            for assoc in association:
+                assoc_name = assoc._info['name']
+                LOG.debug(_("Cascade info, assoc name %s"), assoc_name)
+                if assoc_ccd is None or assoc_name not in assoc_ccd:
+                    voltype = \
+                        self.db.volume_type_get_by_name(context,
+                                                        assoc_name)
+                    LOG.debug(_("Cascade info, voltypes %s"), voltype)
+                    self.db.qos_specs_associate(context,
+                                                qos_cascading['id'],
+                                                voltype['id'],)
+        LOG.debug(_("Cascade info, update qos  finished"))
 
     @periodic_task.periodic_task(spacing=CONF.volume_sync_interval,
                                  run_immediately=True)
@@ -769,8 +772,8 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             cascaded_volume_id = \
                 self.volumes_mapping_cache['volumes'].get(volume_id, '')
-            LOG.debug(_('Cascade info: create snapshot, ccded vol id %s'),
-                      cascaded_volume_id)
+            LOG.debug(_('Cascade info: create snapshot, cascaded volume'
+                        'id is : %s '), cascaded_volume_id)
             cinderClient = self._get_cinder_cascaded_user_client(context)
             bodyResponse = cinderClient.volume_snapshots.create(
                 volume_id=cascaded_volume_id,
@@ -783,6 +786,20 @@ class CinderProxy(manager.SchedulerDependentManager):
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['snapshots'][snapshot_id] =\
                     bodyResponse._info['id']
+
+            while True:
+                time.sleep(CONF.volume_sync_interval)
+                queryResponse =\
+                    cinderClient.volume_snapshots.get(bodyResponse._info['id'])
+                query_status = queryResponse._info['status']
+                if query_status != 'creating':
+                    self.db.snapshot_update(context, snapshot_ref['id'],
+                                            {'status': query_status,
+                                             'progress': '100%'
+                                             })
+                    break
+                else:
+                    continue
                 # self.db.snapshot_update(
                 #    context,
                 #    snapshot_ref['id'],
@@ -794,11 +811,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                                         snapshot_ref['id'],
                                         {'status': 'error'})
                 return
-
-        self.db.snapshot_update(context,
-                                snapshot_ref['id'], {'status': 'available',
-                                                     'progress': '100%'})
-#        vol_ref = self.db.volume_get(context, volume_id)
+                # vol_ref = self.db.volume_get(context, volume_id)
 
         if vol_ref.bootable:
             try:
@@ -1133,15 +1146,17 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def initialize_connection(self, context, volume_id, connector):
         """Prepare volume for connection from host represented by connector.
-           volume in cascading level is just a logical data, the interface
-           has lots its meaning, so here just return a None value
+           volume in openstack cascading level is just a logical data,
+           initialize connection has losts its meaning, so this interface here
+           just return a None value
         """
         return None
 
     def terminate_connection(self, context, volume_id, connector, force=False):
         """Cleanup connection from host represented by connector.
-           volume in cascading level is just a logical data, the interface
-           has lots its meaning, so here just return a None value
+           volume in openstack cascading level is just a logical data,
+           terminate connection has losts its meaning, so this interface here
+           just return a None value
         """
         return None
 
