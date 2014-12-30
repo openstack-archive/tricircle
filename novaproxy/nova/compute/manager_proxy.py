@@ -764,7 +764,7 @@ class ComputeManager(manager.Manager):
         }
         marker = None
         while True:
-            servers = sync_nova_client.servers.list(search_opts_args,
+            servers = sync_nova_client.servers.list(search_opts=search_opts_args,
                                            limit=self.QUERY_PER_PAGE_LIMIT,
                                            marker=marker)
             if servers:
@@ -804,6 +804,24 @@ class ComputeManager(manager.Manager):
             self._resource_tracker_dict[nodename] = rt
         return rt
 
+    def _get_csd_instance_uuid(self, instance):
+        proxy_instance_id = self._uuid_mapping.get(instance['uuid'], None)
+        if not proxy_instance_id:
+            #In this case, we search cascaded with cascading instance's
+            #display_name and uuid by name rule.
+            want_csd_name = instance['display_name'] + '@' + instance['uuid']
+            sync_nova_client = self.get_nova_sync_client()
+            search_opts = {'all_tenants': True,
+                           'display_name': want_csd_name,
+                            }
+            try:
+                vms = sync_nova_client.servers.list(search_opts=search_opts)
+                if vms:
+                    proxy_instance_id = vms[0].id
+            except Exception:
+                pass
+        return proxy_instance_id
+
     def _update_resource_tracker(self, context, instance):
         """Let the resource tracker know that an instance has changed state."""
         pass
@@ -822,7 +840,7 @@ class ComputeManager(manager.Manager):
         return instance_ref
 
     def _delete_proxy_instance(self, context, instance):
-        proxy_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        proxy_instance_id = self._get_csd_instance_uuid(instance)
 
         if proxy_instance_id is None:
             LOG.error(_('Delete server %s,but can not find this server'),
@@ -900,6 +918,25 @@ class ComputeManager(manager.Manager):
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get neutron python client.'))
+
+    def _get_csg_python_client(self, context):
+        try:
+            kwargs = {
+                'auth_token': context.auth_token,
+                'username': context.user_name,
+                'tenant_id': context.tenant,
+                'auth_url': cfg.CONF.keystone_auth_url,
+                'roles': context.roles,
+                'is_admin': context.is_admin,
+                'region_name': CONF.os_region_name,
+                'nova_url': CONF.cascading_nova_url,
+                }
+            req_context = compute_context.RequestContext(**kwargs)
+            openstack_clients = clients.OpenStackClients(req_context)
+            return openstack_clients.nova()
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to get nova python client.'))
 
     def _get_nova_python_client(self, context, reg_name, nova_url):
         if self.csd_nova_client:
@@ -3263,7 +3300,7 @@ class ComputeManager(manager.Manager):
 
         with utils.temporary_mutation(context, read_deleted="yes"):
             for instance in self._running_deleted_instances(context):
-                csd_instance_uuid = self._uuid_mapping.get(instance.uuid, '')
+                csd_instance_uuid = self._get_csd_instance_uuid(instance)
                 if not csd_instance_uuid:
                     continue
                 LOG.debug(_('Get cascaded instance %s that should be deleted'),
@@ -3434,7 +3471,7 @@ class ComputeManager(manager.Manager):
 
             self._notify_about_instance_usage(context, instance,
                                               "power_off.start")
-            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+            cascaded_instance_id = self._get_csd_instance_uuid(instance)
             if cascaded_instance_id is None:
                 LOG.error(_LE('stop vm failed,can not find server'
                             ' in cascaded layer.'),
@@ -3468,7 +3505,7 @@ class ComputeManager(manager.Manager):
     def start_instance(self, context, instance):
         """Starting an instance on this host."""
         self._notify_about_instance_usage(context, instance, "power_on.start")
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
@@ -3579,7 +3616,7 @@ class ComputeManager(manager.Manager):
             disk_config = None
             if len(injected_files) > 0:
                 kwargs['personality'] = injected_files
-            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+            cascaded_instance_id = self._get_csd_instance_uuid(instance)
             if cascaded_instance_id is None:
                 LOG.error(_('Rebuild failed,can not find server %s '),
                           instance['uuid'])
@@ -3610,10 +3647,7 @@ class ComputeManager(manager.Manager):
         cascaded_ser_inf = cascaded_nova_cli.servers.get(cascaded_ins_id)
         cascaded_ser_med_inf = cascaded_ser_inf.metadata
 
-        cascading_nov_cli = self._get_nova_python_client(
-            context,
-            cfg.CONF.os_region_name,
-            cfg.CONF.cascading_nova_url)
+        cascading_nov_cli = self._get_csg_python_client(context)
         cascading_ser_inf = cascading_nov_cli.servers.get(cascading_ins_id)
         cascading_ser_med_inf = cascading_ser_inf.metadata
 
@@ -3651,7 +3685,7 @@ class ComputeManager(manager.Manager):
         #cascading patch
         self._notify_about_instance_usage(context, instance, "reboot.start")
         context = context.elevated()
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('Reboot can not find server %s.'), instance)
             return
@@ -3697,7 +3731,7 @@ class ComputeManager(manager.Manager):
         glanceClient = glance.GlanceClientWrapper()
         image = glanceClient.call(context, 2, 'get', image_id)
 
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('can not snapshot instance server %s.'),
                       instance['uuid'])
@@ -3999,7 +4033,7 @@ class ComputeManager(manager.Manager):
 
             network_info = self._get_instance_nw_info(context, instance)
             #cascading patch
-            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+            cascaded_instance_id = self._get_csd_instance_uuid(instance)
             if cascaded_instance_id is None:
                 LOG.debug(_('Confirm resize can not find server %s.'),
                           instance['uuid'])
@@ -4157,7 +4191,7 @@ class ComputeManager(manager.Manager):
             #                                     block_device_info, power_on)
 
             #cascading patch
-            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+            cascaded_instance_id = self._get_csd_instance_uuid(instance)
             if cascaded_instance_id is None:
                 LOG.debug(_('Revert resize can not find server %s.'),
                           instance['uuid'])
@@ -4481,7 +4515,7 @@ class ComputeManager(manager.Manager):
         #                                      old_instance_type, sys_meta)
 
         #cascading patch
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('Finish resize can not find server %s %s .'),
                       instance['uuid'])
@@ -4610,7 +4644,7 @@ class ComputeManager(manager.Manager):
         # instance.vm_state = vm_states.PAUSED
         # instance.task_state = None
         # instance.save(expected_task_state=task_states.PAUSING)
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         'in cascaded layer.'), instance['uuid'])
@@ -4631,7 +4665,7 @@ class ComputeManager(manager.Manager):
         context = context.elevated()
         LOG.audit(_('Unpausing'), context=context, instance=instance)
         self._notify_about_instance_usage(context, instance, 'unpause.start')
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
@@ -4654,7 +4688,7 @@ class ComputeManager(manager.Manager):
         # Store the old state
         instance.system_metadata['old_vm_state'] = instance.vm_state
 
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('start vm failed,can not find server '
                         'in cascaded layer.'),
@@ -4677,7 +4711,7 @@ class ComputeManager(manager.Manager):
         context = context.elevated()
         LOG.audit(_('Resuming'), context=context, instance=instance)
 
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.error(_('resume server,but can not find server'),
                       instance['uuid'])
@@ -4709,7 +4743,7 @@ class ComputeManager(manager.Manager):
         # output = self.driver.get_console_output(context, instance)
 
         #cascading patch
-        cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+        cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
             LOG.debug(_('get_vnc_console can not find server %s in'
                         ' cascading_info_mapping %s .'),
@@ -4786,7 +4820,7 @@ class ComputeManager(manager.Manager):
         connect_info = {}
         try:
             # access info token
-            cascaded_instance_id = self._uuid_mapping.get(instance['uuid'], '')
+            cascaded_instance_id = self._get_csd_instance_uuid(instance)
             if cascaded_instance_id is None:
                 LOG.debug(_('Get vnc_console can not find server %s .'),
                           instance['uuid'])
@@ -4909,7 +4943,7 @@ class ComputeManager(manager.Manager):
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             body_response = cascaded_nova_cli.volumes.create_server_volume(
-                self._uuid_mapping.get(instance['uuid'], ''),
+                self._get_csd_instance_uuid(instance),
                 proxy_volume_id, bdm['mount_device'])
         except Exception:  # pylint: disable=W0702
             with excutils.save_and_reraise_exception():
@@ -4958,7 +4992,7 @@ class ComputeManager(manager.Manager):
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             body_response = cascaded_nova_cli.volumes.delete_server_volume(
-                self._uuid_mapping.get(instance['uuid'], ''), proxy_volume_id)
+                self._get_csd_instance_uuid(instance), proxy_volume_id)
 
             # if not self.driver.instance_exists(instance):
             #     LOG.warn(_('Detaching volume from unknown instance'),
