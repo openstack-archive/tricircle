@@ -675,7 +675,6 @@ class ComputeManager(manager.Manager):
     SHUTDOWN_RETRY_INTERVAL = 10
     QUERY_PER_PAGE_LIMIT = 50
     INSTANCE_UUID_LENGTH = 36
-    sync_nova_client = None
 
     def __init__(self, compute_driver=None, *args, **kwargs):
         """Load configuration options and connect to the hypervisor."""
@@ -700,6 +699,8 @@ class ComputeManager(manager.Manager):
         self.instance_events = InstanceEvents()
         self._sync_power_pool = eventlet.GreenPool()
         self._syncs_in_progress = {}
+        self.sync_nova_client = None
+        self.csd_nova_client = None
 
         super(ComputeManager, self).__init__(service_name="compute",
                                              *args, **kwargs)
@@ -719,32 +720,17 @@ class ComputeManager(manager.Manager):
         self._flavor_sync_map = {}
         self._keypair_sync_map = {}
         self._uuid_mapping = {}
-        csd_nova_client = None
-
-        try:
-            kwargs = {
-                'username': CONF.nova_admin_username,
-                'password': CONF.nova_admin_password,
-                'tenant': CONF.nova_admin_tenant_name,
-                'auth_url': cfg.CONF.keystone_auth_url,
-                'region_name': CONF.proxy_region_name
-            }
-            req_context = compute_context.RequestContext(**kwargs)
-            openstack_clients = clients.OpenStackClients(req_context)
-            csd_nova_client = openstack_clients.nova()
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_('Failed to get nova python client.'))
-        if csd_nova_client is None:
+        sync_nova_client = self.get_nova_sync_client()
+        if sync_nova_client is None:
             return
-        csd_flavors = csd_nova_client.flavors.list()
+        csd_flavors = sync_nova_client.flavors.list()
 
         """ for flavors """
         for flavor in csd_flavors:
             flavor_accesses = []
             try:
                 if not flavor.is_public:
-                    flavor_accesses = (csd_nova_client.flavor_access.list(
+                    flavor_accesses = (sync_nova_client.flavor_access.list(
                         flavor=flavor.id))
             except Exception:
                 pass
@@ -764,7 +750,7 @@ class ComputeManager(manager.Manager):
             }
         """ for keypairs """
         # sync keypair when operating instance to check if it's necessary.
-        csd_keypairs = csd_nova_client.keypairs.list()
+        csd_keypairs = sync_nova_client.keypairs.list()
         for keypair in csd_keypairs:
             self._keypair_sync_map[keypair.name] = {
                 'id': keypair.id,
@@ -778,7 +764,7 @@ class ComputeManager(manager.Manager):
         }
         marker = None
         while True:
-            servers = csd_nova_client.servers.list(search_opts_args,
+            servers = sync_nova_client.servers.list(search_opts_args,
                                            limit=self.QUERY_PER_PAGE_LIMIT,
                                            marker=marker)
             if servers:
@@ -842,7 +828,7 @@ class ComputeManager(manager.Manager):
             LOG.error(_('Delete server %s,but can not find this server'),
                       proxy_instance_id)
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -915,18 +901,10 @@ class ComputeManager(manager.Manager):
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get neutron python client.'))
 
-    @staticmethod
-    def _get_nova_python_client(context, reg_name, nova_url, is_admin=False):
+    def _get_nova_python_client(self, context, reg_name, nova_url):
+        if self.csd_nova_client:
+            return self.csd_nova_client
         try:
-            admin_kwargs = {
-                'username': CONF.nova_admin_username,
-                'password': CONF.nova_admin_password,
-                'tenant': CONF.nova_admin_tenant_name,
-                'auth_url': CONF.keystone_auth_url,
-                'region_name': reg_name,
-                'nova_url': nova_url,
-            }
-
             kwargs = {
                 'auth_token': context.auth_token,
                 'username': context.user_name,
@@ -937,12 +915,10 @@ class ComputeManager(manager.Manager):
                 'region_name': reg_name,
                 'nova_url': nova_url,
             }
-            if is_admin:
-                req_context = compute_context.RequestContext(**admin_kwargs)
-            else:
-                req_context = compute_context.RequestContext(**kwargs)
+            req_context = compute_context.RequestContext(**kwargs)
             openstack_clients = clients.OpenStackClients(req_context)
-            return openstack_clients.nova()
+            self.csd_nova_client = openstack_clients.nova()
+            return self.csd_nova_client
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get nova python client.'))
@@ -1020,11 +996,7 @@ class ComputeManager(manager.Manager):
                 _projects_changed_flag):
             return
 
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
-            context,
-            cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url,
-            is_admin=True)
+        cascaded_nova_cli = self.get_nova_sync_client()
 
         if _update_flag:
             # update = delete + create new.
@@ -1096,11 +1068,8 @@ class ComputeManager(manager.Manager):
             _update_keypair_flag = True
         else:
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
-            context,
-            cfg.CONF.proxy_region_name,
-            cfg.CONF.cascaded_nova_url,
-            is_admin=True)
+        cascaded_nova_cli = self.get_nova_sync_client()
+
         if _update_keypair_flag:
             LOG.info(_('delete the cascaded keypair %s by id: %s'),
                      csd_keypair['name'], csd_keypair['id'])
@@ -1116,6 +1085,21 @@ class ComputeManager(manager.Manager):
         }
         LOG.debug(_('create/update keypair %s done.'), kp_name)
 
+    def get_nova_sync_client(self):
+        if self.sync_nova_client:
+            return self.sync_nova_client
+        kwargs = {
+            'username': cfg.CONF.nova_admin_username,
+            'password': cfg.CONF.nova_admin_password,
+            'tenant': cfg.CONF.nova_admin_tenant_name,
+            'auth_url': cfg.CONF.keystone_auth_url,
+            'region_name': cfg.CONF.proxy_region_name
+        }
+        req_context = compute_context.RequestContext(**kwargs)
+        openstack_clients = clients.OpenStackClients(req_context)
+        self.sync_nova_client = openstack_clients.nova()
+        return self.sync_nova_client
+
     @periodic_task.periodic_task(spacing=CONF.sync_instance_state_interval,
                                  run_immediately=True)
     def _heal_instance_state(self, context):
@@ -1129,17 +1113,7 @@ class ComputeManager(manager.Manager):
                 return
         self._last_info_instance_state_heal = curr_time
 
-        kwargs = {
-            'username': cfg.CONF.nova_admin_username,
-            'password': cfg.CONF.nova_admin_password,
-            'tenant': cfg.CONF.nova_admin_tenant_name,
-            'auth_url': cfg.CONF.keystone_auth_url,
-            'region_name': cfg.CONF.proxy_region_name
-        }
-        req_context = compute_context.RequestContext(**kwargs)
-        openstack_clients = clients.OpenStackClients(req_context)
-        if not self.sync_nova_client:
-            self.sync_nova_client = openstack_clients.nova()
+        sync_client = self.get_nova_sync_client()
         # cascaded_nova_cli = openstack_clients.nova()
         try:
             # if self._change_since_time is None:
@@ -1167,17 +1141,9 @@ class ComputeManager(manager.Manager):
 
             marker = None
             while True:
-                try:
-                    servers = self.sync_nova_client.servers.list(
-                        search_opts=search_opts_args,
-                        limit=self.QUERY_PER_PAGE_LIMIT,
-                        marker=marker)
-                except Client_Unauthorized:
-                    openstack_clients = clients.OpenStackClients(req_context)
-                    self.sync_nova_client = openstack_clients.nova()
-                    LOG.debug(_('the token is timed out in sync_nova_client,'
-                                'fetch a new token form keystone.'))
-                    continue
+                servers = sync_client.servers.list(search_opts=search_opts_args,
+                    limit=self.QUERY_PER_PAGE_LIMIT, marker=marker)
+
                 if servers:
                     marker = servers[-1].id
                 else:
@@ -2891,7 +2857,7 @@ class ComputeManager(manager.Manager):
                             requested_networks=None, injected_files=None, admin_password=None,
                             is_first_time=False, node=None, legacy_bdm_in_spec=True,
                             physical_ports=None):
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(context,
+        cascaded_nova_cli = self._get_nova_python_client(context,
                             cfg.CONF.proxy_region_name, cfg.CONF.cascaded_nova_url)
         nicsList = []
         for port in physical_ports:
@@ -3293,20 +3259,7 @@ class ComputeManager(manager.Manager):
     @periodic_task.periodic_task(
             spacing=CONF.running_deleted_instance_poll_interval)
     def _cleanup_running_deleted_instances(self, context):
-        try:
-            kwargs = {
-                'username': CONF.nova_admin_username,
-                'password': CONF.nova_admin_password,
-                'tenant': CONF.nova_admin_tenant_name,
-                'auth_url': cfg.CONF.keystone_auth_url,
-                'region_name': CONF.proxy_region_name
-            }
-            req_context = compute_context.RequestContext(**kwargs)
-            openstack_clients = clients.OpenStackClients(req_context)
-            csd_nova_client = openstack_clients.nova()
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_('Failed to get nova python client.'))
+        sync_nova_client = self.get_nova_sync_client()
 
         with utils.temporary_mutation(context, read_deleted="yes"):
             for instance in self._running_deleted_instances(context):
@@ -3316,9 +3269,9 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Get cascaded instance %s that should be deleted'),
                           csd_instance_uuid)
                 try:
-                    csd_instance = csd_nova_client.servers.get(csd_instance_uuid)
+                    csd_instance = sync_nova_client.servers.get(csd_instance_uuid)
                     if csd_instance._info['OS-EXT-STS:vm_state'] != 'deleted':
-                        csd_nova_client.servers.delete(csd_instance)
+                        sync_nova_client.servers.delete(csd_instance)
                         self._uuid_mapping.pop(instance.uuid, '')
                         LOG.debug(_('delete the cascaded instance %s in'
                                     'periodic_task'), csd_instance.id)
@@ -3487,7 +3440,7 @@ class ComputeManager(manager.Manager):
                             ' in cascaded layer.'),
                           instance['uuid'])
                 return
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
@@ -3520,7 +3473,7 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -3636,29 +3589,28 @@ class ComputeManager(manager.Manager):
                                                                 image_ref)
             else:
                 image_uuid = image_ref
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             cascaded_nova_cli.servers.rebuild(cascaded_instance_id, image_uuid,
                                             new_pass, disk_config, **kwargs)
 
-    @staticmethod
-    def _heal_syn_server_metadata(context,
+    def _heal_syn_server_metadata(self, context,
                                   cascading_ins_id, cascaded_ins_id):
         """
         when only reboots the server scenario,
         needs to synchronize server metadata between
         logical and physical openstack.
         """
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         cascaded_ser_inf = cascaded_nova_cli.servers.get(cascaded_ins_id)
         cascaded_ser_med_inf = cascaded_ser_inf.metadata
 
-        cascading_nov_cli = ComputeManager._get_nova_python_client(
+        cascading_nov_cli = self._get_nova_python_client(
             context,
             cfg.CONF.os_region_name,
             cfg.CONF.cascading_nova_url)
@@ -3703,12 +3655,12 @@ class ComputeManager(manager.Manager):
         if cascaded_instance_id is None:
             LOG.error(_('Reboot can not find server %s.'), instance)
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
         try:
-            ComputeManager._heal_syn_server_metadata(context, instance['uuid'],
+            self._heal_syn_server_metadata(context, instance['uuid'],
                                                      cascaded_instance_id)
             self._sync_instance_flavor(context, instance)
 
@@ -3750,7 +3702,7 @@ class ComputeManager(manager.Manager):
             LOG.error(_('can not snapshot instance server %s.'),
                       instance['uuid'])
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4053,7 +4005,7 @@ class ComputeManager(manager.Manager):
                           instance['uuid'])
                 return
 
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
@@ -4210,7 +4162,7 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Revert resize can not find server %s.'),
                           instance['uuid'])
                 return
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
@@ -4535,7 +4487,7 @@ class ComputeManager(manager.Manager):
                       instance['uuid'])
             return
 
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4663,7 +4615,7 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         'in cascaded layer.'), instance['uuid'])
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4684,7 +4636,7 @@ class ComputeManager(manager.Manager):
             LOG.error(_('start vm failed,can not find server'
                         ' in cascaded layer.'), instance['uuid'])
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4708,7 +4660,7 @@ class ComputeManager(manager.Manager):
                         'in cascaded layer.'),
                       instance['uuid'])
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4731,7 +4683,7 @@ class ComputeManager(manager.Manager):
                       instance['uuid'])
             return
 
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4763,7 +4715,7 @@ class ComputeManager(manager.Manager):
                         ' cascading_info_mapping %s .'),
                       instance['uuid'], self.cascading_info_mapping)
             return
-        cascaded_nova_cli = ComputeManager._get_nova_python_client(
+        cascaded_nova_cli = self._get_nova_python_client(
             context,
             cfg.CONF.proxy_region_name,
             cfg.CONF.cascaded_nova_url)
@@ -4839,7 +4791,7 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Get vnc_console can not find server %s .'),
                           instance['uuid'])
                 return
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
@@ -4952,7 +4904,7 @@ class ComputeManager(manager.Manager):
                           instance['uuid'], bdm.volume_id)
                 return
 
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
@@ -5001,7 +4953,7 @@ class ComputeManager(manager.Manager):
                             'in physical opensack lay,logical volume id %s'),
                           instance['uuid'], volume_id)
                 return
-            cascaded_nova_cli = ComputeManager._get_nova_python_client(
+            cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
