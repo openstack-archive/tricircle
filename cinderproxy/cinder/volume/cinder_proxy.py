@@ -483,8 +483,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                 else:
                     break
 
-            LOG.debug(_('cascade info: pagination query, volumes for update'
-                        'status %s'), volumes)
+            LOG.debug(_('cascade info: ready to update volume status from '
+                        'pagination query. volumes: %s'), volumes)
             return volumes
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
@@ -538,9 +538,9 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _update_volume_types(self, context, volumetypes):
         vol_types = self.db.volume_type_get_all(context, inactive=False)
-        LOG.debug(_("cascade info, vol_types cascading :%s"), vol_types)
+        LOG.debug(_("Cascade info:, vol_types cascading :%s"), vol_types)
         for volumetype in volumetypes:
-            LOG.debug(_("cascade info, vol types cascaded :%s"), volumetype)
+            LOG.debug(_("Cascade info: vol types cascaded :%s"), volumetype)
             volume_type_name = volumetype._info['name']
             if volume_type_name not in vol_types.keys():
                 extraspec = volumetype._info['extra_specs']
@@ -568,10 +568,10 @@ class CinderProxy(manager.SchedulerDependentManager):
                 qos_spec_value['consumer'] = \
                     qos_cascaded._info['consumer']
                 qos_create_val['qos_specs'] = qos_spec_value
-                LOG.info(_('Cascade info, create qos_spec %sin db'),
+                LOG.info(_('Cascade info: create qos_spec %sin db'),
                          qos_name_cascaded)
                 self.db.qos_specs_create(context, qos_create_val)
-                LOG.info(_('Cascade info, qos_spec finished %sin db'),
+                LOG.info(_('Cascade info: qos_spec finished %sin db'),
                          qos_create_val)
 
             """update qos specs association with vol types from cascaded
@@ -586,16 +586,16 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             for assoc in association:
                 assoc_name = assoc._info['name']
-                LOG.debug(_("Cascade info, assoc name %s"), assoc_name)
+                LOG.debug(_("Cascade info: assoc name %s"), assoc_name)
                 if assoc_ccd is None or assoc_name not in assoc_ccd:
                     voltype = \
                         self.db.volume_type_get_by_name(context,
                                                         assoc_name)
-                    LOG.debug(_("Cascade info, voltypes %s"), voltype)
+                    LOG.debug(_("Cascade info: voltypes %s"), voltype)
                     self.db.qos_specs_associate(context,
                                                 qos_cascading['id'],
                                                 voltype['id'],)
-        LOG.debug(_("Cascade info, update qos  finished"))
+        LOG.debug(_("Cascade info: update qos from cascaded finished"))
 
     @periodic_task.periodic_task(spacing=CONF.volume_sync_interval,
                                  run_immediately=True)
@@ -900,19 +900,19 @@ class CinderProxy(manager.SchedulerDependentManager):
             # cascaded_snapshot_id = snapshot_ref['mapping_uuid']
             cascaded_snapshot_id = \
                 self.volumes_mapping_cache['snapshots'].get(snapshot_id, '')
-            LOG.info(_("Cascade info: delete casecade snapshot:%s"),
+            LOG.info(_("Cascade info: delete cascaded snapshot:%s"),
                      cascaded_snapshot_id)
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
             cinderClient.volume_snapshots.get(cascaded_snapshot_id)
             resp = cinderClient.volume_snapshots.delete(cascaded_snapshot_id)
             self.volumes_mapping_cache['snapshots'].pop(snapshot_id, '')
-            LOG.info(_("delete casecade snapshot %s successfully. resp :%s"),
+            LOG.info(_("delete cascaded snapshot %s successfully. resp :%s"),
                      cascaded_snapshot_id, resp)
             return
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['snapshots'].pop(snapshot_id, '')
-            LOG.info(_("delete casecade snapshot %s successfully."),
+            LOG.info(_("delete cascaded snapshot %s successfully."),
                      cascaded_snapshot_id)
             return
         except Exception:
@@ -920,7 +920,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 self.db.snapshot_update(context,
                                         snapshot_id,
                                         {'status': 'error_deleting'})
-                LOG.error(_("failed to delete cascade snapshot %s"),
+                LOG.error(_("failed to delete cascaded snapshot %s"),
                           cascaded_snapshot_id)
 
     def attach_volume(self, context, volume_id, instance_uuid, host_name,
@@ -990,7 +990,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         'id', 'container_format', 'disk_format'
 
         """
-        LOG.info(_("cascade info, copy volume to image, image_meta is:%s"),
+        LOG.info(_("Cascade info: copy volume to image, image_meta is:%s"),
                  image_meta)
         force = image_meta.get('force', False)
         image_name = image_meta.get("name")
@@ -1046,104 +1046,115 @@ class CinderProxy(manager.SchedulerDependentManager):
                 self.db.volume_update(context, volume_id,
                                       {'status': 'in-use'})
 
-    def accept_transfer(self, context, volume_id, new_user, new_project):
-        # NOTE(jdg): need elevated context as we haven't "given" the vol
-        # yet
-        return
-
-    def _migrate_volume_generic(self, ctxt, volume, host):
-        rpcapi = volume_rpcapi.VolumeAPI()
-
-        # Create new volume on remote host
-        new_vol_values = {}
-        for k, v in volume.iteritems():
-            new_vol_values[k] = v
-        del new_vol_values['id']
-        del new_vol_values['_name_id']
-        # We don't copy volume_type because the db sets that according to
-        # volume_type_id, which we do copy
-        del new_vol_values['volume_type']
-        new_vol_values['host'] = host['host']
-        new_vol_values['status'] = 'creating'
-        new_vol_values['migration_status'] = 'target:%s' % volume['id']
-        new_vol_values['attach_status'] = 'detached'
-        new_volume = self.db.volume_create(ctxt, new_vol_values)
-        rpcapi.create_volume(ctxt, new_volume, host['host'],
-                             None, None, allow_reschedule=False)
-
-        # Wait for new_volume to become ready
-        starttime = time.time()
-        deadline = starttime + CONF.migration_create_volume_timeout_secs
-        new_volume = self.db.volume_get(ctxt, new_volume['id'])
-        tries = 0
-        while new_volume['status'] != 'available':
-            tries = tries + 1
-            now = time.time()
-            if new_volume['status'] == 'error':
-                msg = _("failed to create new_volume on destination host")
-                raise exception.VolumeMigrationFailed(reason=msg)
-            elif now > deadline:
-                msg = _("timeout creating new_volume on destination host")
-                raise exception.VolumeMigrationFailed(reason=msg)
-            else:
-                time.sleep(tries ** 2)
-            new_volume = self.db.volume_get(ctxt, new_volume['id'])
-
-        # Copy the source volume to the destination volume
-        try:
-            if volume['status'] == 'available':
-                # The above call is synchronous so we complete the migration
-                self.migrate_volume_completion(ctxt, volume['id'],
-                                               new_volume['id'], error=False)
-            else:
-                nova_api = compute.API()
-                # This is an async call to Nova, which will call the completion
-                # when it's done
-                nova_api.update_server_volume(ctxt, volume['instance_uuid'],
-                                              volume['id'], new_volume['id'])
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                msg = _("Failed to copy volume %(vol1)s to %(vol2)s")
-                LOG.error(msg % {'vol1': volume['id'],
-                                 'vol2': new_volume['id']})
-                volume = self.db.volume_get(ctxt, volume['id'])
-                # If we're in the completing phase don't delete the target
-                # because we may have already deleted the source!
-                if volume['migration_status'] == 'migrating':
-                    rpcapi.delete_volume(ctxt, new_volume)
-                new_volume['migration_status'] = None
-
-    def migrate_volume_completion(self, ctxt, volume_id, new_volume_id,
-                                  error=False):
-        volume = self.db.volume_get(ctxt, volume_id)
-        new_volume = self.db.volume_get(ctxt, new_volume_id)
-        rpcapi = volume_rpcapi.VolumeAPI()
-
-        if error:
-            new_volume['migration_status'] = None
-            rpcapi.delete_volume(ctxt, new_volume)
-            self.db.volume_update(ctxt, volume_id, {'migration_status': None})
-            return volume_id
-
-        self.db.volume_update(ctxt, volume_id,
-                              {'migration_status': 'completing'})
-
-        # Delete the source volume (if it fails, don't fail the migration)
-        try:
-            self.delete_volume(ctxt, volume_id)
-        except Exception as ex:
-            msg = _("Failed to delete migration source vol %(vol)s: %(err)s")
-            LOG.error(msg % {'vol': volume_id, 'err': ex})
-
-        self.db.finish_volume_migration(ctxt, volume_id, new_volume_id)
-        self.db.volume_destroy(ctxt, new_volume_id)
-        self.db.volume_update(ctxt, volume_id, {'migration_status': None})
-        return volume['id']
-
-    def migrate_volume(self, ctxt, volume_id, host, force_host_copy=False):
-        """Migrate the volume to the specified host (called on source host)."""
-        return
-
     def initialize_connection(self, context, volume_id, connector):
         """Prepare volume for connection from host represented by connector.
-           volume in openstack cascading level is just a logi
+           volume in openstack cascading level is just a logical data,
+           initialize connection has losts its meaning, so this interface here
+           just return a None value
+        """
+        return None
+
+    def terminate_connection(self, context, volume_id, connector, force=False):
+        """Cleanup connection from host represented by connector.
+           volume in openstack cascading level is just a logical data,
+           terminate connection has losts its meaning, so this interface here
+           just return a None value
+        """
+        return None
+
+    @periodic_task.periodic_task
+    def _report_driver_status(self, context):
+        """cinder cascading driver has losts its meaning.
+           so driver report info is just a copy of simulation message
+        """
+        LOG.info(_("report simulation volume driver"))
+        simu_location_info = 'LVMVolumeDriver:Huawei:cinder-volumes:default:0'
+
+        volume_stats = {
+            'pools': [{
+                'pool_name': 'OpenStack_Cascading',
+                'QoS_support': True,
+                'free_capacity_gb': 10240.0,
+                'location_info': simu_location_info,
+                'total_capacity_gb': 10240.0,
+                'reserved_percentage': 0
+            }],
+            'driver_version': '2.0.0',
+            'vendor_name': 'Huawei',
+            'volume_backend_name': 'LVM_iSCSI',
+            'storage_protocol': 'iSCSI'}
+
+        self.update_service_capabilities(volume_stats)
+
+    def publish_service_capabilities(self, context):
+        """Collect driver status and then publish."""
+        self._report_driver_status(context)
+        self._publish_service_capabilities(context)
+
+    def _reset_stats(self):
+        LOG.info(_("Clear capabilities"))
+        self._last_volume_stats = []
+
+    def notification(self, context, event):
+        LOG.info(_("Notification {%s} received"), event)
+        self._reset_stats()
+
+    def _notify_about_volume_usage(self,
+                                   context,
+                                   volume,
+                                   event_suffix,
+                                   extra_usage_info=None):
+        volume_utils.notify_about_volume_usage(
+            context, volume, event_suffix,
+            extra_usage_info=extra_usage_info, host=self.host)
+
+    def _notify_about_snapshot_usage(self,
+                                     context,
+                                     snapshot,
+                                     event_suffix,
+                                     extra_usage_info=None):
+        volume_utils.notify_about_snapshot_usage(
+            context, snapshot, event_suffix,
+            extra_usage_info=extra_usage_info, host=self.host)
+
+    def extend_volume(self, context, volume_id, new_size, reservations):
+        volume = self.db.volume_get(context, volume_id)
+
+        self._notify_about_volume_usage(context, volume, "resize.start")
+        try:
+            LOG.info(_("volume %s: extending"), volume['id'])
+
+            cinderClient = self._get_cinder_cascaded_user_client(context)
+
+            # vol_ref = self.db.volume_get(context, volume_id)
+            # cascaded_volume_id = vol_ref['mapping_uuid']
+            cascaded_volume_id = \
+                self.volumes_mapping_cache['volumes'].get(volume_id, '')
+            LOG.info(_("Cascade info: extend volume cascaded volume id is:%s"),
+                     cascaded_volume_id)
+            cinderClient.volumes.extend(cascaded_volume_id, new_size)
+            LOG.info(_("Cascade info: volume %s: extended successfully"),
+                     volume['id'])
+
+        except Exception:
+            LOG.exception(_("volume %s: Error trying to extend volume"),
+                          volume_id)
+            try:
+                self.db.volume_update(context, volume['id'],
+                                      {'status': 'error_extending'})
+            finally:
+                QUOTAS.rollback(context, reservations)
+                return
+
+        QUOTAS.commit(context, reservations)
+        self.db.volume_update(context, volume['id'], {'size': int(new_size),
+                                                      'status': 'extending'})
+        self._notify_about_volume_usage(
+            context, volume, "resize.end",
+            extra_usage_info={'size': int(new_size)})
+
+    def migrate_volume(self, ctxt, volume_id, host, force_host_copy=False):
+        """Migrate the volume to the specified host (called on source host).
+           the interface is being realized
+        """
+        return
