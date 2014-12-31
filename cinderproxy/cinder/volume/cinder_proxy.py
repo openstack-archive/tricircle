@@ -15,7 +15,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 """
-Cinder_proxy manages creating, attaching, detaching, and persistent storage.
+Cinder-proxy manages creating, attaching, detaching, and persistent storage.
+Cinder-Proxy acts as the same role of Cinder-Volume in cascading OpenStack.
+Cinder-Proxy treats cascaded Cinder as its cinder volume,convert the internal
+request message from the message bus to restful API calling to cascaded Cinder.
 
 Persistent storage volumes keep their state independent of instances.  You can
 attach to an instance, terminate the instance, spawn a new instance (even
@@ -33,15 +36,8 @@ intact.
 :num_shell_tries:  Number of times to attempt to run commands (default: 3)
 
 """
-
-
 import time
-import datetime
 
-from oslo.config import cfg
-from oslo import messaging
-
-from cinder import compute
 from cinder import context
 from cinder import exception
 from cinder import manager
@@ -56,14 +52,16 @@ from cinder.openstack.common import log as logging
 from cinder.openstack.common import periodic_task
 from cinder.openstack.common import timeutils
 from cinder.volume.configuration import Configuration
-from cinder.volume import rpcapi as volume_rpcapi
 from cinder.volume import utils as volume_utils
-from cinderclient import service_catalog
 from cinderclient.v2 import client as cinder_client
 from cinderclient import exceptions as cinder_exception
-from keystoneclient.v2_0 import client as kc
 
 from eventlet.greenpool import GreenPool
+
+from keystoneclient.v2_0 import client as kc
+from oslo.config import cfg
+from oslo import messaging
+
 LOG = logging.getLogger(__name__)
 
 QUOTAS = quota.QUOTAS
@@ -195,9 +193,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         self.configuration = Configuration(volume_manager_opts,
                                            config_group=service_name)
         self._tp = GreenPool()
-
         self.volume_api = volume.API()
-
         self._last_info_volume_state_heal = 0
         self._change_since_time = None
         self.volumes_mapping_cache = {'volumes': {}, 'snapshots': {}}
@@ -207,7 +203,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _init_volume_mapping_cache(self):
         try:
-            volumes =\
+            volumes = \
                 self._query_vol_cascaded_pagination(change_since_time=None)
             for vol in volumes:
                 ccding_volume_id = self._get_ccding_volume_id(vol)
@@ -496,7 +492,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         """
         try:
             opts = {'all_tenants': True}
-            snapshots =\
+            snapshots = \
                 self.adminCinderClient.volume_snapshots.list(search_opts=opts)
             LOG.debug(_('cascade info: snapshots query.'
                         'snapshots: %s'),  snapshots)
@@ -518,9 +514,9 @@ class CinderProxy(manager.SchedulerDependentManager):
                                        })
             elif volume_status == "available":
                 if volume._info['bootable'].lower() == 'false':
-                    bv = '0'
+                    bootable_vl = '0'
                 else:
-                    bv = '1'
+                    bootable_vl = '1'
                 self.db.volume_update(context, volume_id,
                                       {'status': volume._info['status'],
                                        'attach_status': 'detached',
@@ -528,7 +524,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                                        'attached_host': None,
                                        'mountpoint': None,
                                        'attach_time': None,
-                                       'bootable': bv
+                                       'bootable': bootable_vl
                                        })
             else:
                 self.db.volume_update(context, volume_id,
@@ -577,11 +573,11 @@ class CinderProxy(manager.SchedulerDependentManager):
             """update qos specs association with vol types from cascaded
             """
             qos_specs_id = qos_cascading['id']
-            assoc_ccd =\
+            assoc_ccd = \
                 self.db.volume_type_qos_associations_get(context,
                                                          qos_specs_id)
             qos = qos_cascaded._info['id']
-            association =\
+            association = \
                 self.adminCinderClient.qos_specs.get_associations(qos)
 
             for assoc in association:
@@ -616,7 +612,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             LOG.debug(_('Cascade info: current change since time:'
                         '%s'), self._change_since_time)
-            volumes =\
+            volumes = \
                 self._query_vol_cascaded_pagination(self._change_since_time)
             if volumes:
                 self._update_volumes(context, volumes)
@@ -739,7 +735,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             LOG.info(_('Cascade info: finished to delete cascade volume %s'),
                      cascaded_volume_id)
             return
-#            self._heal_volume_mapping_cache(volume_id,casecade_volume_id,s'remove')
+            # self._heal_volume_mapping_cache(volume_id,casecade_volume_id,s'remove')
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
 
@@ -784,12 +780,12 @@ class CinderProxy(manager.SchedulerDependentManager):
             LOG.info(_("Cascade info: create snapshot while response is:%s"),
                      bodyResponse._info)
             if bodyResponse._info['status'] == 'creating':
-                self.volumes_mapping_cache['snapshots'][snapshot_id] =\
+                self.volumes_mapping_cache['snapshots'][snapshot_id] = \
                     bodyResponse._info['id']
 
             while True:
                 time.sleep(CONF.volume_sync_interval)
-                queryResponse =\
+                queryResponse = \
                     cinderClient.volume_snapshots.get(bodyResponse._info['id'])
                 query_status = queryResponse._info['status']
                 if query_status != 'creating':
@@ -1049,7 +1045,7 @@ class CinderProxy(manager.SchedulerDependentManager):
     def initialize_connection(self, context, volume_id, connector):
         """Prepare volume for connection from host represented by connector.
            volume in openstack cascading level is just a logical data,
-           initialize connection has losts its meaning, so this interface here
+           initialize connection has losts its meaning, so the interface here
            just return a None value
         """
         return None
@@ -1057,7 +1053,7 @@ class CinderProxy(manager.SchedulerDependentManager):
     def terminate_connection(self, context, volume_id, connector, force=False):
         """Cleanup connection from host represented by connector.
            volume in openstack cascading level is just a logical data,
-           terminate connection has losts its meaning, so this interface here
+           terminate connection has losts its meaning, so the interface here
            just return a None value
         """
         return None
@@ -1065,7 +1061,7 @@ class CinderProxy(manager.SchedulerDependentManager):
     @periodic_task.periodic_task
     def _report_driver_status(self, context):
         """cinder cascading driver has losts its meaning.
-           so driver report info is just a copy of simulation message
+           so driver-report info here is just a copy of simulation message
         """
         LOG.info(_("report simulation volume driver"))
         simu_location_info = 'LVMVolumeDriver:Huawei:cinder-volumes:default:0'
