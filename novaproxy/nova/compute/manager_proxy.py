@@ -675,6 +675,8 @@ class ComputeManager(manager.Manager):
     SHUTDOWN_RETRY_INTERVAL = 10
     QUERY_PER_PAGE_LIMIT = 50
     INSTANCE_UUID_LENGTH = 36
+    NEUTRON_UUID_LENGTH = 36
+    NAME_FIELD_MAX_LENGTH = 255
 
     def __init__(self, compute_driver=None, *args, **kwargs):
         """Load configuration options and connect to the hypervisor."""
@@ -720,6 +722,7 @@ class ComputeManager(manager.Manager):
         self._flavor_sync_map = {}
         self._keypair_sync_map = {}
         self._uuid_mapping = {}
+        self._network_mapping = {}
         sync_nova_client = self.get_nova_sync_client()
         if sync_nova_client is None:
             return
@@ -774,6 +777,52 @@ class ComputeManager(manager.Manager):
             for server in servers:
                 csg_instance_uuid = ComputeManager._extract_csg_uuid(server)
                 self._uuid_mapping[csg_instance_uuid] = server.id
+        """handle neutron mapping
+        """
+        self._load_cascaded_net_info()
+        LOG.debug(_('DEBUG: the neutron_mapping is %s'), self._network_mapping)
+
+    def _load_cascaded_net_info(self):
+        """
+        Only called when the compute service restarted.Gathering the cascaded
+        network's information(include network, subnet)."""
+        try:
+            csd_neutron_client = self.get_neutron_client(CONF.proxy_region_name)
+            search_opts = {'status': 'ACTIVE'}
+            csd_networks = csd_neutron_client.list_networks(**search_opts)
+            csd_subnets = csd_neutron_client.list_subnets(**search_opts)
+            for csd_net in csd_networks['networks']:
+                csg_net_id = ComputeManager._extract_nets_csg_uuid(csd_net['name'])
+                if not csg_net_id:
+                    #todo(jd) Add exception log.
+                    continue
+                self._network_mapping[csg_net_id] = {'mapping_id': csd_net['id'],
+                                                     'subnets': []}
+            for subnet in csd_subnets['subnets']:
+                network_id = subnet['network_id']
+                csg_sub_id = ComputeManager._extract_nets_csg_uuid(subnet['name'])
+                csg_net_ids = [nm[0] for nm in self._network_mapping.items()
+                               if nm[1]['mapping_id'] == network_id]
+                if not csg_net_ids:
+                #not self._network_mapping.get(network_id, None):
+                    #todo(jd) Add exception log.
+                    continue
+                self._network_mapping[csg_net_ids[0]]['subnets'].append({
+                    'csg_id': csg_sub_id,
+                    'name': subnet['name'],
+                    'id': subnet['id'],
+                    'allocation_pools': subnet['allocation_pools'],
+                    'gateway_ip': subnet['gateway_ip'],
+                    'ip_version': subnet['ip_version'],
+                    'cidr': subnet['cidr'],
+                    'tenant_id': subnet['tenant_id'],
+                    'network_id': subnet['network_id'],
+                    'enable_dhcp': subnet['enable_dhcp'],
+                    }
+                )
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Fail to synchronize the network info when start.'))
 
     @staticmethod
     def _extract_csg_uuid(server):
@@ -788,7 +837,26 @@ class ComputeManager(manager.Manager):
 
     @staticmethod
     def _gen_csd_instance_name(name, instance):
-        return name + '@' + instance['uuid']
+        max_len = (ComputeManager.NAME_FIELD_MAX_LENGTH
+                   - ComputeManager.NEUTRON_UUID_LENGTH -1)
+        save_name = name[:(max_len-len(name))] if max_len < len(name) else name
+        return save_name + '@' + instance['uuid']
+
+    @staticmethod
+    def _extract_nets_csg_uuid(neutron_obj_name):
+        uuid_len = ComputeManager.NEUTRON_UUID_LENGTH
+        if (len(neutron_obj_name) > (uuid_len+1)
+            and neutron_obj_name[-(uuid_len+1)] == '_'):
+            return neutron_obj_name[-uuid_len:]
+        return ''
+
+    @staticmethod
+    def _gen_csd_nets_name(csg_name, csg_uuid):
+        max_len = (ComputeManager.NAME_FIELD_MAX_LENGTH
+                   - ComputeManager.NEUTRON_UUID_LENGTH -1)
+        save_name = (csg_name[:(max_len-len(csg_name))]
+                     if max_len < len(csg_name) else csg_name)
+        return save_name + '_' + csg_uuid
 
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
@@ -809,7 +877,8 @@ class ComputeManager(manager.Manager):
         if not proxy_instance_id:
             #In this case, we search cascaded with cascading instance's
             #display_name and uuid by name rule.
-            want_csd_name = instance['display_name'] + '@' + instance['uuid']
+            want_csd_name = self._gen_csd_instance_name(instance['display_name'],
+                                                        instance)
             sync_nova_client = self.get_nova_sync_client()
             search_opts = {'all_tenants': True,
                            'display_name': want_csd_name,
@@ -820,6 +889,7 @@ class ComputeManager(manager.Manager):
                     proxy_instance_id = vms[0].id
             except Exception:
                 pass
+            self._uuid_mapping[instance['uuid']] = proxy_instance_id
         return proxy_instance_id
 
     def _update_resource_tracker(self, context, instance):
@@ -1218,35 +1288,29 @@ class ComputeManager(manager.Manager):
             ovs_interface_mac = netObj['address']
             fixed_ips = []
             physical_net_id_exist_flag = False
-            if net_id in self.cascading_info_mapping['networks'].keys():
-                physical_net_id = \
-                    self.cascading_info_mapping['networks'][net_id]['mapping_id']
+            if net_id in self._network_mapping.keys():
+                physical_net_id = self._network_mapping[net_id]['mapping_id']
                 physical_net_id_exist_flag = True
                 LOG.debug(_('Physical network has been created in physical'
                             ' leval,logicalNetId:%s, physicalNetId: %s '),
                           net_id, physical_net_id)
             if not physical_net_id_exist_flag:
                 raise exception.NetworkNotFound(network_id=net_id)
+
             fixed_ips.append(
-                {'ip_address':
-                     netObj['network']['subnets']
-                     [0]['ips'][0]['address']}
+                {'ip_address': netObj['network']['subnets'][0]['ips'][0]['address']}
             )
             req_body = {'port':
-                           {
-                               'tenant_id': instance['project_id'],
-                               'admin_state_up': True,
-                               'network_id': physical_net_id,
-                               'mac_address': ovs_interface_mac,
-                               'fixed_ips': fixed_ips,
-                               'binding:profile':
-                                   {"cascading_port_id": netObj['ovs_interfaceid']}
-                           }
-            }
-            neutron_client = ComputeManager._get_neutron_python_client(
-                context,
-                cfg.CONF.proxy_region_name,
-                cfg.CONF.cascaded_neutron_url)
+                           {'tenant_id': instance['project_id'],
+                            'admin_state_up': True,
+                            'network_id': physical_net_id,
+                            'mac_address': ovs_interface_mac,
+                            'fixed_ips': fixed_ips,
+                            'binding:profile': {
+                                "cascading_port_id": netObj['ovs_interfaceid']
+                            }
+                           }}
+            neutron_client = ComputeManager.get_neutron_client(CONF.proxy_region_name)
             try:
                 body_repsonse = neutron_client.create_port(req_body)
                 physical_ports.append(body_repsonse)
@@ -1259,28 +1323,8 @@ class ComputeManager(manager.Manager):
 
         return physical_ports
 
-    def _load_cascaded_net_info(self, context):
-        """ ToDO """
-        """
-        Only called when the compute service restarted.Gathering the cascaded
-        network's information(include network, subnet, port).
-
-        :return A dict which store the net mapping between cascading and
-        cascaded.
-        """
-        try:
-            cased_neutron_client = ComputeManager.\
-                _get_neutron_python_client(context,
-                                           cfg.CONF.proxy_region_name,
-                                           cfg.CONF.cascaded_neutron_url)
-            port_search_opts = {'status': 'ACTIVE'}
-            cascaded_ports = cased_neutron_client.list_ports(**port_search_opts)
-
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_('Fail to synchronize the network info when start.'))
-
-    def _get_network_req(self, network, instance):
+    @staticmethod
+    def _get_network_req(network, instance):
 
         if network['provider:network_type'] == 'vxlan':
             req_network = {
@@ -1314,31 +1358,17 @@ class ComputeManager(manager.Manager):
 
     def _heal_proxy_networks(self, context, instance, network_info):
         cascaded_network_list = []
-        self.cascading_info_mapping = dict()
-        self.cascading_info_mapping['networks'] = {}
-        cascading_info_mapping_file = os.path.join(
-            CONF.instances_path,
-            'cascading_info_mapping.json')
-        #load the file content to map
-        if os.path.isfile(cascading_info_mapping_file):
-            cascading_info_mapping_file_context = libvirt_utils.load_file(
-                cascading_info_mapping_file)
-            mapping_networks = jsonutils.loads(
-                cascading_info_mapping_file_context)['networks']
-        else:
-            LOG.exception(_('No mapping file of network: '
-                            '"cascading_info_mapping.json" exists.'))
-            return
 
         neutron_client = ComputeManager.get_neutron_client(CONF.os_region_name)
         csd_neutron_client = ComputeManager.get_neutron_client(CONF.proxy_region_name)
 
         for net_obj in network_info:
             net_id = net_obj['network']['id']
+            net_name = net_obj['network']['label']
             physical_net_id_exist_flag = False
-            if net_id in mapping_networks:
+            if net_id in self._network_mapping.keys():
                 physical_net_id_exist_flag = True
-                physical_net_id = mapping_networks[net_id]['mapping_id']
+                physical_net_id = self._network_mapping[net_id]['mapping_id']
                 cascaded_network_list.append(physical_net_id)
                 LOG.debug(_('Physical network has been exist, the mapping '
                             'is %s:%s.'), net_id, physical_net_id)
@@ -1346,33 +1376,34 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Physical network not exist.'
                           'need to create,logicalNetId:%s'),
                           net_id)
-                mapping_networks[net_id] = {'mapping_id': '', 'subnets': []}
+                self._network_mapping[net_id] = {'mapping_id': '', 'subnets': []}
                 search_opts = {'id': [net_id]}
                 logical_nets = neutron_client.list_networks(**search_opts).get('networks', [])
-                req_network = self._get_network_req(logical_nets[0], instance)
-
                 # create cascaded network and add the mapping relationship.
+                req_network = self._get_network_req(logical_nets[0], instance)
+                csd_net_name = ComputeManager._gen_csd_nets_name(net_name, net_id)
+                req_network['network']['name'] = csd_net_name
                 net_response = csd_neutron_client.create_network(req_network)
 
                 cascaded_network_list.append(net_response['network']['id'])
                 LOG.debug(_('Finish to create Physical network,'
                             'net_response %s'), req_network)
                 csd_net_id = net_response['network']['id']
-                #Only one subnet item
+                #Actually, only one subnet item in net_obj
                 cidr_list = [sn['cidr'] for sn in net_obj['network']['subnets']]
 
-                mapping_networks[net_id]['mapping_id'] = csd_net_id
-
+                self._network_mapping[net_id]['mapping_id'] = csd_net_id
             else:
                 #Can not find subnet id in "net_obj['network']['subnets']", so
                 #we have to compare the cidr.
-                csd_net_id = mapping_networks[net_id]['mapping_id']
-                mapping_subnets = mapping_networks[net_id]['subnets']
+                csd_net_id = self._network_mapping[net_id]['mapping_id']
+                mapping_subnets = self._network_mapping[net_id]['subnets']
                 cidr_list = [sn['cidr'] for sn in net_obj['network']['subnets']
                              if sn['cidr'] not in [m_sn['cidr']
                                                    for m_sn in mapping_subnets]]
                 if not cidr_list:
-                    #todo(jiadong) May check if some other subnets not exists ?
+                    #todo(jiadong) May check if some other subnets not exists
+                    # or modified ?
                     continue
                 LOG.debug(_('Check subnet not full synced, the un-sync cidrs are %s'),
                           cidr_list)
@@ -1382,17 +1413,24 @@ class ComputeManager(manager.Manager):
                 for cidr in cidr_list:
                     sub_search_opts = {'network_id': net_id, 'cidr': cidr}
                     csg_subnet = neutron_client.list_subnets(**sub_search_opts).get('subnets', [])[0]
+                    csd_subnet_name = ComputeManager._gen_csd_nets_name(csg_subnet['name'],
+                                                                        csg_subnet['id'])
                     req_subnet = {
                         'subnet': {
                             'network_id': csd_net_id,
-                            'cidr': csg_subnet['cidr'],
+                            'name': csd_subnet_name,
                             'ip_version': csg_subnet['ip_version'],
+                            'cidr': csg_subnet['cidr'],
+                            'gateway_ip': csg_subnet['gateway_ip'],
+                            'allocation_pools': csg_subnet['allocation_pools'],
+                            'enable_dhcp': csg_subnet['enable_dhcp'],
                             'tenant_id': instance['project_id']}}
                     sn_resp = csd_neutron_client.create_subnet(req_subnet)
-                    mapping_subnets = mapping_networks[net_id]['subnets']
+                    mapping_subnets = self._network_mapping[net_id]['subnets']
                     mapping_subnets.append({
-                        'id': csg_subnet['id'],
-                        'mapping_id': sn_resp['subnet']['id'],
+                        'csg_id': csg_subnet['id'],
+                        'name': csd_subnet_name,
+                        'id': sn_resp['subnet']['id'],
                         'allocation_pools': csg_subnet['allocation_pools'],
                         'gateway_ip': csg_subnet['gateway_ip'],
                         'ip_version': csg_subnet['ip_version'],
@@ -1404,12 +1442,6 @@ class ComputeManager(manager.Manager):
             except Exception:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_('Fail to synchronizate physical network'))
-
-        self.cascading_info_mapping['networks'] = mapping_networks
-        cascading_info_mapping_path = os.path.join(CONF.instances_path, 'cascading_info_mapping.json')
-        libvirt_utils.write_to_file(cascading_info_mapping_path,
-                                    jsonutils.dumps(self.cascading_info_mapping))
-
         return cascaded_network_list
 
     def _set_instance_error_state(self, context, instance):
@@ -4745,9 +4777,8 @@ class ComputeManager(manager.Manager):
         #cascading patch
         cascaded_instance_id = self._get_csd_instance_uuid(instance)
         if cascaded_instance_id is None:
-            LOG.debug(_('get_vnc_console can not find server %s in'
-                        ' cascading_info_mapping %s .'),
-                      instance['uuid'], self.cascading_info_mapping)
+            LOG.debug(_('get_vnc_console can not find server %s .'),
+                      instance['uuid'])
             return
         cascaded_nova_cli = self._get_nova_python_client(
             context,
