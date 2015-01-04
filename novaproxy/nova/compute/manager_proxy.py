@@ -3630,19 +3630,29 @@ class ComputeManager(manager.Manager):
         :param preserve_ephemeral: True if the default ephemeral storage
                                    partition must be preserved on rebuild
         """
+
+        if (bdms and
+                any(not isinstance(bdm, obj_base.NovaObject)
+                    for bdm in bdms)):
+            bdms = None
+
+        if bdms is None:
+            bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
+                context, instance.uuid)
+
         #cascading patch
         context = context.elevated()
-        with self._error_out_instance_on_exception(context, instance['uuid']):
+        with self._error_out_instance_on_exception(context, instance):
             LOG.audit(_("Rebuilding instance"), context=context,
                       instance=instance)
-            if bdms is None:
-                bdms = self.conductor_api. \
-                    block_device_mapping_get_all_by_instance(
-                    context, instance)
+            # if bdms is None:
+            #     bdms = self.conductor_api. \
+            #         block_device_mapping_get_all_by_instance(
+            #         context, instance)
             # NOTE(sirp): this detach is necessary b/c we will reattach the
             # volumes in _prep_block_devices below.
-            for bdm in self._get_volume_bdms(bdms):
-                self.volume_api.detach(context, bdm['volume_id'])
+            # for bdm in bdms:
+            #     self.volume_api.detach(context, bdm['volume_id'])
 
             kwargs = {}
             disk_config = None
@@ -3658,12 +3668,18 @@ class ComputeManager(manager.Manager):
                                                                 image_ref)
             else:
                 image_uuid = image_ref
+            rebuild_name = self._gen_csd_instance_name(instance['display_name'],
+                                                       instance)
             cascaded_nova_cli = self._get_nova_python_client(
                 context,
                 cfg.CONF.proxy_region_name,
                 cfg.CONF.cascaded_nova_url)
             cascaded_nova_cli.servers.rebuild(cascaded_instance_id, image_uuid,
-                                            new_pass, disk_config, **kwargs)
+                                              password=new_pass,
+                                              disk_config=disk_config,
+                                              preserve_ephemeral=preserve_ephemeral,
+                                              name=rebuild_name,
+                                              **kwargs)
 
     def _heal_syn_server_metadata(self, context,
                                   cascading_ins_id, cascaded_ins_id):
