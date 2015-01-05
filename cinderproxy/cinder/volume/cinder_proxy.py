@@ -15,10 +15,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 """
-Cinder-proxy manages creating, attaching, detaching, and persistent storage.
-Cinder-Proxy acts as the same role of Cinder-Volume in cascading OpenStack.
-Cinder-Proxy treats cascaded Cinder as its cinder volume,convert the internal
-request message from the message bus to restful API calling to cascaded Cinder.
+cinder-proxy manages creating, attaching, detaching, and persistent storage.
+cinder-proxy acts as the same role of cinder-volume in cascading OpenStack.
+cinder-proxy treats cascaded cinder as its cinder volume,convert the internal
+request message from the message bus to restful API calling to cascaded cinder.
 
 Persistent storage volumes keep their state independent of instances.  You can
 attach to an instance, terminate the instance, spawn a new instance (even
@@ -37,6 +37,9 @@ intact.
 
 """
 import time
+
+from oslo.config import cfg
+from oslo import messaging
 
 from cinder import context
 from cinder import exception
@@ -57,10 +60,7 @@ from cinderclient.v2 import client as cinder_client
 from cinderclient import exceptions as cinder_exception
 
 from eventlet.greenpool import GreenPool
-
 from keystoneclient.v2_0 import client as kc
-from oslo.config import cfg
-from oslo import messaging
 
 LOG = logging.getLogger(__name__)
 
@@ -216,7 +216,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 self.volumes_mapping_cache['snapshots'][ccding__snapshot_id] = \
                     snapshot._info['id']
 
-            LOG.info(_("cascading info: init volume mapping cache is %s"),
+            LOG.info(_("cascade info: init volume mapping cache is %s"),
                      self.volumes_mapping_cache)
         except Exception as ex:
             LOG.error(_("Failed init volumes mapping cache"))
@@ -312,27 +312,27 @@ class CinderProxy(manager.SchedulerDependentManager):
         if not self.image_service._is_image_available(context, image_meta):
             raise exception.ImageNotFound(image_id=image_id)
 
-        LOG.debug(_("Cascade info: image glance get_image_cascaded,"
+        LOG.debug(_("cascade ino: image glance get_image_cascaded,"
                     "cascaded_glance_url:%s"), cascaded_glance_url)
 
         locations = getattr(image_meta, 'locations', None)
-        LOG.debug(_("Cascade info: image glance get_image_cascaded,"
+        LOG.debug(_("cascade ino: image glance get_image_cascaded,"
                     "locations:%s"), locations)
         cascaded_image_id = None
         for loc in locations:
             image_url = loc.get('url')
-            LOG.debug(_("Cascade info: image glance get_image_cascaded,"
+            LOG.debug(_("cascade ino: image glance get_image_cascaded,"
                         "image_url:%s"), image_url)
             if cascaded_glance_url in image_url:
                 (cascaded_image_id, glance_netloc, use_ssl) = \
                     glance._parse_image_ref(image_url)
-                LOG.debug(_("Cascade info : Result :image glance "
+                LOG.debug(_("cascade ino : result :image glance "
                             "get_image_cascaded,%s") % cascaded_image_id)
                 break
 
         if cascaded_image_id is None:
             raise exception.CinderException(
-                _("Cascade exception: Cascaded image for image %s not exist.")
+                _("cascade exception: cascaded image for image %s not exist.")
                 % image_id)
 
         return cascaded_image_id
@@ -388,14 +388,14 @@ class CinderProxy(manager.SchedulerDependentManager):
             if snapshot_id is not None:
                 cascaded_snapshot_id = \
                     self.volumes_mapping_cache['volumes'].get(snapshot_id, '')
-                LOG.info(_('Cascade info: create volume from snapshot, '
+                LOG.info(_('cascade ino: create volume from snapshot, '
                            'cascade id:%s'), cascaded_snapshot_id)
 
             cascaded_source_volid = None
             if source_volid is not None:
                 cascaded_source_volid = \
                     self.volumes_mapping_cache['volumes'].get(volume_id, '')
-                LOG.info(_('Cascade info: create volume from source volume, '
+                LOG.info(_('cascade ino: create volume from source volume, '
                            'cascade id:%s'), cascaded_source_volid)
 
             cascaded_volume_type = None
@@ -403,7 +403,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 volume_type_ref = \
                     self.db.volume_type_get(context, volume_type_id)
                 cascaded_volume_type = volume_type_ref['name']
-                LOG.info(_('Cascade info: create volume use volume type, '
+                LOG.info(_('cascade ino: create volume use volume type, '
                            'cascade name:%s'), cascaded_volume_type)
 
             metadata = volume_properties.get('metadata', {})
@@ -418,11 +418,11 @@ class CinderProxy(manager.SchedulerDependentManager):
                         cfg.CONF.cascaded_glance_url)
                 else:
                     cascaded_image_id = image_id
-                LOG.info(_("Cascade info: create volume use image, "
+                LOG.info(_("cascade ino: create volume use image, "
                            "cascaded image id is %s:"), cascaded_image_id)
 
             availability_zone = cfg.CONF.cascaded_available_zone
-            LOG.info(_('Cascade info: create volume with available zone:%s'),
+            LOG.info(_('cascade ino: create volume with available zone:%s'),
                      availability_zone)
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
@@ -469,7 +469,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                     self.adminCinderClient.volumes.list(search_opts=sopt)
 
                 if change_since_time is None or marker is not None:
-                    LOG.info(_('cascade info: volumes pagination query.'
+                    LOG.info(_('cascade ino: volumes pagination query.'
                                'pagination_limit: %s, marker: %s, vols: '
                                '%s'), page_limit,  marker,  vols)
                 if (vols):
@@ -479,7 +479,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 else:
                     break
 
-            LOG.debug(_('cascade info: ready to update volume status from '
+            LOG.debug(_('cascade ino: ready to update volume status from '
                         'pagination query. volumes: %s'), volumes)
             return volumes
         except cinder_exception.Unauthorized:
@@ -494,7 +494,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             opts = {'all_tenants': True}
             snapshots = \
                 self.adminCinderClient.volume_snapshots.list(search_opts=opts)
-            LOG.debug(_('cascade info: snapshots query.'
+            LOG.debug(_('cascade ino: snapshots query.'
                         'snapshots: %s'),  snapshots)
             return snapshots
         except cinder_exception.Unauthorized:
@@ -503,7 +503,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _update_volumes(self, context, volumes):
         for volume in volumes:
-            LOG.debug(_("Cascade info: update volume:%s"), volume._info)
+            LOG.debug(_("cascade ino: update volume:%s"), volume._info)
             volume_id = volume._info['metadata']['logicalVolumeId']
             volume_status = volume._info['status']
             if volume_status == "in-use":
@@ -529,21 +529,21 @@ class CinderProxy(manager.SchedulerDependentManager):
             else:
                 self.db.volume_update(context, volume_id,
                                       {'status': volume._info['status']})
-                LOG.info(_('Cascade info: Updated the volume  %s status from'
+                LOG.info(_('cascade ino: updated the volume  %s status from'
                            'cinder-proxy'), volume_id)
 
     def _update_volume_types(self, context, volumetypes):
         vol_types = self.db.volume_type_get_all(context, inactive=False)
-        LOG.debug(_("Cascade info:, vol_types cascading :%s"), vol_types)
+        LOG.debug(_("cascade ino:, vol_types cascading :%s"), vol_types)
         for volumetype in volumetypes:
-            LOG.debug(_("Cascade info: vol types cascaded :%s"), volumetype)
+            LOG.debug(_("cascade ino: vol types cascaded :%s"), volumetype)
             volume_type_name = volumetype._info['name']
             if volume_type_name not in vol_types.keys():
                 extraspec = volumetype._info['extra_specs']
                 self.db.volume_type_create(
                     context,
                     dict(name=volume_type_name, extra_specs=extraspec))
-        LOG.debug(_("Cascade info: update volume types finished"))
+        LOG.debug(_("cascade ino: update volume types finished"))
 
     def _update_volume_qos(self, context, qosSpecs):
         qos_specs = self.db.qos_specs_get_all(context, inactive=False)
@@ -564,10 +564,10 @@ class CinderProxy(manager.SchedulerDependentManager):
                 qos_spec_value['consumer'] = \
                     qos_cascaded._info['consumer']
                 qos_create_val['qos_specs'] = qos_spec_value
-                LOG.info(_('Cascade info: create qos_spec %sin db'),
+                LOG.info(_('cascade ino: create qos_spec %sin db'),
                          qos_name_cascaded)
                 self.db.qos_specs_create(context, qos_create_val)
-                LOG.info(_('Cascade info: qos_spec finished %sin db'),
+                LOG.info(_('cascade ino: qos_spec finished %sin db'),
                          qos_create_val)
 
             """update qos specs association with vol types from cascaded
@@ -582,16 +582,16 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             for assoc in association:
                 assoc_name = assoc._info['name']
-                LOG.debug(_("Cascade info: assoc name %s"), assoc_name)
+                LOG.debug(_("cascade ino: assoc name %s"), assoc_name)
                 if assoc_ccd is None or assoc_name not in assoc_ccd:
                     voltype = \
                         self.db.volume_type_get_by_name(context,
                                                         assoc_name)
-                    LOG.debug(_("Cascade info: voltypes %s"), voltype)
+                    LOG.debug(_("cascade ino: voltypes %s"), voltype)
                     self.db.qos_specs_associate(context,
                                                 qos_cascading['id'],
                                                 voltype['id'],)
-        LOG.debug(_("Cascade info: update qos from cascaded finished"))
+        LOG.debug(_("cascade ino: update qos from cascaded finished"))
 
     @periodic_task.periodic_task(spacing=CONF.volume_sync_interval,
                                  run_immediately=True)
@@ -610,7 +610,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         self._last_info_volume_state_heal = curr_time
 
         try:
-            LOG.debug(_('Cascade info: current change since time:'
+            LOG.debug(_('cascade ino: current change since time:'
                         '%s'), self._change_since_time)
             volumes = \
                 self._query_vol_cascaded_pagination(self._change_since_time)
@@ -725,21 +725,21 @@ class CinderProxy(manager.SchedulerDependentManager):
             # caecaded_volume_id = vol_ref['mapping_uuid']
             cascaded_volume_id = \
                 self.volumes_mapping_cache['volumes'].get(volume_id, '')
-            LOG.info(_('Cascade info: prepare to delete cascaded volume  %s.'),
+            LOG.info(_('cascade ino: prepare to delete cascaded volume  %s.'),
                      cascaded_volume_id)
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
             cinderClient.volumes.get(cascaded_volume_id)
             cinderClient.volumes.delete(volume=cascaded_volume_id)
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
-            LOG.info(_('Cascade info: finished to delete cascade volume %s'),
+            LOG.info(_('cascade ino: finished to delete cascade volume %s'),
                      cascaded_volume_id)
             return
             # self._heal_volume_mapping_cache(volume_id,casecade_volume_id,s'remove')
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
 
-            LOG.info(_('Cascade info: finished to delete cascade volume %s'),
+            LOG.info(_('cascade ino: finished to delete cascade volume %s'),
                      cascaded_volume_id)
             return
         except Exception:
@@ -747,8 +747,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                 self.db.volume_update(context,
                                       volume_id,
                                       {'status': 'error_deleting'})
-                LOG.error(_('Cascade info: failed to delete cascaded'
-                            ' volume %s'), cascaded_volume_id)
+                LOG.error(_('cascade ino: failed to delete cascaded'
+                            'volume %s'), cascaded_volume_id)
 
     def create_snapshot(self, context, volume_id, snapshot_id):
         """Creates and exports the snapshot."""
@@ -768,7 +768,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             cascaded_volume_id = \
                 self.volumes_mapping_cache['volumes'].get(volume_id, '')
-            LOG.debug(_('Cascade info: create snapshot, cascaded volume'
+            LOG.debug(_('cascade ino: create snapshot, cascaded volume'
                         'id is : %s '), cascaded_volume_id)
             cinderClient = self._get_cinder_cascaded_user_client(context)
             bodyResponse = cinderClient.volume_snapshots.create(
@@ -777,7 +777,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 name=display_name,
                 description=display_description)
 
-            LOG.info(_("Cascade info: create snapshot while response is:%s"),
+            LOG.info(_("cascade ino: create snapshot while response is:%s"),
                      bodyResponse._info)
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['snapshots'][snapshot_id] = \
@@ -821,7 +821,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                                'snapshot_id': snapshot_id})
                 raise exception.MetadataCopyFailure(reason=ex)
 
-        LOG.info(_("Cascade info: snapshot %s, created successfully"),
+        LOG.info(_("cascade ino: snapshot %s, created successfully"),
                  snapshot_ref['id'])
         self._notify_about_snapshot_usage(context, snapshot_ref, "create.end")
 
@@ -896,7 +896,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             # cascaded_snapshot_id = snapshot_ref['mapping_uuid']
             cascaded_snapshot_id = \
                 self.volumes_mapping_cache['snapshots'].get(snapshot_id, '')
-            LOG.info(_("Cascade info: delete cascaded snapshot:%s"),
+            LOG.info(_("cascade ino: delete cascaded snapshot:%s"),
                      cascaded_snapshot_id)
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
@@ -986,7 +986,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         'id', 'container_format', 'disk_format'
 
         """
-        LOG.info(_("Cascade info: copy volume to image, image_meta is:%s"),
+        LOG.info(_("cascade ino: copy volume to image, image_meta is:%s"),
                  image_meta)
         force = image_meta.get('force', False)
         image_name = image_meta.get("name")
@@ -996,7 +996,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         # casecaded_volume_id = vol_ref['mapping_uuid']
         cascaded_volume_id = \
             self.volumes_mapping_cache['volumes'].get(volume_id, '')
-        LOG.debug(_('Cascade info: cop vol to img, ccded vol id is %s'),
+        LOG.debug(_('cascade ino: cop vol to img, ccded vol id is %s'),
                   cascaded_volume_id)
         cinderClient = self._get_cinder_cascaded_user_client(context)
 
@@ -1009,7 +1009,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         if cfg.CONF.glance_cascading_flag:
             cascaded_image_id = resp[1]['os-volume_upload_image']['image_id']
-            LOG.debug(_('Cascade info:upload volume to image,get cascaded '
+            LOG.debug(_('cascade ino:upload volume to image,get cascaded '
                         'image id is %s'), cascaded_image_id)
             url = '%s/v2/images/%s' % (cfg.CONF.cascaded_glance_url,
                                        cascaded_image_id)
@@ -1022,7 +1022,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             image_service, image_id = \
                 glance.get_remote_image_service(context, image_meta['id'])
-            LOG.debug(_("Cascade info: image service:%s"), image_service)
+            LOG.debug(_("cascade ino: image service:%s"), image_service)
             glanceClient = glance.GlanceClientWrapper(
                 context,
                 netloc=cfg.CONF.cascading_glance_url,
@@ -1030,7 +1030,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 version="2")
             glanceClient.call(context, 'update', image_id,
                               remove_props=None, locations=locations)
-            LOG.debug(_('Cascade info:upload volume to image,finish update'
+            LOG.debug(_('cascade ino:upload volume to image,finish update'
                         'image %s locations %s.'), (image_id, locations))
 
             volume = self.db.volume_get(context, volume_id)
@@ -1126,10 +1126,10 @@ class CinderProxy(manager.SchedulerDependentManager):
             # cascaded_volume_id = vol_ref['mapping_uuid']
             cascaded_volume_id = \
                 self.volumes_mapping_cache['volumes'].get(volume_id, '')
-            LOG.info(_("Cascade info: extend volume cascaded volume id is:%s"),
+            LOG.info(_("cascade ino: extend volume cascaded volume id is:%s"),
                      cascaded_volume_id)
             cinderClient.volumes.extend(cascaded_volume_id, new_size)
-            LOG.info(_("Cascade info: volume %s: extended successfully"),
+            LOG.info(_("cascade ino: volume %s: extended successfully"),
                      volume['id'])
 
         except Exception:
@@ -1151,4 +1151,6 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def migrate_volume(self, ctxt, volume_id, host, force_host_copy=False):
         """Migrate the volume to the specified host (called on source host).
-           the interface is b
+           the interface is being realized
+        """
+        return
