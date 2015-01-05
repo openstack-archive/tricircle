@@ -84,6 +84,9 @@ volume_manager_opts = [
                default=3600,
                help='seconds between cascading and cascaded cinders'
                     'when synchronizing volume type and qos data'),
+    cfg.BoolOpt('volume_sync_timestamp_flag',
+                default=True,
+                help='Whether to sync volume status based on timestamp'),
     cfg.BoolOpt('volume_service_inithost_offload',
                 default=False,
                 help='Offload pending volume delete during '
@@ -453,6 +456,10 @@ class CinderProxy(manager.SchedulerDependentManager):
         return volume_id
 
     def _query_vol_cascaded_pagination(self, change_since_time=None):
+
+        if not CONF.volume_sync_timestamp_flag:
+            change_since_time = None
+
         try:
             page_limit = CONF.pagination_limit
             marker = None
@@ -468,10 +475,9 @@ class CinderProxy(manager.SchedulerDependentManager):
                 vols = \
                     self.adminCinderClient.volumes.list(search_opts=sopt)
 
-                if change_since_time is None or marker is not None:
-                    LOG.info(_('cascade ino: volumes pagination query.'
-                               'pagination_limit: %s, marker: %s, vols: '
-                               '%s'), page_limit,  marker,  vols)
+                LOG.debug(_('cascade ino: volume pagination query. marker: %s,'
+                            ' pagination_limit: %s, change_since: %s, vols: %s'
+                            ), marker, page_limit, change_since_time,  vols)
                 if (vols):
                     volumes.extend(vols)
                     marker = vols[-1]._info['id']
@@ -484,7 +490,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             return volumes
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
-            return self._query_vol_cascaded_pagination()
+            return self._query_vol_cascaded_pagination(change_since_time)
 
     def _query_snapshot_cascaded_all_tenant(self):
         """ snapshot pagination query has not been supported in
