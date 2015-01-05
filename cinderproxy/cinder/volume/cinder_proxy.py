@@ -1151,6 +1151,4 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def migrate_volume(self, ctxt, volume_id, host, force_host_copy=False):
         """Migrate the volume to the specified host (called on source host).
-           the interface is being realized
-        """
-        return
+           the interface is b
