@@ -39,7 +39,7 @@ We provide two ways to install the timestamp query patch code. In this section, 
 
     - restart cinder api service
 
-    - Done. The cinder proxy should be working with a demo configuration.
+    - Done. The Cinder-Proxy should be working with a demo configuration.
 
 * **Automatic Installation**
 

@@ -19,7 +19,7 @@ _CINDER_DIR="/usr/lib64/python2.6/site-packages/cinder"
 _CINDER_INSTALL_LOG="/var/log/cinder/cinder-proxy/installation/install.log"
 
 # please set the option list set in cinder configure file
-_CINDER_CONF_OPTION=("volume_manager=cinder.volume.cinder_proxy.CinderProxy volume_sync_interval=5 voltype_sync_interval=3600 periodic_interval=5 cinder_tenant_name=admin cinder_tenant_id=1234 pagination_limit=50 cinder_username=admin cinder_password=1234 keystone_auth_url=http://10.67.148.210:5000/v2.0/ glance_cascading_flag=False cascading_glance_url=10.67.148.210:9292 cascaded_glance_url=http://10.67.148.201:9292 cascaded_cinder_url=http://10.67.148.201:8776/v2/%(project_id)s cascaded_region_name=Region_AZ1 cascaded_available_zone=AZ1")
+_CINDER_CONF_OPTION=("volume_manager=cinder.volume.cinder_proxy.CinderProxy volume_sync_interval=5 voltype_sync_interval=3600 periodic_interval=5 volume_sync_timestamp_flag=True cinder_tenant_name=admin cinder_tenant_id=1234 pagination_limit=50 cinder_username=admin cinder_password=1234 keystone_auth_url=http://10.67.148.210:5000/v2.0/ glance_cascading_flag=False cascading_glance_url=10.67.148.210:9292 cascaded_glance_url=http://10.67.148.201:9292 cascaded_cinder_url=http://10.67.148.201:8776/v2/%(project_id)s cascaded_region_name=Region_AZ1 cascaded_available_zone=AZ1")
 
 # if you did not make changes to the installation files,
 # please do not edit the following directories.
