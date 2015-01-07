@@ -1261,6 +1261,7 @@ class ComputeManager(manager.Manager):
         physical_ports = []
         for netObj in network_info:
             net_id = netObj['network']['id']
+            net_name = netObj['network']['label']
             physical_net_id = None
             ovs_interface_mac = netObj['address']
             fixed_ips = []
@@ -1277,9 +1278,12 @@ class ComputeManager(manager.Manager):
             fixed_ips.append(
                 {'ip_address': netObj['network']['subnets'][0]['ips'][0]['address']}
             )
+            csd_port_name = self._gen_csd_nets_name(net_name,
+                                                    netObj['ovs_interfaceid'])
             req_body = {'port':
                            {'tenant_id': instance['project_id'],
                             'admin_state_up': True,
+                            'name': csd_port_name,
                             'network_id': physical_net_id,
                             'mac_address': ovs_interface_mac,
                             'fixed_ips': fixed_ips,
