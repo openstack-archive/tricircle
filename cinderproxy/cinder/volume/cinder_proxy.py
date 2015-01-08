@@ -410,9 +410,6 @@ class CinderProxy(manager.SchedulerDependentManager):
                 LOG.info(_('cascade ino: create volume use volume type, '
                            'cascade name:%s'), cascaded_volume_type)
 
-            metadata = volume_properties.get('metadata', {})
-            metadata['logicalVolumeId'] = volume_id
-
             cascaded_image_id = None
             if image_id is not None:
                 if cfg.CONF.glance_cascading_flag:
@@ -428,6 +425,9 @@ class CinderProxy(manager.SchedulerDependentManager):
             availability_zone = cfg.CONF.cascaded_available_zone
             LOG.info(_('cascade ino: create volume with available zone:%s'),
                      availability_zone)
+
+            metadata = volume_properties.get('metadata', {})
+            metadata['logicalVolumeId'] = volume_id
 
             cinderClient = self._get_cinder_cascaded_user_client(context)
 
@@ -447,6 +447,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['volumes'][volume_id] = \
                     bodyResponse._info['id']
+                if 'logicalVolumeId' in metadata:
+                    metadata.pop('logicalVolumeId')
                 metadata['mapping_uuid'] = bodyResponse._info['id']
                 self.db.volume_metadata_update(context, volume_id,
                                                metadata, True)
