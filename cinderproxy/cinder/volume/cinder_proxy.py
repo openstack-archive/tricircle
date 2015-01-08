@@ -195,6 +195,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                                           *args, **kwargs)
         self.configuration = Configuration(volume_manager_opts,
                                            config_group=service_name)
+
         self._tp = GreenPool()
         self.volume_api = volume.API()
         self._last_info_volume_state_heal = 0
@@ -446,6 +447,9 @@ class CinderProxy(manager.SchedulerDependentManager):
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['volumes'][volume_id] = \
                     bodyResponse._info['id']
+                metadata['mapping_uuid'] = bodyResponse._info['id']
+                self.db.volume_metadata_update(context, volume_id,
+                                               metadata, True)
 
         except Exception:
             with excutils.save_and_reraise_exception():
