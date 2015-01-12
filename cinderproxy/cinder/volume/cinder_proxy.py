@@ -452,14 +452,13 @@ class CinderProxy(manager.SchedulerDependentManager):
                 metadata['mapping_uuid'] = bodyResponse._info['id']
                 self.db.volume_metadata_update(context, volume_id,
                                                metadata, True)
+            return volume_id
 
         except Exception:
             with excutils.save_and_reraise_exception():
                 self.db.volume_update(context,
                                       volume_id,
                                       {'status': 'error'})
-
-        return volume_id
 
     def _query_vol_cascaded_pagination(self, change_since_time=None):
 
@@ -499,8 +498,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             return self._query_vol_cascaded_pagination(change_since_time)
 
     def _query_snapshot_cascaded_all_tenant(self):
-        """ snapshot pagination query has not been supported in
-            cinder juno version.
+        """ cinder snapshots pagination query API has not been supported until
+            OpenStack Juno version yet.
         """
         try:
             opts = {'all_tenants': True}
@@ -511,20 +510,14 @@ class CinderProxy(manager.SchedulerDependentManager):
             return snapshots
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
-            raise cinder_exception.Unauthorized
+            return self._query_snapshot_cascaded_all_tenant()
 
     def _update_volumes(self, context, volumes):
         for volume in volumes:
             LOG.debug(_("cascade ino: update volume:%s"), volume._info)
             volume_id = volume._info['metadata']['logicalVolumeId']
             volume_status = volume._info['status']
-            if volume_status == "in-use":
-                self.db.volume_update(context, volume_id,
-                                      {'status': volume._info['status'],
-                                       'attach_status': 'attached',
-                                       'attach_time': timeutils.strtime()
-                                       })
-            elif volume_status == "available":
+            if volume_status == "available":
                 if volume._info['bootable'].lower() == 'false':
                     bootable_vl = '0'
                 else:
@@ -538,11 +531,17 @@ class CinderProxy(manager.SchedulerDependentManager):
                                        'attach_time': None,
                                        'bootable': bootable_vl
                                        })
+            elif volume_status == "in-use":
+                self.db.volume_update(context, volume_id,
+                                      {'status': volume._info['status'],
+                                       'attach_status': 'attached',
+                                       'attach_time': timeutils.strtime()
+                                       })
             else:
                 self.db.volume_update(context, volume_id,
                                       {'status': volume._info['status']})
-                LOG.info(_('cascade ino: updated the volume  %s status from'
-                           'cinder-proxy'), volume_id)
+            LOG.info(_('cascade ino: updated the volume  %s status from'
+                       'cinder-proxy'), volume_id)
 
     def _update_volume_types(self, context, volumetypes):
         vol_types = self.db.volume_type_get_all(context, inactive=False)
@@ -934,8 +933,9 @@ class CinderProxy(manager.SchedulerDependentManager):
     def attach_volume(self, context, volume_id, instance_uuid, host_name,
                       mountpoint, mode):
         """Updates db to show volume is attached
-           attch_volume has been realized in nova-proxy
-           cinder-proxy just update cascading level data
+           interface about attch_volume has been realized in nova-proxy
+           cinder-proxy just update cascading level data, other fields
+           about attaching is synced from timer (_heal_volume_status)
         """
         @utils.synchronized(volume_id, external=True)
         def do_attach():
@@ -982,8 +982,9 @@ class CinderProxy(manager.SchedulerDependentManager):
     @locked_volume_operation
     def detach_volume(self, context, volume_id):
         """Updates db to show volume is detached
-           detach_volume has been realized in nova-proxy
-           cinder-proxy just update cascading level data
+           interface about detach_volume has been realized in nova-proxy
+           cinder-proxy just update cascading level data, other fields
+           about detaching is synced from timer (_heal_volume_status)
         """
         # TODO(vish): refactor this into a more general "unreserve"
         # TODO(sleepsonthefloor): Is this 'elevated' appropriate?
