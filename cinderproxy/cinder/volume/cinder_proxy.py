@@ -183,10 +183,10 @@ class CinderProxy(manager.SchedulerDependentManager):
     RPC_API_VERSION = '1.18'
     target = messaging.Target(version=RPC_API_VERSION)
 
-    VOLUME_NAME_LENGTH = 255
-    VOLUME_UUID_LENGTH = 36
-    SNAPSHOT_NAME_LENGTH = 255
-    SNAPSHOT_UUID_LENGTH = 36
+    VOLUME_NAME_MAX_LEN = 255
+    VOLUME_UUID_MAX_LEN = 36
+    SNAPSHOT_NAME_MAX_LEN = 255
+    SNAPSHOT_UUID_MAX_LEN = 36
 
     def __init__(self, service_name=None, *args, **kwargs):
         """Load the specified in args, or flags."""
@@ -228,7 +228,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _get_ccding_volume_id(self, volume):
         csd_name = volume._info["name"]
-        uuid_len = self.VOLUME_UUID_LENGTH
+        uuid_len = self.VOLUME_UUID_MAX_LEN
         if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
             return csd_name[-uuid_len:]
         try:
@@ -238,7 +238,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _get_ccding_snapsot_id(self, snapshot):
         csd_name = snapshot._info["name"]
-        uuid_len = self.SNAPSHOT_UUID_LENGTH
+        uuid_len = self.SNAPSHOT_UUID_MAX_LEN
         if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
             return csd_name[-uuid_len:]
         try:
@@ -247,14 +247,14 @@ class CinderProxy(manager.SchedulerDependentManager):
             return ''
 
     def _gen_ccding_volume_name(self, volume_name, volume_id):
-        max_len = self.VOLUME_NAME_LENGTH - self.VOLUME_UUID_LENGTH - 1
+        max_len = self.VOLUME_NAME_MAX_LEN - self.VOLUME_UUID_MAX_LEN - 1
         if (len(volume_name) <= max_len):
             return volume_name + "@" + volume_id
         else:
             return volume_name[0:max_len] + "@" + volume_id
 
     def _gen_ccding_snapshot_name(self, snapshot_name, snapshot_id):
-        max_len = self.SNAPSHOT_NAME_LENGTH - self.SNAPSHOT_UUID_LENGTH - 1
+        max_len = self.SNAPSHOT_NAME_MAX_LEN - self.SNAPSHOT_UUID_MAX_LEN - 1
         if (len(snapshot_name) <= max_len):
             return snapshot_name + "@" + snapshot_id
         else:
@@ -499,7 +499,7 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _query_snapshot_cascaded_all_tenant(self):
         """ cinder snapshots pagination query API has not been supported until
-            OpenStack Juno version yet.
+            native OpenStack Juno version yet.
         """
         try:
             opts = {'all_tenants': True}
