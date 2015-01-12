@@ -29,7 +29,6 @@ import base64
 import contextlib
 import datetime
 import functools
-import os
 import socket
 import sys
 import time
@@ -87,21 +86,16 @@ from nova.openstack.common import strutils
 from nova.openstack.common import timeutils
 from nova import paths
 from nova import rpc
-from nova import safe_utils
 from nova.scheduler import rpcapi as scheduler_rpcapi
 from nova import utils
 from nova.virt import block_device as driver_block_device
 from nova.virt import driver
 from nova.virt import event as virtevent
-from nova.virt import storage_users
 from nova.virt import virtapi
 from nova import volume
-from nova.volume import encryptors
 #extra import
-from nova.virt.libvirt import utils as libvirt_utils
-from nova.network import neutronv2
 from neutronclient.v2_0 import client as clientv20
-from novaclient.exceptions import Unauthorized as Client_Unauthorized
+from neutronclient.common.exceptions import NeutronClientException
 
 
 compute_opts = [
@@ -690,6 +684,11 @@ class ComputeManager(manager.Manager):
     INSTANCE_UUID_LENGTH = 36
     NEUTRON_UUID_LENGTH = 36
     NAME_FIELD_MAX_LENGTH = 255
+    NAME_SPLIT_MARK_LENGTH = 1
+    CSG_INSTANCE_NAME_MAX_LEN = (NAME_FIELD_MAX_LENGTH - INSTANCE_UUID_LENGTH
+                                 - NAME_SPLIT_MARK_LENGTH)
+    CSG_NET_NAME_MAX_LEN = (NAME_FIELD_MAX_LENGTH - NEUTRON_UUID_LENGTH
+                            - NAME_SPLIT_MARK_LENGTH)
 
     def __init__(self, compute_driver=None, *args, **kwargs):
         """Load configuration options and connect to the hypervisor."""
@@ -808,7 +807,9 @@ class ComputeManager(manager.Manager):
                 if not csg_net_id:
                     #todo(jd) Add exception log.
                     continue
+                csg_net_name = ComputeManager._extract_nets_csg_name(csd_net['name'])
                 self._network_mapping[csg_net_id] = {'mapping_id': csd_net['id'],
+                                                     'name': csg_net_name,
                                                      'subnets': []}
             for subnet in csd_subnets['subnets']:
                 network_id = subnet['network_id']
@@ -849,8 +850,7 @@ class ComputeManager(manager.Manager):
 
     @staticmethod
     def _gen_csd_instance_name(name, instance):
-        max_len = (ComputeManager.NAME_FIELD_MAX_LENGTH
-                   - ComputeManager.NEUTRON_UUID_LENGTH -1)
+        max_len = ComputeManager.CSG_INSTANCE_NAME_MAX_LEN
         save_name = name[:(max_len-len(name))] if max_len < len(name) else name
         return save_name + '@' + instance['uuid']
 
@@ -858,14 +858,21 @@ class ComputeManager(manager.Manager):
     def _extract_nets_csg_uuid(neutron_obj_name):
         uuid_len = ComputeManager.NEUTRON_UUID_LENGTH
         if (len(neutron_obj_name) > (uuid_len+1)
-            and neutron_obj_name[-(uuid_len+1)] == '_'):
+                and neutron_obj_name[-(uuid_len+1)] == '_'):
             return neutron_obj_name[-uuid_len:]
         return ''
 
     @staticmethod
+    def _extract_nets_csg_name(neutron_obj_name):
+        uuid_len = ComputeManager.NEUTRON_UUID_LENGTH
+        if (len(neutron_obj_name) > (uuid_len+1)
+                and neutron_obj_name[-(uuid_len+1)] == '_'):
+            return neutron_obj_name[:(len(neutron_obj_name)-uuid_len-1)]
+        return ''
+
+    @staticmethod
     def _gen_csd_nets_name(csg_name, csg_uuid):
-        max_len = (ComputeManager.NAME_FIELD_MAX_LENGTH
-                   - ComputeManager.NEUTRON_UUID_LENGTH -1)
+        max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
         save_name = (csg_name[:(max_len-len(csg_name))]
                      if max_len < len(csg_name) else csg_name)
         return save_name + '_' + csg_uuid
@@ -1356,27 +1363,60 @@ class ComputeManager(manager.Manager):
                 LOG.debug(_('Physical network not exist.'
                           'need to create,logicalNetId:%s'),
                           net_id)
-                self._network_mapping[net_id] = {'mapping_id': '', 'subnets': []}
+                self._network_mapping[net_id] = {'mapping_id': '',
+                                                 'name': '',
+                                                 'subnets': []}
                 search_opts = {'id': [net_id]}
                 logical_nets = neutron_client.list_networks(**search_opts).get('networks', [])
                 # create cascaded network and add the mapping relationship.
                 req_network = self._get_network_req(logical_nets[0], instance)
                 csd_net_name = ComputeManager._gen_csd_nets_name(net_name, net_id)
                 req_network['network']['name'] = csd_net_name
-                net_response = csd_neutron_client.create_network(req_network)
+                try:
+                    net_response = csd_neutron_client.create_network(req_network)
+                    csd_net_id = net_response['network']['id']
+                except NeutronClientException as ne:
+                    if ne.status_code == 409:
+                        _search_opts = {'name': csd_net_name}
+                        _nets = (csd_neutron_client.list_networks(**_search_opts)
+                                                          .get('networks', []))
+                        if _nets:
+                            net_response = _nets[0]
+                            csd_net_id = net_response['id']
+                        else:
+                            LOG.exception(_('Create cascaded network conflict, but '
+                                            'still can not find the cascaded network:'
+                                            '%s'), csd_net_name)
+                            raise
+                except Exception:
+                    LOG.exception(_('Create cascaded network failed, with the '
+                                    'req_network: %s'), req_network)
+                    raise
 
-                cascaded_network_list.append(net_response['network']['id'])
+                cascaded_network_list.append(csd_net_id)
                 LOG.debug(_('Finish to create Physical network,'
                             'net_response %s'), req_network)
-                csd_net_id = net_response['network']['id']
                 #Actually, only one subnet item in net_obj
                 cidr_list = [sn['cidr'] for sn in net_obj['network']['subnets']]
 
                 self._network_mapping[net_id]['mapping_id'] = csd_net_id
+                self._network_mapping[net_id]['name'] = net_name
             else:
+                csd_net_id = self._network_mapping[net_id]['mapping_id']
+                old_csg_net_name = self._network_mapping[net_id]['name']
+                #Need Check if network name has been changed.
+                max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
+                csg_net_name = (net_name if len(net_name) <= max_len
+                                else net_name[:max_len])
+
+                if old_csg_net_name != csg_net_name:
+                    csd_net_name = ComputeManager._gen_csd_nets_name(net_name, net_id)
+                    update_req = {'network': {'name': csd_net_name, }}
+                    csd_neutron_client.update_network(csd_net_id, update_req)
+                    self._network_mapping[net_id]['name'] = net_name
+
                 #Can not find subnet id in "net_obj['network']['subnets']", so
                 #we have to compare the cidr.
-                csd_net_id = self._network_mapping[net_id]['mapping_id']
                 mapping_subnets = self._network_mapping[net_id]['subnets']
                 cidr_list = [sn['cidr'] for sn in net_obj['network']['subnets']
                              if sn['cidr'] not in [m_sn['cidr']
