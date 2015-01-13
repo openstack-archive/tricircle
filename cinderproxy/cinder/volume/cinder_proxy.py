@@ -58,9 +58,9 @@ from cinder.volume.configuration import Configuration
 from cinder.volume import utils as volume_utils
 from cinderclient.v2 import client as cinder_client
 from cinderclient import exceptions as cinder_exception
-from keystoneclient import exceptions as keystone_exception
 
 from eventlet.greenpool import GreenPool
+from keystoneclient import exceptions as keystone_exception
 from keystoneclient.v2_0 import client as kc
 
 LOG = logging.getLogger(__name__)
@@ -281,11 +281,11 @@ class CinderProxy(manager.SchedulerDependentManager):
             return cinderclient
         except keystone_exception.Unauthorized:
             with excutils.save_and_reraise_exception():
-                LOG.error(_('Token unauthorized failed for keystoneclient'
-                            ' constructed when get cascaded admin client'))
+                LOG.error(_('Token unauthorized failed for keystoneclient '
+                            'constructed when get cascaded admin client'))
         except cinder_exception.Unauthorized:
             with excutils.save_and_reraise_exception():
-                LOG.error(_('Token unauthorized failed for cascaded'
+                LOG.error(_('Token unauthorized failed for cascaded '
                             'cinderClient constructed'))
         except Exception:
             with excutils.save_and_reraise_exception():
