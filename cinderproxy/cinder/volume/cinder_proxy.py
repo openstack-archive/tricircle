@@ -58,6 +58,7 @@ from cinder.volume.configuration import Configuration
 from cinder.volume import utils as volume_utils
 from cinderclient.v2 import client as cinder_client
 from cinderclient import exceptions as cinder_exception
+from keystoneclient import exceptions as keystone_exception
 
 from eventlet.greenpool import GreenPool
 from keystoneclient.v2_0 import client as kc
@@ -195,7 +196,6 @@ class CinderProxy(manager.SchedulerDependentManager):
                                           *args, **kwargs)
         self.configuration = Configuration(volume_manager_opts,
                                            config_group=service_name)
-
         self._tp = GreenPool()
         self.volume_api = volume.API()
         self._last_info_volume_state_heal = 0
@@ -277,8 +277,16 @@ class CinderProxy(manager.SchedulerDependentManager):
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
             cinderclient.client.management_url = \
                 cfg.CONF.cascaded_cinder_url % diction
-            return cinderclient
 
+            return cinderclient
+        except keystone_exception.Unauthorized:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Token unauthorized failed for keystoneclient'
+                            ' constructed when get cascaded admin client'))
+        except cinder_exception.Unauthorized:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Token unauthorized failed for cascaded'
+                            'cinderClient constructed'))
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get cinder python client.'))
@@ -483,6 +491,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                 LOG.debug(_('cascade ino: volume pagination query. marker: %s,'
                             ' pagination_limit: %s, change_since: %s, vols: %s'
                             ), marker, page_limit, change_since_time,  vols)
+
                 if (vols):
                     volumes.extend(vols)
                     marker = vols[-1]._info['id']
@@ -496,6 +505,9 @@ class CinderProxy(manager.SchedulerDependentManager):
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
             return self._query_vol_cascaded_pagination(change_since_time)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to query volumes by pagination.'))
 
     def _query_snapshot_cascaded_all_tenant(self):
         """ cinder snapshots pagination query API has not been supported until
@@ -511,6 +523,9 @@ class CinderProxy(manager.SchedulerDependentManager):
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
             return self._query_snapshot_cascaded_all_tenant()
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('Failed to query snapshots by all tenant.'))
 
     def _update_volumes(self, context, volumes):
         for volume in volumes:
@@ -630,8 +645,6 @@ class CinderProxy(manager.SchedulerDependentManager):
 
             self._change_since_time = timeutils.isotime()
 
-        except cinder_exception.Unauthorized:
-            self.adminCinderClient = self._get_cinder_cascaded_admin_client()
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to sys volume status to db.'))
@@ -649,7 +662,6 @@ class CinderProxy(manager.SchedulerDependentManager):
             qosSpecs = self.adminCinderClient.qos_specs.list()
             if qosSpecs:
                 self._update_volume_qos(context, qosSpecs)
-
         except cinder_exception.Unauthorized:
             self.adminCinderClient = self._get_cinder_cascaded_admin_client()
         except Exception:
