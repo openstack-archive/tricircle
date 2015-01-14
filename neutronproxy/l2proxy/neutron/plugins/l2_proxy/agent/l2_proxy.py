@@ -116,11 +116,9 @@ class QueryPortsInfoInterface:
                       str(since_time), str(pagination_limit),
                       str(pagination_marker), str(portResponse))
         except exceptions.Unauthorized:
-            QueryPortsInfoInterface.cascaded_neutron_client = \
-            self._get_cascaded_neutron_client()
-            return self._list_ports(since_time,
-                                    pagination_limit,
-                                    pagination_marker)
+            with excutils.save_and_reraise_exception():
+                LOG.error(_('ERR: Unauthorized to list ports!'))
+            return None
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('ERR: list ports failed!'))
@@ -1358,7 +1356,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                                "Because port info in cascading and cascaded layer"
                                "are different, Details: %(details)s"),
                              {'device': device, 'details': details})
-                    skipped_devices.add(device)
+                    skipped_devices.append(device)
                     return skipped_devices
                 LOG.info(_("Port %(device)s updated. Details: %(details)s"),
                          {'device': device, 'details': details})
