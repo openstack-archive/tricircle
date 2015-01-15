@@ -74,10 +74,13 @@ from nova import network
 from nova.network import model as network_model
 from nova.network.security_group import openstack_driver
 from nova import objects
+from nova.objects import aggregate as agg_obj
 from nova.objects import base as obj_base
 from nova.objects import flavor as flavor_obj
 from nova.objects import quotas as quotas_obj
 from nova.objects import block_device as block_device_obj
+from nova.objects import compute_node as compute_node_obj
+from nova.objects import service as service_obj
 from nova.openstack.common import excutils
 from nova.openstack.common import jsonutils
 from nova.openstack.common import log as logging
@@ -96,6 +99,7 @@ from nova import volume
 #extra import
 from neutronclient.v2_0 import client as clientv20
 from neutronclient.common.exceptions import NeutronClientException
+from novaclient.exceptions import ClientException
 
 
 compute_opts = [
@@ -218,7 +222,12 @@ interval_opts = [
     cfg.IntOpt('sync_instance_state_interval',
                default=5,
                help='interval to sync instance states between '
+                    'the nova and the nova-proxy'),
+    cfg.IntOpt('sync_aggregate_info_interval',
+               default=1800,
+               help='interval to sync aggregate info between '
                     'the nova and the nova-proxy')
+
 ]
 
 timeout_opts = [
@@ -288,6 +297,7 @@ CONF.import_opt('enabled', 'nova.rdp', group='rdp')
 CONF.import_opt('html5_proxy_base_url', 'nova.rdp', group='rdp')
 CONF.import_opt('enabled', 'nova.console.serial', group='serial_console')
 CONF.import_opt('base_url', 'nova.console.serial', group='serial_console')
+CONF.import_opt('host', 'nova.netconf')
 
 EXCLUDE_TASK_STATES = (task_states.BLOCK_DEVICE_MAPPING,
                        task_states.NETWORKING,
@@ -415,6 +425,19 @@ def get_nova_sync_client():
         'tenant': CONF.nova_admin_tenant_name,
         'auth_url': CONF.keystone_auth_url,
         'region_name': CONF.proxy_region_name
+    }
+    req_context = compute_context.RequestContext(**kwargs)
+    openstack_clients = clients.OpenStackClients(req_context)
+    return openstack_clients.nova()
+
+
+def get_nova_csg_client():
+    kwargs = {
+        'username': CONF.nova_admin_username,
+        'password': CONF.nova_admin_password,
+        'tenant': CONF.nova_admin_tenant_name,
+        'auth_url': CONF.keystone_auth_url,
+        'region_name': CONF.os_region_name,
     }
     req_context = compute_context.RequestContext(**kwargs)
     openstack_clients = clients.OpenStackClients(req_context)
@@ -714,6 +737,7 @@ class ComputeManager(manager.Manager):
         self._sync_power_pool = eventlet.GreenPool()
         self._syncs_in_progress = {}
         self.sync_nova_client = get_nova_sync_client()
+        self.csg_nova_client = get_nova_csg_client()
 
         super(ComputeManager, self).__init__(service_name="compute",
                                              *args, **kwargs)
@@ -880,11 +904,6 @@ class ComputeManager(manager.Manager):
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
         if not rt:
-            if not self.driver.node_is_available(nodename):
-                raise exception.NovaException(
-                    _("%s is not a valid node managed by this "
-                      "compute host.") % nodename)
-
             rt = resource_tracker.ResourceTracker(self.host,
                                                   self.driver,
                                                   nodename)
@@ -1915,6 +1934,7 @@ class ComputeManager(manager.Manager):
         our available resources (and indirectly our available nodes).
         """
         self.update_available_resource(nova.context.get_admin_context())
+        self.update_aggrgates_info(nova.context.get_admin_context())
 
     def _get_power_state(self, context, instance):
         """Retrieve the power state for the given instance."""
@@ -5275,7 +5295,68 @@ class ComputeManager(manager.Manager):
                                    self._post_live_migration,
                                    self._rollback_live_migration,
                                    block_migration, migrate_data)
-    
+
+    @periodic_task.periodic_task(spacing=CONF.sync_aggregate_info_interval)
+    def update_aggrgates_info(self, context):
+        """Periodic process that keeps that the nova controller understanding of
+        aggregates and metadta/hosts in sync with the underlying openstacks.
+
+        :param context: security context
+        """
+
+        my_host = CONF.host
+        admin_ctxt = context.elevated()
+        csd_aggregate_list = self.sync_nova_client.aggregates.list()
+        csg_aggregate_list = self.csg_nova_client.aggregates.list()
+        csd_agg_dict = [agg.to_dict() for agg in csd_aggregate_list]
+        csg_aggs = [{agg.to_dict()['name']:{
+                        'id': agg.to_dict()['id'],
+                        'metadata': agg.to_dict()['metadata'],
+                        'hosts': [h for h in agg.to_dict().get('hosts', [])
+                                  if h.startswith(my_host + '_')],
+                        }}
+                    for agg in csg_aggregate_list]
+        csg_aggs_dict = {}
+        for csg_agg in csg_aggs:
+            csg_aggs_dict.update(csg_agg)
+
+        for csd_ag in csd_agg_dict:
+            ag_obj = agg_obj.Aggregate()
+            csd_meta = csd_ag['metadata'] or {}
+            if csd_ag['name'] not in csg_aggs_dict:
+                ag_obj.name = csd_ag['name']
+                full_hosts = [my_host + '_' + h for h in csd_ag['hosts']]
+                # ag_obj.hosts = full_hosts
+                ag_obj.metadata = csd_meta
+                ag_obj.create(admin_ctxt)
+                for full_host in full_hosts:
+                    ag_obj.add_host(admin_ctxt, full_host)
+
+            else:
+                csg_id = csg_aggs_dict[csd_ag['name']]['id']
+                csg_hosts = [h.split('_')[1] for h
+                             in csg_aggs_dict[csd_ag['name']]['hosts']
+                             if h.find('_')]
+
+                if csd_meta and csg_aggs_dict[csd_ag['name']]['metadata'] != csd_meta:
+                    ag_obj.id = csg_id
+                    ag_obj.metadata = csg_aggs_dict[csd_ag['name']]['metadata']
+                    ag_obj.update_metadata(admin_ctxt, csd_meta)
+
+                if csg_hosts != csd_ag['hosts']:
+                    ag_obj.id = csg_id
+                    ag_obj.hosts = csg_aggs_dict[csd_ag['name']]['hosts']
+                    to_add_hosts = [h for h in csd_ag['hosts']
+                                    if h not in csg_hosts]
+                    to_del_hosts = [h for h in csg_hosts
+                                    if h not in csd_ag['hosts']]
+                    for add_host in to_add_hosts:
+                        full_host = my_host + '_' + add_host
+                        ag_obj.add_host(admin_ctxt, full_host)
+                    for del_host in to_del_hosts:
+                        full_host = my_host + '_' + del_host
+                        ag_obj.delete_host(csg_id, full_host)
+
     @periodic_task.periodic_task
     def update_available_resource(self, context):
         """See driver.get_available_resource()
@@ -5285,21 +5366,64 @@ class ComputeManager(manager.Manager):
 
         :param context: security context
         """
-        new_resource_tracker_dict = {}
-        nodenames = set(self.driver.get_available_nodes())
-        for nodename in nodenames:
-            rt = self._get_resource_tracker(nodename)
-            rt.update_available_resource(context)
-            new_resource_tracker_dict[nodename] = rt
-        # Delete orphan compute node not reported by driver but still in db
-        compute_nodes_in_db = self._get_compute_nodes_in_db(context,
-                                                            use_slave=True)
-        for cn in compute_nodes_in_db:
-            if cn.hypervisor_hostname not in nodenames:
-                LOG.audit(_("Deleting orphan compute node %s") % cn.id)
-                cn.destroy()
-        #
-        self._resource_tracker_dict = new_resource_tracker_dict
+
+        my_host = CONF.host
+        admin_ctxt = context.elevated()
+        csd_hypervisor_list = self.sync_nova_client.hypervisors.list()
+        csd_hyper_dict_list = [h.to_dict() for h in csd_hypervisor_list]
+        conductor_api = conductor.API()
+        for hyper in csd_hyper_dict_list:
+            hyper_obj = compute_node_obj.ComputeNode()
+            ser_obj = service_obj.Service()
+
+            host = hyper.pop('service', {}).get('host', '')
+            hyper.pop('id', None)
+            host_full_name = my_host + '_' + host
+
+            csd_services = self.sync_nova_client.services.list(host=host,
+                                                binary='nova-compute')
+            try:
+                csg_service = conductor_api.service_get_by_args(context,
+                                              host_full_name, 'nova-compute')
+            except Exception:
+                csg_service = None
+
+            if csd_services:
+                csd_service_dict = csd_services[0].to_dict() if csd_services else {}
+            else:
+                LOG.warn('Can not find the nova-compute service in host %s', host)
+            if csg_service:
+                updates = {}
+                updates['report_count'] = csg_service['report_count'] + 1
+                if csd_service_dict:
+                    updates['disabled'] = csd_service_dict['status'] != 'enabled'
+                    if csd_service_dict['state'] == 'up':
+                        conductor_api.service_update(context, csg_service, updates)
+
+                csg_hyper = compute_node_obj.ComputeNode.get_by_service_id(context,
+                                                                csg_service['id'])
+
+                hyper['service_id'] = csg_service['id']
+                for field in hyper_obj.fields:
+                    if hyper.get(field, None) is not None:
+                        setattr(hyper_obj, field, hyper.get(field))
+                hyper_obj.id = csg_hyper.id
+                hyper_obj.save(admin_ctxt)
+            else:
+                ser_obj.host = host_full_name
+                ser_obj.binary = 'nova-compute'
+                ser_obj.topic = 'compute'
+                if csd_service_dict:
+                    ser_obj.disabled = csd_service_dict['status'] != 'enabled'
+                ser_obj.create(admin_ctxt)
+                hyper['service_id'] = ser_obj.id
+                try:
+                    for field in hyper_obj.fields:
+                        if hyper.get(field, None) is not None:
+                            setattr(hyper_obj, field, hyper.get(field))
+                    hyper_obj.create(admin_ctxt)
+                except Exception:
+                    raise
 
     def _get_compute_nodes_in_db(self, context, use_slave=False):
         service = objects.Service.get_by_compute_host(context, self.host,
