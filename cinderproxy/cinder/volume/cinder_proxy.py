@@ -60,8 +60,9 @@ from cinderclient.v2 import client as cinder_client
 from cinderclient import exceptions as cinder_exception
 
 from eventlet.greenpool import GreenPool
-from keystoneclient import exceptions as keystone_exception
 from keystoneclient.v2_0 import client as kc
+from keystoneclient import exceptions as keystone_exception
+
 
 LOG = logging.getLogger(__name__)
 
@@ -546,6 +547,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                                        'attach_time': None,
                                        'bootable': bootable_vl
                                        })
+                metadata = volume._info['metadata']
+                self._update_volume_metada(context, volume_id, metadata)
             elif volume_status == "in-use":
                 self.db.volume_update(context, volume_id,
                                       {'status': volume._info['status'],
@@ -557,6 +560,20 @@ class CinderProxy(manager.SchedulerDependentManager):
                                       {'status': volume._info['status']})
             LOG.info(_('cascade ino: updated the volume  %s status from'
                        'cinder-proxy'), volume_id)
+
+    def _update_volume_metada(self, context, volume_id, ccded_volume_metadata):
+        ccding_vol_metadata = self.db.volume_metadata_get(context, volume_id)
+        ccded_vol_metadata_keys = ccded_volume_metadata.keys()
+        if 'logicalVolumeId' in ccded_vol_metadata_keys:
+            ccded_vol_metadata_keys.remove('logicalVolumeId')
+        for temp_key in ccded_vol_metadata_keys:
+            if temp_key not in ccding_vol_metadata:
+                ccding_vol_metadata[temp_key] =\
+                    ccded_volume_metadata.get(temp_key, None)
+            else:
+                continue
+        self.db.volume_metadata_update(context, volume_id,
+                                       ccding_vol_metadata, True)
 
     def _update_volume_types(self, context, volumetypes):
         vol_types = self.db.volume_type_get_all(context, inactive=False)
