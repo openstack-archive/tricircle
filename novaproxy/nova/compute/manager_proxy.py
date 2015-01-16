@@ -831,9 +831,9 @@ class ComputeManager(manager.Manager):
                 if not csg_net_id:
                     #todo(jd) Add exception log.
                     continue
-                csg_net_name = ComputeManager._extract_nets_csg_name(csd_net['name'])
+                # csg_net_name = ComputeManager._extract_nets_csg_name(csd_net['name'])
                 self._network_mapping[csg_net_id] = {'mapping_id': csd_net['id'],
-                                                     'name': csg_net_name,
+                                                     'name': '',
                                                      'subnets': []}
             for subnet in csd_subnets['subnets']:
                 network_id = subnet['network_id']
@@ -880,11 +880,12 @@ class ComputeManager(manager.Manager):
 
     @staticmethod
     def _extract_nets_csg_uuid(neutron_obj_name):
-        uuid_len = ComputeManager.NEUTRON_UUID_LENGTH
-        if (len(neutron_obj_name) > (uuid_len+1)
-                and neutron_obj_name[-(uuid_len+1)] == '_'):
-            return neutron_obj_name[-uuid_len:]
-        return ''
+        # uuid_len = ComputeManager.NEUTRON_UUID_LENGTH
+        # if (len(neutron_obj_name) > (uuid_len+1)
+        #         and neutron_obj_name[-(uuid_len+1)] == '_'):
+        #     return neutron_obj_name[-uuid_len:]
+        # return ''
+        return neutron_obj_name
 
     @staticmethod
     def _extract_nets_csg_name(neutron_obj_name):
@@ -896,10 +897,11 @@ class ComputeManager(manager.Manager):
 
     @staticmethod
     def _gen_csd_nets_name(csg_name, csg_uuid):
-        max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
-        save_name = (csg_name[:(max_len-len(csg_name))]
-                     if max_len < len(csg_name) else csg_name)
-        return save_name + '_' + csg_uuid
+        # max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
+        # save_name = (csg_name[:(max_len-len(csg_name))]
+        #              if max_len < len(csg_name) else csg_name)
+        # return save_name + '_' + csg_uuid
+        return csg_uuid
 
     def _get_resource_tracker(self, nodename):
         rt = self._resource_tracker_dict.get(nodename)
@@ -1304,6 +1306,7 @@ class ComputeManager(manager.Manager):
             fixed_ips.append(
                 {'ip_address': netObj['network']['subnets'][0]['ips'][0]['address']}
             )
+            #use cascading vif id directly.
             csd_port_name = netObj['ovs_interfaceid']
             req_body = {'port':
                            {'tenant_id': instance['project_id'],
@@ -1419,20 +1422,20 @@ class ComputeManager(manager.Manager):
                 cidr_list = [sn['cidr'] for sn in net_obj['network']['subnets']]
 
                 self._network_mapping[net_id]['mapping_id'] = csd_net_id
-                self._network_mapping[net_id]['name'] = net_name
+                # self._network_mapping[net_id]['name'] = net_name
             else:
                 csd_net_id = self._network_mapping[net_id]['mapping_id']
-                old_csg_net_name = self._network_mapping[net_id]['name']
-                #Need Check if network name has been changed.
-                max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
-                csg_net_name = (net_name if len(net_name) <= max_len
-                                else net_name[:max_len])
-
-                if old_csg_net_name != csg_net_name:
-                    csd_net_name = ComputeManager._gen_csd_nets_name(net_name, net_id)
-                    update_req = {'network': {'name': csd_net_name, }}
-                    csd_neutron_client.update_network(csd_net_id, update_req)
-                    self._network_mapping[net_id]['name'] = net_name
+                # old_csg_net_name = self._network_mapping[net_id]['name']
+                # #Need Check if network name has been changed.
+                # max_len = ComputeManager.CSG_NET_NAME_MAX_LEN
+                # csg_net_name = (net_name if len(net_name) <= max_len
+                #                 else net_name[:max_len])
+                #
+                # if old_csg_net_name != csg_net_name:
+                #     csd_net_name = ComputeManager._gen_csd_nets_name(net_name, net_id)
+                #     update_req = {'network': {'name': csd_net_name, }}
+                #     csd_neutron_client.update_network(csd_net_id, update_req)
+                #     self._network_mapping[net_id]['name'] = net_name
 
                 #Can not find subnet id in "net_obj['network']['subnets']", so
                 #we have to compare the cidr.
