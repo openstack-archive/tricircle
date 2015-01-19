@@ -811,7 +811,10 @@ class ComputeManager(manager.Manager):
                 break
             for server in servers:
                 csg_instance_uuid = ComputeManager._extract_csg_uuid(server)
-                self._uuid_mapping[csg_instance_uuid] = server.id
+                self._uuid_mapping[csg_instance_uuid] = \
+                    {'mapping_id': server.id,
+                     'metadata': server.metadata,
+                    }
         """handle neutron mapping
         """
         self._load_cascaded_net_info()
@@ -913,7 +916,8 @@ class ComputeManager(manager.Manager):
         return rt
 
     def _get_csd_instance_uuid(self, instance):
-        proxy_instance_id = self._uuid_mapping.get(instance['uuid'], None)
+        proxy_instance_id = (self._uuid_mapping.get(instance['uuid'], {})
+                             .get('mapping_id', None))
         if not proxy_instance_id:
             #In this case, we search cascaded with cascading instance's
             #display_name and uuid by name rule.
@@ -925,11 +929,16 @@ class ComputeManager(manager.Manager):
                             }
             try:
                 vms = sync_nova_client.servers.list(search_opts=search_opts)
+
                 if vms:
                     proxy_instance_id = vms[0].id
+                    self._uuid_mapping[instance['uuid']] = \
+                        {'mapping_id': vms[0].id,
+                         'metadata': vms[0].metadata,
+                         }
             except Exception:
                 pass
-            self._uuid_mapping[instance['uuid']] = proxy_instance_id
+
         return proxy_instance_id
 
     def _update_resource_tracker(self, context, instance):
@@ -1049,6 +1058,14 @@ class ComputeManager(manager.Manager):
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to get nova python client.'))
+
+    def _heal_instance_metadata(self, instance_uuid, metadata):
+        csd_mapping = self._uuid_mapping.get(instance_uuid, {})
+        if not csd_mapping or metadata == csd_mapping['metadata']:
+            return
+        csd_uuid = csd_mapping['mapping_id']
+        self.sync_nova_client.servers.set_meta(csd_uuid, metadata)
+        csd_mapping['metadata'] = metadata
 
     def _sync_instance_flavor(self, context, instance):
         try:
@@ -3092,7 +3109,10 @@ class ComputeManager(manager.Manager):
                 files=files,
                 availability_zone=availability_zone_info)
             # save the cascaded instance uuid
-            self._uuid_mapping[instance['uuid']] = response.id
+            self._uuid_mapping[instance['uuid']] = {
+                'mapping_id': response.id,
+                'metadata': response.metadata,
+            }
             # self._instance_update(context, instance['uuid'],
             #                       vm_state=vm_states.BUILDING,
             #                       mapping_uuid=response.id,
@@ -3383,7 +3403,7 @@ class ComputeManager(manager.Manager):
                     csd_instance = sync_nova_client.servers.get(csd_instance_uuid)
                     if csd_instance._info['OS-EXT-STS:vm_state'] != 'deleted':
                         sync_nova_client.servers.delete(csd_instance)
-                        self._uuid_mapping.pop(instance.uuid, '')
+                        self._uuid_mapping.pop(instance.uuid, {})
                         LOG.debug(_('delete the cascaded instance %s in'
                                     'periodic_task'), csd_instance.id)
                 except Exception:
@@ -3492,7 +3512,7 @@ class ComputeManager(manager.Manager):
         def do_terminate_instance(instance, bdms):
             try:
                 self._delete_instance(context, instance, bdms, quotas)
-                self._uuid_mapping.pop(instance['uuid'], '')
+                self._uuid_mapping.pop(instance['uuid'], {})
             except exception.InstanceNotFound:
                 LOG.info(_("Instance disappeared during terminate"),
                          instance=instance)
@@ -3769,8 +3789,10 @@ class ComputeManager(manager.Manager):
             return
         cascaded_nova_cli = self._get_nova_python_client(context)
         try:
-            self._heal_syn_server_metadata(context, instance['uuid'],
-                                                     cascaded_instance_id)
+            # self._heal_syn_server_metadata(context, instance['uuid'],
+            #                                          cascaded_instance_id)
+            self._heal_instance_metadata(instance['uuid'], instance['metadata'])
+
             self._sync_instance_flavor(context, instance)
 
             cascaded_nova_cli.servers.reboot(cascaded_instance_id, reboot_type)
@@ -4540,6 +4562,8 @@ class ComputeManager(manager.Manager):
             instance_type['is_public'] = active_flavor.is_public
             self._heal_syn_flavor_info(context, instance_type)
             resize_instance = True
+
+        self._heal_instance_metadata(instance.id, instance.metadata)
 
         # NOTE(tr3buchet): setup networks on destination host
         self.network_api.setup_networks_on_host(context, instance,
