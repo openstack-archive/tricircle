@@ -400,14 +400,16 @@ class CinderProxy(manager.SchedulerDependentManager):
             cascaded_snapshot_id = None
             if snapshot_id is not None:
                 cascaded_snapshot_id = \
-                    self.volumes_mapping_cache['volumes'].get(snapshot_id, '')
+                    self.volumes_mapping_cache['snapshots'].get(snapshot_id,
+                                                                None)
                 LOG.info(_('cascade ino: create volume from snapshot, '
                            'cascade id:%s'), cascaded_snapshot_id)
 
             cascaded_source_volid = None
             if source_volid is not None:
                 cascaded_source_volid = \
-                    self.volumes_mapping_cache['volumes'].get(volume_id, '')
+                    self.volumes_mapping_cache['volumes'].get(source_volid,
+                                                              None)
                 LOG.info(_('cascade ino: create volume from source volume, '
                            'cascade id:%s'), cascaded_source_volid)
 
@@ -764,7 +766,11 @@ class CinderProxy(manager.SchedulerDependentManager):
             # vol_ref = self.db.volume_get(context, volume_id)
             # caecaded_volume_id = vol_ref['mapping_uuid']
             cascaded_volume_id = \
-                self.volumes_mapping_cache['volumes'].get(volume_id, '')
+                self.volumes_mapping_cache['volumes'].get(volume_id, None)
+            if cascaded_volume_id is None:
+                LOG.error(_("cascade info: physical volume for vol %s "
+                            "not found !"), volume_id)
+                return
             LOG.info(_('cascade ino: prepare to delete cascaded volume  %s.'),
                      cascaded_volume_id)
 
