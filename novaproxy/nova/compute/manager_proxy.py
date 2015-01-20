@@ -226,7 +226,10 @@ interval_opts = [
     cfg.IntOpt('sync_aggregate_info_interval',
                default=1800,
                help='interval to sync aggregate info between '
-                    'the nova and the nova-proxy')
+                    'the nova and the nova-proxy'),
+    cfg.BoolOpt('resource_tracker_synced',
+                default=False,
+                help='Whether to use sync cescaded resources'),
 
 ]
 
@@ -1324,11 +1327,11 @@ class ComputeManager(manager.Manager):
                 {'ip_address': netObj['network']['subnets'][0]['ips'][0]['address']}
             )
             #use cascading vif id directly.
-            csd_port_name = netObj['ovs_interfaceid']
+            csg_port_name = netObj['ovs_interfaceid'] or ''
             req_body = {'port':
                            {'tenant_id': instance['project_id'],
                             'admin_state_up': True,
-                            'name': csd_port_name,
+                            'name': csg_port_name,
                             'network_id': physical_net_id,
                             'mac_address': ovs_interface_mac,
                             'fixed_ips': fixed_ips,
@@ -5330,7 +5333,8 @@ class ComputeManager(manager.Manager):
 
         :param context: security context
         """
-
+        if not CONF.resource_tracker_synced:
+            return
         my_host = CONF.host
         admin_ctxt = context.elevated()
         csd_aggregate_list = self.sync_nova_client.aggregates.list()
@@ -5384,16 +5388,7 @@ class ComputeManager(manager.Manager):
                         full_host = my_host + '_' + del_host
                         ag_obj.delete_host(csg_id, full_host)
 
-    @periodic_task.periodic_task
-    def update_available_resource(self, context):
-        """See driver.get_available_resource()
-
-        Periodic process that keeps that the compute host's understanding of
-        resource availability and usage in sync with the underlying hypervisor.
-
-        :param context: security context
-        """
-
+    def _update_available_cascaded_resource(self, context):
         my_host = CONF.host
         admin_ctxt = context.elevated()
         csd_hypervisor_list = self.sync_nova_client.hypervisors.list()
@@ -5408,15 +5403,16 @@ class ComputeManager(manager.Manager):
             host_full_name = my_host + '_' + host
 
             csd_services = self.sync_nova_client.services.list(host=host,
-                                                binary='nova-compute')
+                                                        binary='nova-compute')
             try:
                 csg_service = conductor_api.service_get_by_args(context,
-                                              host_full_name, 'nova-compute')
+                                            host_full_name, 'nova-compute')
             except Exception:
                 csg_service = None
 
             if csd_services:
-                csd_service_dict = csd_services[0].to_dict() if csd_services else {}
+                csd_service_dict = (csd_services[0].to_dict() if csd_services
+                                    else {})
             else:
                 LOG.warn('Can not find the nova-compute service in host %s', host)
             if csg_service:
@@ -5451,6 +5447,39 @@ class ComputeManager(manager.Manager):
                     hyper_obj.create(admin_ctxt)
                 except Exception:
                     raise
+
+    def _update_available_resource(self, context):
+        nodenames = set(self.driver.get_available_nodes())
+        for nodename in nodenames:
+            rt = self._get_resource_tracker(nodename)
+            resources = rt.driver.get_available_resource(rt.nodename)
+            resources['host_ip'] = CONF.my_ip
+            resources['local_gb_used'] = CONF.reserved_host_disk_mb / 1024
+            resources['memory_mb_used'] = CONF.reserved_host_memory_mb
+            resources['free_ram_mb'] = (resources['memory_mb'] -
+                                        resources['memory_mb_used'])
+            resources['free_disk_gb'] = (resources['local_gb'] -
+                                         resources['local_gb_used'])
+            resources['current_workload'] = 0
+            resources['running_vms'] = 0
+            resources['pci_stats'] = jsonutils.dumps([])
+            resources['stats'] = {}
+            rt._update_usage_from_instances(context, resources, [])
+            rt._sync_compute_node(context, resources)
+
+    @periodic_task.periodic_task
+    def update_available_resource(self, context):
+        """See driver.get_available_resource()
+
+        Periodic process that keeps that the compute host's understanding of
+        resource availability and usage in sync with the underlying hypervisor.
+
+        :param context: security context
+        """
+        if CONF.resource_tracker_synced:
+            self._update_available_cascaded_resource(context)
+        else:
+            self._update_available_resource(context)
 
     def _get_compute_nodes_in_db(self, context, use_slave=False):
         service = objects.Service.get_by_compute_host(context, self.host,
