@@ -121,6 +121,11 @@ agent_opts = [
     cfg.IntOpt('pagination_limit', default=-1,
                help=_("list ports pagination limit, default value is -1,"
                       "means no pagination")),
+    cfg.StrOpt('query_ports_mode', default='nova_proxy',
+               help=_("query ports mode, default value is nova_proxy,"
+                      "means query ports from nova_proxy")),
+    cfg.StrOpt('proxy_sock_path', default='/var/l2proxysock',
+               help=_("socket path when query ports from nova_proxy")),
 ]
 
 
