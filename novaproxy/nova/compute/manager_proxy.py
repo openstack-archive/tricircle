@@ -29,6 +29,7 @@ import base64
 import contextlib
 import datetime
 import functools
+import os
 import socket
 import sys
 import time
@@ -3195,6 +3196,29 @@ class ComputeManager(manager.Manager):
             cascaded_ports = self._heal_proxy_ports(context, instance,
                                                     network_info)
             resources['cascaded_ports'] = cascaded_ports
+            # Note(lizm) send port info to neutron
+            ports = {"ports":{}}
+            socket_dir = '/var/l2proxysock'
+            if not os.path.exists(socket_dir):
+                LOG.debug("socket file is not exist!")
+                raise
+            else:
+                retry = 5
+                cas_ports = [cas_port_id["port"]["id"] for cas_port_id in cascaded_ports]
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                for i in xrange(retry):
+                    try:
+                        sock.connect(socket_dir)
+                        time.sleep(1)
+                        ports["ports"]["add"] = cas_ports
+                        LOG.debug("csa port is %s",ports)
+                        ports_data = jsonutils.dumps(ports)
+                        sock.send(str(ports_data))
+                    except socket.error:
+                        LOG.debug("socket error! continue")
+                        sock.close()
+                        raise
+                sock.close()
         except Exception:
             with excutils.save_and_reraise_exception() as ctxt:
                 LOG.exception(_LE('Instance failed to get cascaded ports'),
