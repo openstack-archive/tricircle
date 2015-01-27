@@ -579,7 +579,7 @@ class SyncManagerV2():
         self_restful_client = create_self_restful_client(auth_token)
         path = s_utils.generate_glance_location(cascaded_ep, cascaded_id)
         # add the auth_token, so this url can be visited, otherwise 404 error
-        path += '?auth_token=' + auth_token
+        path += '?auth_token=1'
         metadata = {'image_id': cascaded_id}
         if action:
             metadata['action'] = action

@@ -88,9 +88,10 @@ class StoreLocation(glance_store.location.StoreLocation):
         if netloc == '':
             LOG.info(_("No address specified in HTTP URL"))
             raise exceptions.BadStoreUri(uri=uri)
+
         self.netloc = netloc
         self.path = path
-	self.token = None
+        self.token = None
         if pieces.query:
             params = pieces.query.split('&')
             for param in params:
@@ -173,18 +174,18 @@ class Store(glance_store.driver.Store):
         loc = location.store_location
         conn_class = self._get_conn_class(loc)
         conn = conn_class(loc.netloc)
-	hearders = {}
-	if loc.token:
-            hearders.setdefault('x-auth-token', loc.token)
-            verb = 'GET'
-            conn.request(verb, loc.path, "", hearders)
-            resp = conn.getresponse()
-            try:
-                size = jsonutils.loads(resp.read())['size']
-            except Exception:
-                size = 0
-                raise exception.BadStoreUri(loc.path, reason)
-            return (conn, resp, size)	
+        hearders = {}
+        if loc.token:
+            # hearders.setdefault('x-auth-token', loc.token)
+            # verb = 'GET'
+            # conn.request(verb, loc.path, "", hearders)
+            # resp = conn.getresponse()
+            # try:
+            #     size = jsonutils.loads(resp.read())['size']
+            # except Exception:
+            #     size = 0
+            #     raise exception.BadStoreUri(loc.path, reason)
+            return (conn, None, 1)
 
         conn.request(verb, loc.path, "", {})
         resp = conn.getresponse()
