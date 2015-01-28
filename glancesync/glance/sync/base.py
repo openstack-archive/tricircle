@@ -185,7 +185,11 @@ def create_self_restful_client(auth_token):
 
 def _create_restful_client(auth_token, url):
     server, port = url.split(':')
-    conn = httplib.HTTPConnection(server.encode(), port.encode())
+    try:
+        port = int(port)
+    except Exception:
+        port = 9292
+    conn = httplib.HTTPConnection(server.encode(), port)
     image_service = get_image_servcie()
     glance_client = image_service(conn, auth_token)
     return glance_client
