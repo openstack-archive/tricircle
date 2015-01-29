@@ -81,14 +81,18 @@ volume_manager_opts = [
     cfg.IntOpt('pagination_limit',
                default=50,
                help='pagination limit query for volumes between'
-                    'cascading and cascaded openstack'),
+                    'cascading and cascaded OpenStack'),
     cfg.IntOpt('voltype_sync_interval',
                default=3600,
                help='seconds between cascading and cascaded cinders'
                     'when synchronizing volume type and qos data'),
     cfg.BoolOpt('volume_sync_timestamp_flag',
                 default=True,
-                help='Whether to sync volume status based on timestamp'),
+                help='whether to sync volume status based on timestamp'),
+    cfg.BoolOpt('clean_extra_cascaded_vol_flag',
+                default=False,
+                help='whether to clean extra cascaded volumes while sync'
+                     'volumes between cascading and cascaded OpenStack'),
     cfg.BoolOpt('volume_service_inithost_offload',
                 default=False,
                 help='Offload pending volume delete during '
@@ -108,7 +112,7 @@ volume_manager_opts = [
                help='tenant id for connecting to cinder in admin context'),
     cfg.StrOpt('cascaded_available_zone',
                default='nova',
-               help='available zone for cascaded openstack'),
+               help='available zone for cascaded OpenStack'),
     cfg.StrOpt('keystone_auth_url',
                default='http://127.0.0.1:5000/v2.0/',
                help='value of keystone url'),
@@ -532,36 +536,44 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _update_volumes(self, context, volumes):
         for volume in volumes:
-            LOG.debug(_("cascade ino: update volume:%s"), volume._info)
-            volume_id = volume._info['metadata']['logicalVolumeId']
-            volume_status = volume._info['status']
-            if volume_status == "available":
-                if volume._info['bootable'].lower() == 'false':
-                    bootable_vl = '0'
+            if 'logicalVolumeId' in volume._info['metadata']:
+                LOG.debug(_("cascade ino: update volume:%s"), volume._info)
+                volume_id = volume._info['metadata']['logicalVolumeId']
+                volume_status = volume._info['status']
+                if volume_status == "available":
+                    if volume._info['bootable'].lower() == 'false':
+                        bootable_vl = '0'
+                    else:
+                        bootable_vl = '1'
+                    self.db.volume_update(context, volume_id,
+                                          {'status': volume._info['status'],
+                                           'attach_status': 'detached',
+                                           'instance_uuid': None,
+                                           'attached_host': None,
+                                           'mountpoint': None,
+                                           'attach_time': None,
+                                           'bootable': bootable_vl
+                                           })
+                    metadata = volume._info['metadata']
+                    self._update_volume_metada(context, volume_id, metadata)
+                elif volume_status == "in-use":
+                    self.db.volume_update(context, volume_id,
+                                          {'status': volume._info['status'],
+                                           'attach_status': 'attached',
+                                           'attach_time': timeutils.strtime()
+                                           })
                 else:
-                    bootable_vl = '1'
-                self.db.volume_update(context, volume_id,
-                                      {'status': volume._info['status'],
-                                       'attach_status': 'detached',
-                                       'instance_uuid': None,
-                                       'attached_host': None,
-                                       'mountpoint': None,
-                                       'attach_time': None,
-                                       'bootable': bootable_vl
-                                       })
-                metadata = volume._info['metadata']
-                self._update_volume_metada(context, volume_id, metadata)
-            elif volume_status == "in-use":
-                self.db.volume_update(context, volume_id,
-                                      {'status': volume._info['status'],
-                                       'attach_status': 'attached',
-                                       'attach_time': timeutils.strtime()
-                                       })
+                    self.db.volume_update(context, volume_id,
+                                          {'status': volume._info['status']})
+                LOG.info(_('cascade ino: updated the volume  %s status from'
+                           'cinder-proxy'), volume_id)
             else:
-                self.db.volume_update(context, volume_id,
-                                      {'status': volume._info['status']})
-            LOG.info(_('cascade ino: updated the volume  %s status from'
-                       'cinder-proxy'), volume_id)
+                ccded_vol = volume._info['id']
+                LOG.error(_("Cascade info: logical vol for :%s not found!"),
+                          ccded_vol)
+                if CONF.clean_extra_cascaded_vol_flag:
+                    self.adminCinderClient.volumes.delete(volume=ccded_vol)
+                continue
 
     def _update_volume_metada(self, context, volume_id, ccded_volume_metadata):
         ccding_vol_metadata = self.db.volume_metadata_get(context, volume_id)
@@ -575,7 +587,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             else:
                 continue
         self.db.volume_metadata_update(context, volume_id,
-                                       ccding_vol_metadata, True)
+                                       ccding_vol_metadata, False)
 
     def _update_volume_types(self, context, volumetypes):
         vol_types = self.db.volume_type_get_all(context, inactive=False)
@@ -1115,14 +1127,11 @@ class CinderProxy(manager.SchedulerDependentManager):
         simu_location_info = 'LVMVolumeDriver:Huawei:cinder-volumes:default:0'
 
         volume_stats = {
-            'pools': [{
-                'pool_name': 'OpenStack_Cascading',
-                'QoS_support': True,
-                'free_capacity_gb': 10240.0,
-                'location_info': simu_location_info,
-                'total_capacity_gb': 10240.0,
-                'reserved_percentage': 0
-            }],
+            'QoS_support': True,
+            'free_capacity_gb': 10240.0,
+            'location_info': simu_location_info,
+            'total_capacity_gb': 10240.0,
+            'reserved_percentage': 0,
             'driver_version': '2.0.0',
             'vendor_name': 'Huawei',
             'volume_backend_name': 'LVM_iSCSI',
