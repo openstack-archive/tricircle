@@ -54,6 +54,7 @@ from cinder.openstack.common import excutils
 from cinder.openstack.common import log as logging
 from cinder.openstack.common import periodic_task
 from cinder.openstack.common import timeutils
+from cinder.openstack.common import uuidutils
 from cinder.volume.configuration import Configuration
 from cinder.volume import utils as volume_utils
 from cinderclient.v2 import client as cinder_client
@@ -92,7 +93,8 @@ volume_manager_opts = [
     cfg.BoolOpt('clean_extra_cascaded_vol_flag',
                 default=False,
                 help='whether to clean extra cascaded volumes while sync'
-                     'volumes between cascading and cascaded OpenStack'),
+                     'volumes between cascading and cascaded OpenStack'
+                     'please with caution when set to True'),
     cfg.BoolOpt('volume_service_inithost_offload',
                 default=False,
                 help='Offload pending volume delete during '
@@ -216,12 +218,16 @@ class CinderProxy(manager.SchedulerDependentManager):
                 self._query_vol_cascaded_pagination(change_since_time=None)
             for vol in volumes:
                 ccding_volume_id = self._get_ccding_volume_id(vol)
+                if ccding_volume_id == '':
+                    continue
                 self.volumes_mapping_cache['volumes'][ccding_volume_id] = \
                     vol._info['id']
 
             snapshots = self._query_snapshot_cascaded_all_tenant()
             for snapshot in snapshots:
                 ccding__snapshot_id = self._get_ccding_snapsot_id(snapshot)
+                if ccding__snapshot_id == '':
+                    continue
                 self.volumes_mapping_cache['snapshots'][ccding__snapshot_id] = \
                     snapshot._info['id']
 
@@ -232,7 +238,12 @@ class CinderProxy(manager.SchedulerDependentManager):
             LOG.exception(ex)
 
     def _get_ccding_volume_id(self, volume):
-        csd_name = volume._info["name"]
+        csd_name = volume._info.get("name", None)
+        if csd_name is None:
+            LOG.error(_("Cascade info: csd_name is None!!!. %s"),
+                      volume._info)
+            return ''
+
         uuid_len = self.VOLUME_UUID_MAX_LEN
         if len(csd_name) > (uuid_len+1) and csd_name[-(uuid_len+1)] == '@':
             return csd_name[-uuid_len:]
@@ -277,7 +288,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             keystoneclient = kc.Client(**kwargs)
             cinderclient = cinder_client.Client(
                 username=cfg.CONF.cinder_username,
-                auth_url=cfg.CONF.keystone_auth_url)
+                auth_url=cfg.CONF.keystone_auth_url,
+                insecure=True)
             cinderclient.client.auth_token = keystoneclient.auth_ref.auth_token
             diction = {'project_id': cfg.CONF.cinder_tenant_id}
             cinderclient.client.management_url = \
@@ -302,7 +314,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             ctx_dict = context.to_dict()
             cinderclient = cinder_client.Client(
                 username=ctx_dict.get('user_id'),
-                auth_url=cfg.CONF.keystone_auth_url)
+                auth_url=cfg.CONF.keystone_auth_url,
+                insecure=True)
             cinderclient.client.auth_token = ctx_dict.get('auth_token')
             cinderclient.client.management_url = \
                 cfg.CONF.cascaded_cinder_url % ctx_dict
@@ -534,10 +547,58 @@ class CinderProxy(manager.SchedulerDependentManager):
             with excutils.save_and_reraise_exception():
                 LOG.error(_('Failed to query snapshots by all tenant.'))
 
+    def _check_update_volume(self, context, refresh_vol):
+        '''check refresh volumes before update'''
+
+        volume_id = refresh_vol._info['metadata'].get('logicalVolumeId', None)
+        if volume_id is None:
+            LOG.error(_("cascade info: logicalVolumeId for %s is None !"),
+                      volume_id)
+            return False
+
+        volume = self.db.volume_get(context, volume_id)
+        volume_metadata = dict((item['key'], item['value'])
+                               for item in volume['volume_metadata'])
+        mapping_uuid = volume_metadata.get('mapping_uuid', None)
+
+        ccded_id = self.volumes_mapping_cache['volumes'].get(volume_id, None)
+        if ccded_id is None:
+            LOG.error(_("cascade info:cascaded volume for %s in volume mapping"
+                        " cache is None"), volume_id)
+            return False
+
+        if mapping_uuid != ccded_id:
+            msg = _("cascade info: cascaded vol for %(volume_id)s in volume"
+                    " mapping cache is %(ccded_id)s ,not equal mapping_uuid"
+                    "%(mapping_uuid)s")
+            LOG.error(msg % {"volume_id": volume_id,
+                             "ccded_id": ccded_id,
+                             "mapping_uuid": mapping_uuid})
+            return False
+
+        if ccded_id != refresh_vol._info['id']:
+            rtn_id = refresh_vol._info['id']
+            msg = _("cascade info: cascaded vol id %(ccded_id)s not equal"
+                    " return volume id:%(rtn_id)s")
+            LOG.error(msg % {"ccded_id": ccded_id,
+                             "rtn_id": rtn_id})
+            return False
+
+        return True
+
     def _update_volumes(self, context, volumes):
         for volume in volumes:
-            if 'logicalVolumeId' in volume._info['metadata']:
-                LOG.debug(_("cascade ino: update volume:%s"), volume._info)
+            LOG.debug(_("cascade ino: update volume:%s"), str(volume._info))
+            try:
+                ret = self._check_update_volume(context, volume)
+                if not ret:
+                    if CONF.clean_extra_cascaded_vol_flag:
+                        ccded_vol = volume._info['id']
+                        self.adminCinderClient.volumes.delete(volume=ccded_vol)
+                        LOG.info(_("Cascade info:cascaded volume %s deleted!"),
+                                 ccded_vol)
+                    continue
+
                 volume_id = volume._info['metadata']['logicalVolumeId']
                 volume_status = volume._info['status']
                 if volume_status == "available":
@@ -567,25 +628,23 @@ class CinderProxy(manager.SchedulerDependentManager):
                                           {'status': volume._info['status']})
                 LOG.info(_('cascade ino: updated the volume  %s status from'
                            'cinder-proxy'), volume_id)
-            else:
-                ccded_vol = volume._info['id']
-                LOG.error(_("Cascade info: logical vol for :%s not found!"),
-                          ccded_vol)
-                if CONF.clean_extra_cascaded_vol_flag:
-                    self.adminCinderClient.volumes.delete(volume=ccded_vol)
+            except exception.VolumeNotFound:
+                LOG.error(_("cascade ino: cascading volume for %s not found!"),
+                          volume._info['id'])
                 continue
 
     def _update_volume_metada(self, context, volume_id, ccded_volume_metadata):
         ccding_vol_metadata = self.db.volume_metadata_get(context, volume_id)
         ccded_vol_metadata_keys = ccded_volume_metadata.keys()
-        if 'logicalVolumeId' in ccded_vol_metadata_keys:
-            ccded_vol_metadata_keys.remove('logicalVolumeId')
+        unsync_metada_keys_list = ['logicalVolumeId', 'urn', 'uri']
+        for temp_unsync_key in unsync_metada_keys_list:
+            if temp_unsync_key in ccded_vol_metadata_keys:
+                ccded_vol_metadata_keys.remove(temp_unsync_key)
+
         for temp_key in ccded_vol_metadata_keys:
-            if temp_key not in ccding_vol_metadata:
-                ccding_vol_metadata[temp_key] =\
-                    ccded_volume_metadata.get(temp_key, None)
-            else:
-                continue
+            ccding_vol_metadata[temp_key] =\
+                ccded_volume_metadata.get(temp_key, None)
+
         self.db.volume_metadata_update(context, volume_id,
                                        ccding_vol_metadata, False)
 
@@ -720,7 +779,10 @@ class CinderProxy(manager.SchedulerDependentManager):
         self._reset_stats()
 
         try:
-            self._delete_cascaded_volume(context, volume_id)
+            if unmanage_only:
+                self._ummanage(context, volume_id)
+            else:
+                self._delete_cascaded_volume(context, volume_id)
         except exception.VolumeIsBusy:
             LOG.error(_("Cannot delete volume %s: volume is busy"),
                       volume_ref['id'])
@@ -1009,21 +1071,41 @@ class CinderProxy(manager.SchedulerDependentManager):
             # TODO(jdg): attach_time column is currently varchar
             # we should update this to a date-time object
             # also consider adding detach_time?
+            self._notify_about_volume_usage(context, volume,
+                                            "attach.start")
             if instance_uuid is not None:
-                self.db.volume_update(context, volume_id,
-                                      {"instance_uuid": instance_uuid,
-                                       "mountpoint": mountpoint
-                                       })
+                if uuidutils.is_uuid_like(instance_uuid):
+                    self.db.volume_update(context, volume_id,
+                                          {"instance_uuid": instance_uuid,
+                                           "mountpoint": mountpoint
+                                           })
+                    LOG.debug(_('Cascade info: attach volume, db, vm_uuid %s,'
+                                'mountpoint:%s'), instance_uuid, mountpoint)
+                else:
+                    self.db.volume_update(context, volume_id,
+                                          {'status': 'error_attaching'})
+                    raise exception.InvalidUUID(uuid=instance_uuid)
             elif host_name is not None:
                 self.db.volume_update(context, volume_id,
                                       {"attached_host": host_name,
                                        "mountpoint": mountpoint,
                                        })
-
+                LOG.debug(_('Cascade info: attach volume, db, host_name %s,'
+                            'mountpoint:%s'), host_name, mountpoint)
+                host_name_sanitized = utils.sanitize_hostname(host_name)
             self.db.volume_admin_metadata_update(context.elevated(),
                                                  volume_id,
                                                  {"attached_mode": mode},
                                                  False)
+            volume = self.db.volume_attached(context.elevated(),
+                                             volume_id,
+                                             instance_uuid,
+                                             host_name_sanitized,
+                                             mountpoint)
+            if volume['migration_status']:
+                self.db.volume_update(context, volume_id,
+                                      {'migration_status': None})
+            self._notify_about_volume_usage(context, volume, "attach.end")
         return do_attach()
 
     @locked_volume_operation
