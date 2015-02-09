@@ -75,6 +75,9 @@ volume_manager_opts = [
                default=300,
                help='Timeout for creating the volume to migrate to '
                     'when performing volume migration (seconds)'),
+    cfg.ListOpt('enabled_volume_types',
+                default=None,
+                help='A list of volume types to use'),
     cfg.IntOpt('volume_sync_interval',
                default=5,
                help='seconds between cascading and cascaded cinders'
@@ -106,9 +109,6 @@ volume_manager_opts = [
                default='cinder_password',
                help='password for connecting to cinder in admin context',
                secret=True),
-    cfg.StrOpt('cinder_tenant_name',
-               default='cinder_tenant_name',
-               help='tenant name for connecting to cinder in admin context'),
     cfg.StrOpt('cinder_tenant_id',
                default='cinder_tenant_id',
                help='tenant id for connecting to cinder in admin context'),
@@ -281,7 +281,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         try:
             kwargs = {'username': cfg.CONF.cinder_username,
                       'password': cfg.CONF.cinder_password,
-                      'tenant_name': cfg.CONF.cinder_tenant_name,
+                      'tenant_id': cfg.CONF.cinder_tenant_id,
                       'auth_url': cfg.CONF.keystone_auth_url
                       }
 
@@ -329,9 +329,14 @@ class CinderProxy(manager.SchedulerDependentManager):
 
         try:
             # direct_url is returned by v2 api
+            netloc = cfg.CONF.cascading_glance_url
+            header = 'http://'
+            if header in cfg.CONF.cascading_glance_url:
+                netloc = netloc[len(header):]
+
             client = glance.GlanceClientWrapper(
                 context,
-                netloc=cfg.CONF.cascading_glance_url,
+                netloc=netloc,
                 use_ssl=False,
                 version="2")
             image_meta = client.call(context, 'get', image_id)
@@ -564,7 +569,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         ccded_id = self.volumes_mapping_cache['volumes'].get(volume_id, None)
         if ccded_id is None:
             LOG.error(_("cascade info:cascaded volume for %s in volume mapping"
-                        " cache is None"), volume_id)
+                        "cache is None"), volume_id)
             return False
 
         if mapping_uuid != ccded_id:
@@ -1165,9 +1170,15 @@ class CinderProxy(manager.SchedulerDependentManager):
             image_service, image_id = \
                 glance.get_remote_image_service(context, image_meta['id'])
             LOG.debug(_("cascade ino: image service:%s"), image_service)
+
+            netloc = cfg.CONF.cascading_glance_url
+            header = 'http://'
+            if header in cfg.CONF.cascading_glance_url:
+                netloc = netloc[len(header):]
+
             glanceClient = glance.GlanceClientWrapper(
                 context,
-                netloc=cfg.CONF.cascading_glance_url,
+                netloc=netloc,
                 use_ssl=False,
                 version="2")
             glanceClient.call(context, 'update', image_id,
@@ -1208,6 +1219,8 @@ class CinderProxy(manager.SchedulerDependentManager):
         LOG.info(_("report simulation volume driver"))
         simu_location_info = 'LVMVolumeDriver:Huawei:cinder-volumes:default:0'
 
+        volume_backend_list = ['LVM_ISCSI']
+
         volume_stats = {
             'QoS_support': True,
             'free_capacity_gb': 10240.0,
@@ -1216,10 +1229,25 @@ class CinderProxy(manager.SchedulerDependentManager):
             'reserved_percentage': 0,
             'driver_version': '2.0.0',
             'vendor_name': 'Huawei',
-            'volume_backend_name': 'LVM_iSCSI',
             'storage_protocol': 'iSCSI'}
 
-        self.update_service_capabilities(volume_stats)
+        if CONF.enabled_volume_types:
+            for voltype_name in CONF.enabled_volume_types:
+                vol_type =\
+                    self.db.volume_type_get_by_name(context, voltype_name)
+                for key, value in vol_type['extra_specs'].iteritems():
+                    LOG.debug("key %s, value %s", key, value)
+                    if key == 'volume_backend_name' and \
+                       value not in volume_backend_list:
+                        volume_backend_list.append(value)
+                    else:
+                        continue
+
+        LOG.info('cascade info: proxy support volume backends: %s !!!!',
+                 volume_backend_list)
+        for volume_backend in volume_backend_list:
+            volume_stats['volume_backend_name'] = volume_backend
+            self.update_service_capabilities(volume_stats)
 
     def publish_service_capabilities(self, context):
         """Collect driver status and then publish."""
