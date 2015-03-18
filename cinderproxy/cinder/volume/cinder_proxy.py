@@ -1078,6 +1078,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             # also consider adding detach_time?
             self._notify_about_volume_usage(context, volume,
                                             "attach.start")
+            host_name_sanitized = None
             if instance_uuid is not None:
                 if uuidutils.is_uuid_like(instance_uuid):
                     self.db.volume_update(context, volume_id,
