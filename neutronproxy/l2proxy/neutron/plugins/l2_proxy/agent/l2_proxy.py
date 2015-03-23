@@ -514,21 +514,36 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
                 self._report_state)
             heartbeat.start(interval=report_interval)
 
-    def get_net_uuid(self, vif_id):
-        for network_id, vlan_mapping in self.local_vlan_map.iteritems():
-            if vif_id in vlan_mapping.vif_ports:
-                return network_id
+    def list_cascaded_network_by_name(self, name):
+        search_opts = {'name': [name]}
+        neutron_client = self.get_cascaded_neutron_client()
+        cascaded_net = neutron_client.list_networks(**search_opts)
+        return cascaded_net
+
+    def delete_cascaded_network_by_id(self, network_id):
+        neutron_client = self.get_cascaded_neutron_client()
+        try:
+            neutron_client.delete_network(network_id)
+        except Exception as e:
+            LOG.error('Delete cascaded network %s failed! Exception:%s',
+                      network_id, str(e))
+
+    def get_csd_network_name(self, network_id):
+        return network_id
 
     def network_delete(self, context, **kwargs):
-        LOG.debug(_("network_delete received"))
+        LOG.debug(_("TRICIRCLE network_delete received"))
         network_id = kwargs.get('network_id')
-        LOG.debug(_("Delete %s"), network_id)
-        # The network may not be defined on this agent
-        lvm = self.local_vlan_map.get(network_id)
-        if lvm:
-            self.reclaim_local_vlan(network_id)
+        csd_network_name = self.get_csd_network_name(network_id)
+        network_ret = self.list_cascaded_network_by_name(csd_network_name)
+        if(network_ret and (network_ret.get('networks'))):
+            cascaded_net = network_ret['networks'][0]
+            self.delete_cascaded_network_by_id(cascaded_net['id'])
         else:
-            LOG.debug(_("Network %s not used on agent."), network_id)
+            LOG.error('TRICIRCLE List cascaded network %s failed when '
+                      'call network_delete!', csd_network_name)
+        LOG.debug(_("TRICIRCLE Network %s was deleted successfully."),
+                  network_id)
 
     def port_update(self, context, **kwargs):
         port = kwargs.get('port')
@@ -565,8 +580,7 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
             LOG.error(_("No port id is specified, cannot destroy port"))
             return
 
-        openStackClients = self.get_cascaded_neutron_client()
-        neutronClient = openStackClients.neutron()
+        neutronClient = self.get_cascaded_neutron_client()
         bodyResponse = neutronClient.delete_port(port_id)
         LOG.debug(_('destroy port, Response:%s'), str(bodyResponse))
         return bodyResponse
@@ -1151,9 +1165,10 @@ class OVSNeutronAgent(n_rpc.RpcCallback,
             self.iter_num = self.iter_num + 1
 
     def daemon_loop(self):
-        with polling.get_polling_manager(
-            self.minimize_polling) as pm:
-            self.rpc_loop()
+#         with polling.get_polling_manager(
+#             self.minimize_polling) as pm:
+        self.rpc_loop()
+
 #         with polling.get_polling_manager(
 #             self.minimize_polling,
 #             self.root_helper,
@@ -1221,14 +1236,14 @@ def main():
         LOG.error(_('%s Agent terminated!'), e)
         sys.exit(1)
 
-    is_xen_compute_host = 'rootwrap-xen-dom0' in agent_config['root_helper']
-    if is_xen_compute_host:
-        # Force ip_lib to always use the root helper to ensure that ip
-        # commands target xen dom0 rather than domU.
-        cfg.CONF.set_default('ip_lib_force_root', True)
+#     is_xen_compute_host = 'rootwrap-xen-dom0' in agent_config['root_helper']
+#     if is_xen_compute_host:
+#         # Force ip_lib to always use the root helper to ensure that ip
+#         # commands target xen dom0 rather than domU.
+#         cfg.CONF.set_default('ip_lib_force_root', True)
 
     agent = OVSNeutronAgent(**agent_config)
-    signal.signal(signal.SIGTERM, agent._handle_sigterm)
+#     signal.signal(signal.SIGTERM, agent._handle_sigterm)
 
     # Start everything.
     LOG.info(_("Agent initialized successfully, now running... "))
