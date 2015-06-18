@@ -1,3 +1,0 @@
-#set up where the openstack is installed, before running the installation script,
-#it's better to run 'source envrc' .
-export OPENSTACK_INSTALL_DIR=/usr/lib/python2.7/dist-packages
