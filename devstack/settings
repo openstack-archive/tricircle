@@ -1,0 +1,6 @@
+# Git information
+TRICIRCLE_REPO=${TRICIRCLE_REPO:-https://git.openstack.org/cgit/stackforge/tricircle/}
+TRICIRCLE_DIR=$DEST/tricircle
+TRICIRCLE_BRANCH=${TRICIRCLE_BRANCH:-master}
+
+export PYTHONPATH=$PYTHONPATH:$TRICIRCLE_DIR
