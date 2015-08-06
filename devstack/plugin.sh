@@ -40,6 +40,9 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         configure_tricircle_plugin
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
+        recreate_database tricircle
+        python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_CASCADE_CONF"
+
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         echo_summary "Initializing Cascading Service"
 
