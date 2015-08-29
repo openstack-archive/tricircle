@@ -55,6 +55,23 @@ def create_site_service_configuration(context, config_dict):
                                     config_dict)
 
 
+def delete_site_service_configuration(context, config_id):
+    with context.session.begin():
+        return core.delete_resource(context,
+                                    SiteServiceConfiguration, config_id)
+
+
+def list_site_service_configuration(context, filters):
+    with context.session.begin():
+        return core.query_resource(context, SiteServiceConfiguration, filters)
+
+
+def update_site_service_configuration(context, config_id, update_dict):
+    with context.session.begin():
+        return core.update_resource(
+            context, SiteServiceConfiguration, config_id, update_dict)
+
+
 class Site(core.ModelBase, core.DictBase):
     __tablename__ = 'cascaded_sites'
     attributes = ['site_id', 'site_name', 'az_id']

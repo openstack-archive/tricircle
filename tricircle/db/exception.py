@@ -14,11 +14,57 @@
 #    under the License.
 
 
+class EndpointNotAvailable(Exception):
+    def __init__(self, service, url):
+        self.service = service
+        self.url = url
+        message = "Endpoint %(url)s for %(service)s is not available" % {
+            'url': url,
+            'service': service
+        }
+        super(EndpointNotAvailable, self).__init__(message)
+
+
+class EndpointNotUnique(Exception):
+    def __init__(self, site, service):
+        self.site = site
+        self.service = service
+        message = "Endpoint for %(service)s in %(site)s not unique" % {
+            'site': site,
+            'service': service
+        }
+        super(EndpointNotUnique, self).__init__(message)
+
+
+class EndpointNotFound(Exception):
+    def __init__(self, site, service):
+        self.site = site
+        self.service = service
+        message = "Endpoint for %(service)s in %(site)s not found" % {
+            'site': site,
+            'service': service
+        }
+        super(EndpointNotFound, self).__init__(message)
+
+
 class ResourceNotFound(Exception):
-    def __init__(self, model, pk_value):
-        res_type = model.__name__.lower()
-        message = "Could not find %(res_type)s: %(pk_value)s" % {
-            'res_type': res_type,
-            'pk_value': pk_value
+    def __init__(self, model, unique_key):
+        resource_type = model.__name__.lower()
+        self.resource_type = resource_type
+        self.unique_key = unique_key
+        message = "Could not find %(resource_type)s: %(unique_key)s" % {
+            'resource_type': resource_type,
+            'unique_key': unique_key
         }
         super(ResourceNotFound, self).__init__(message)
+
+
+class ResourceNotSupported(Exception):
+    def __init__(self, resource, method):
+        self.resource = resource
+        self.method = method
+        message = "%(method)s method not supported for %(resource)s" % {
+            'resource': resource,
+            'method': method
+        }
+        super(ResourceNotSupported, self).__init__(message)
