@@ -13,8 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import functools
 import inspect
+import six
 import uuid
 
 from keystoneclient.auth.identity import v3 as auth_identity
@@ -67,10 +69,35 @@ cfg.CONF.register_opts(client_opts, group=client_opt_group)
 LOG = logging.getLogger(__name__)
 
 
+def _safe_operation(operation_name):
+    def handle_func(func):
+        @six.wraps(func)
+        def handle_args(*args, **kwargs):
+            instance, resource, context = args[:3]
+            if resource not in instance.operation_resources_map[
+                    operation_name]:
+                raise exception.ResourceNotSupported(resource, operation_name)
+            retries = 1
+            for _ in xrange(retries + 1):
+                try:
+                    service = instance.resource_service_map[resource]
+                    instance._ensure_endpoint_set(context, service)
+                    return func(*args, **kwargs)
+                except exception.EndpointNotAvailable as e:
+                    if cfg.CONF.client.auto_refresh_endpoint:
+                        LOG.warn(e.message + ', update endpoint and try again')
+                        instance._update_endpoint_from_keystone(context, True)
+                    else:
+                        raise
+        return handle_args
+    return handle_func
+
+
 class Client(object):
     def __init__(self):
         self.auth_url = cfg.CONF.client.auth_url
         self.resource_service_map = {}
+        self.operation_resources_map = collections.defaultdict(set)
         self.service_handle_map = {}
         for _, handle_class in inspect.getmembers(resource_handle):
             if not inspect.isclass(handle_class):
@@ -81,8 +108,16 @@ class Client(object):
             self.service_handle_map[handle_obj.service_type] = handle_obj
             for resource in handle_obj.support_resource:
                 self.resource_service_map[resource] = handle_obj.service_type
-                setattr(self, 'list_%ss' % resource,
-                        functools.partial(self.list_resources, resource))
+                for operation, index in six.iteritems(
+                        resource_handle.operation_index_map):
+                    # add parentheses to emphasize we mean to do bitwise and
+                    if (handle_obj.support_resource[resource] & index) == 0:
+                        continue
+                    self.operation_resources_map[operation].add(resource)
+                    setattr(self, '%s_%ss' % (operation, resource),
+                            functools.partial(
+                                getattr(self, '%s_resources' % operation),
+                                resource))
 
     def _get_admin_token(self):
         auth = auth_identity.Password(
@@ -233,6 +268,7 @@ class Client(object):
         """
         self._update_endpoint_from_keystone(cxt, False)
 
+    @_safe_operation('list')
     def list_resources(self, resource, cxt, filters=None):
         """Query resource in site of top layer
 
@@ -250,19 +286,49 @@ class Client(object):
         :return: list of dict containing resources information
         :raises: EndpointNotAvailable
         """
-        if resource not in self.resource_service_map:
-            raise exception.ResourceNotSupported(resource, 'list')
         service = self.resource_service_map[resource]
-        self._ensure_endpoint_set(cxt, service)
         handle = self.service_handle_map[service]
         filters = filters or []
-        try:
-            return handle.handle_list(cxt, resource, filters)
-        except exception.EndpointNotAvailable as e:
-            if cfg.CONF.client.auto_refresh_endpoint:
-                LOG.warn(e.message + ', update endpoint and try again')
-                self._update_endpoint_from_keystone(cxt, True)
-                self._ensure_endpoint_set(cxt, service)
-                return handle.handle_list(cxt, resource, filters)
-            else:
-                raise e
+        return handle.handle_list(cxt, resource, filters)
+
+    @_safe_operation('create')
+    def create_resources(self, resource, cxt, *args, **kwargs):
+        """Create resource in site of top layer
+
+        Directly invoke this method to create resources, or use
+        create_(resource)s (self, cxt, *args, **kwargs). These methods are
+        automatically generated according to the supported resources of each
+        ResourceHandle class.
+
+        :param resource: resource type
+        :param cxt: context object
+        :param args, kwargs: passed according to resource type
+               --------------------------
+               resource -> args -> kwargs
+               --------------------------
+               aggregate -> name, availability_zone_name -> none
+               --------------------------
+        :return: a dict containing resource information
+        :raises: EndpointNotAvailable
+        """
+        service = self.resource_service_map[resource]
+        handle = self.service_handle_map[service]
+        return handle.handle_create(cxt, resource, *args, **kwargs)
+
+    @_safe_operation('delete')
+    def delete_resources(self, resource, cxt, resource_id):
+        """Delete resource in site of top layer
+
+        Directly invoke this method to delete resources, or use
+        delete_(resource)s (self, cxt, obj_id). These methods are
+        automatically generated according to the supported resources
+        of each ResourceHandle class.
+        :param resource: resource type
+        :param cxt: context object
+        :param resource_id: id of resource
+        :return: None
+        :raises: EndpointNotAvailable
+        """
+        service = self.resource_service_map[resource]
+        handle = self.service_handle_map[service]
+        handle.handle_delete(cxt, resource, resource_id)

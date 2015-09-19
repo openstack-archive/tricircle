@@ -35,6 +35,7 @@ FAKE_SERVICE_NAME = 'fake_service_name'
 FAKE_TYPE = 'fake_type'
 FAKE_URL = 'http://127.0.0.1:12345'
 FAKE_URL_INVALID = 'http://127.0.0.1:23456'
+FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
 
 
 class FakeException(Exception):
@@ -44,17 +45,30 @@ class FakeException(Exception):
 class FakeClient(object):
     def __init__(self, url):
         self.endpoint = url
-        self.resources = [{'name': 'res1'}, {'name': 'res2'}]
 
     def list_fake_res(self, search_opts):
         # make sure endpoint is correctly set
         if self.endpoint != FAKE_URL:
             raise FakeException()
         if not search_opts:
-            return [res for res in self.resources]
+            return [res for res in FAKE_RESOURCES]
         else:
-            return [res for res in self.resources if (
+            return [res for res in FAKE_RESOURCES if (
                 res['name'] == search_opts['name'])]
+
+    def create_fake_res(self, name):
+        if self.endpoint != FAKE_URL:
+            raise FakeException()
+        FAKE_RESOURCES.append({'name': name})
+        return {'name': name}
+
+    def delete_fake_res(self, name):
+        if self.endpoint != FAKE_URL:
+            raise FakeException()
+        try:
+            FAKE_RESOURCES.remove({'name': name})
+        except ValueError:
+            pass
 
 
 class FakeResHandle(resource_handle.ResourceHandle):
@@ -66,6 +80,22 @@ class FakeResHandle(resource_handle.ResourceHandle):
             cli = self._get_client(cxt)
             return cli.list_fake_res(
                 resource_handle._transform_filters(filters))
+        except FakeException:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
+
+    def handle_create(self, cxt, resource, name):
+        try:
+            cli = self._get_client(cxt)
+            return cli.create_fake_res(name)
+        except FakeException:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
+
+    def handle_delete(self, cxt, resource, name):
+        try:
+            cli = self._get_client(cxt)
+            cli.delete_fake_res(name)
         except FakeException:
             self.endpoint_url = None
             raise exception.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
@@ -97,10 +127,16 @@ class ClientTest(unittest.TestCase):
         models.create_service_type(self.context, type_dict)
         models.create_site_service_configuration(self.context, config_dict)
 
+        global FAKE_RESOURCES
+        FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
+
         cfg.CONF.set_override(name='top_site_name', override=FAKE_SITE_NAME,
                               group='client')
         self.client = client.Client()
         self.client.resource_service_map[FAKE_RESOURCE] = FAKE_TYPE
+        self.client.operation_resources_map['list'].add(FAKE_RESOURCE)
+        self.client.operation_resources_map['create'].add(FAKE_RESOURCE)
+        self.client.operation_resources_map['delete'].add(FAKE_RESOURCE)
         self.client.service_handle_map[FAKE_TYPE] = FakeResHandle(None)
 
     def test_list(self):
@@ -115,6 +151,19 @@ class ClientTest(unittest.TestCase):
                                            'value': 'res2'}])
         self.assertEqual(resources, [{'name': 'res2'}])
 
+    def test_create(self):
+        resource = self.client.create_resources(FAKE_RESOURCE, self.context,
+                                                'res3')
+        self.assertEqual(resource, {'name': 'res3'})
+        resources = self.client.list_resources(FAKE_RESOURCE, self.context)
+        self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'},
+                                     {'name': 'res3'}])
+
+    def test_delete(self):
+        self.client.delete_resources(FAKE_RESOURCE, self.context, 'res1')
+        resources = self.client.list_resources(FAKE_RESOURCE, self.context)
+        self.assertEqual(resources, [{'name': 'res2'}])
+
     def test_list_endpoint_not_found(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')
@@ -123,6 +172,18 @@ class ClientTest(unittest.TestCase):
         # auto refresh set to False, directly raise exception
         self.assertRaises(exception.EndpointNotFound,
                           self.client.list_resources,
+                          FAKE_RESOURCE, self.context, [])
+
+    def test_resource_not_supported(self):
+        # no such resource
+        self.assertRaises(exception.ResourceNotSupported,
+                          self.client.list_resources,
+                          'no_such_resource', self.context, [])
+        # remove "create" entry for FAKE_RESOURCE
+        self.client.operation_resources_map['create'].remove(FAKE_RESOURCE)
+        # operation not supported
+        self.assertRaises(exception.ResourceNotSupported,
+                          self.client.create_resources,
                           FAKE_RESOURCE, self.context, [])
 
     def test_list_endpoint_not_found_retry(self):

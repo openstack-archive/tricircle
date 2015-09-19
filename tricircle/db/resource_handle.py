@@ -19,7 +19,9 @@ import glanceclient.exc as g_exceptions
 from neutronclient.common import exceptions as q_exceptions
 from neutronclient.neutron import client as q_client
 from novaclient import client as n_client
+from novaclient import exceptions as n_exceptions
 from oslo_config import cfg
+from oslo_log import log as logging
 from requests import exceptions as r_exceptions
 
 from tricircle.db import exception as exception
@@ -36,6 +38,12 @@ client_opts = [
                help='timeout for nova client in seconds'),
 ]
 cfg.CONF.register_opts(client_opts, group='client')
+
+
+LIST, CREATE, DELETE = 1, 2, 4
+operation_index_map = {'list': LIST, 'create': CREATE, 'delete': DELETE}
+
+LOG = logging.getLogger(__name__)
 
 
 def _transform_filters(filters):
@@ -64,7 +72,7 @@ class ResourceHandle(object):
 
 class GlanceResourceHandle(ResourceHandle):
     service_type = 'glance'
-    support_resource = ('image', )
+    support_resource = {'image': LIST}
 
     def _get_client(self, cxt):
         return g_client.Client('1',
@@ -74,8 +82,6 @@ class GlanceResourceHandle(ResourceHandle):
                                timeout=cfg.CONF.client.glance_timeout)
 
     def handle_list(self, cxt, resource, filters):
-        if resource not in self.support_resource:
-            return []
         try:
             client = self._get_client(cxt)
             collection = '%ss' % resource
@@ -89,8 +95,12 @@ class GlanceResourceHandle(ResourceHandle):
 
 class NeutronResourceHandle(ResourceHandle):
     service_type = 'neutron'
-    support_resource = ('network', 'subnet', 'port', 'router',
-                        'security_group', 'security_group_rule')
+    support_resource = {'network': LIST,
+                        'subnet': LIST,
+                        'port': LIST,
+                        'router': LIST,
+                        'security_group': LIST,
+                        'security_group_rule': LIST}
 
     def _get_client(self, cxt):
         return q_client.Client('2.0',
@@ -100,8 +110,6 @@ class NeutronResourceHandle(ResourceHandle):
                                timeout=cfg.CONF.client.neutron_timeout)
 
     def handle_list(self, cxt, resource, filters):
-        if resource not in self.support_resource:
-            return []
         try:
             client = self._get_client(cxt)
             collection = '%ss' % resource
@@ -116,7 +124,9 @@ class NeutronResourceHandle(ResourceHandle):
 
 class NovaResourceHandle(ResourceHandle):
     service_type = 'nova'
-    support_resource = ('flavor', 'server')
+    support_resource = {'flavor': LIST,
+                        'server': LIST,
+                        'aggregate': LIST | CREATE | DELETE}
 
     def _get_client(self, cxt):
         cli = n_client.Client('2',
@@ -128,8 +138,6 @@ class NovaResourceHandle(ResourceHandle):
         return cli
 
     def handle_list(self, cxt, resource, filters):
-        if resource not in self.support_resource:
-            return []
         try:
             client = self._get_client(cxt)
             collection = '%ss' % resource
@@ -145,3 +153,27 @@ class NovaResourceHandle(ResourceHandle):
             self.endpoint_url = None
             raise exception.EndpointNotAvailable('nova',
                                                  client.client.management_url)
+
+    def handle_create(self, cxt, resource, *args, **kwargs):
+        try:
+            client = self._get_client(cxt)
+            collection = '%ss' % resource
+            return getattr(client, collection).create(
+                *args, **kwargs).to_dict()
+        except r_exceptions.ConnectTimeout:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable('nova',
+                                                 client.client.management_url)
+
+    def handle_delete(self, cxt, resource, resource_id):
+        try:
+            client = self._get_client(cxt)
+            collection = '%ss' % resource
+            return getattr(client, collection).delete(resource_id)
+        except r_exceptions.ConnectTimeout:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable('nova',
+                                                 client.client.management_url)
+        except n_exceptions.NotFound:
+            LOG.debug("Delete %(resource)s %(resource_id)s which not found",
+                      {'resource': resource, 'resource_id': resource_id})
