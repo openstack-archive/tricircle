@@ -29,10 +29,11 @@ PUBLIC_NETWORK_GATEWAY=10.100.100.3
 
 
 Q_ENABLE_TRICIRCLE=True
-enable_plugin tricircle https://git.openstack.org/cgit/stackforge/tricircle/ experiment
+enable_plugin tricircle https://git.openstack.org/stackforge/tricircle master
 
 # Tricircle Services
 enable_service t-svc
+enable_service t-svc-api
 
 # Use Neutron instead of nova-network
 disable_service n-net
