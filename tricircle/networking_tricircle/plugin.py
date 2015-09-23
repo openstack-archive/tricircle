@@ -14,10 +14,14 @@
 #    under the License.
 
 
+import oslo_log.helpers as log_helpers
 from oslo_log import log
 
 from neutron.extensions import portbindings
 
+from neutron.common import exceptions as n_exc
+from neutron.common import rpc as n_rpc
+from neutron.common import topics
 from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
@@ -27,6 +31,7 @@ from neutron.db import portbindings_db
 from neutron.db import securitygroups_db
 from neutron.i18n import _LI
 from tricircle.common import cascading_networking_api as c_net_api
+from tricircle.networking_tricircle import rpc as c_net_rpc
 
 LOG = log.getLogger(__name__)
 
@@ -59,6 +64,18 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self.vif_details = {portbindings.CAP_PORT_FILTER: True}
 
         self._cascading_rpc_api = c_net_api.CascadingNetworkingNotifyAPI()
+
+        self._setup_rpc()
+
+    def _setup_rpc(self):
+        self.endpoints = [c_net_rpc.RpcCallbacks()]
+
+    @log_helpers.log_method_call
+    def start_rpc_listeners(self):
+        self.topic = topics.PLUGIN
+        self.conn = n_rpc.create_connection(new=True)
+        self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
+        return self.conn.consume_in_threads()
 
     def create_network(self, context, network):
         with context.session.begin(subtransactions=True):
@@ -117,6 +134,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                 l3_port_checki=True)
 
         return ret_val
+
+    def update_port_status(self, context, port_id, port_status):
+        with context.session.begin(subtransactions=True):
+            try:
+                port = super(TricirclePlugin, self).get_port(context, port_id)
+                port['status'] = port_status
+                neutron_db = super(TricirclePlugin, self).update_port(
+                    context, port_id, {'port': port})
+            except n_exc.PortNotFound:
+                LOG.debug("Port %(port)s update to %(status)s not found",
+                          {'port': port_id, 'status': port_status})
+                return None
+        return neutron_db
 
     def extend_port_dict_binding(self, port_res, port_db):
         super(TricirclePlugin, self).extend_port_dict_binding(
