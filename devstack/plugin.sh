@@ -77,8 +77,15 @@ function configure_tricircle_cascade_api {
         iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT verbose True
         iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT use_syslog $SYSLOG
+        iniset $TRICIRCLE_CASCADE_API_CONF database connection `database_connection_url tricircle`
 
-        setup_colorized_logging $TRICIRCLE_CASCADE_API_CONF DEFAULT
+        iniset $TRICIRCLE_CASCADE_API_CONF client admin_username admin
+        iniset $TRICIRCLE_CASCADE_API_CONF client admin_password $ADMIN_PASSWORD
+        iniset $TRICIRCLE_CASCADE_API_CONF client admin_tenant demo
+        iniset $TRICIRCLE_CASCADE_API_CONF client auto_refresh_endpoint True
+        iniset $TRICIRCLE_CASCADE_API_CONF client top_site_name $OS_REGION_NAME
+
+        setup_colorized_logging $TRICIRCLE_CASCADE_API_CONF DEFAULT tenant_name
 
         if is_service_enabled keystone; then
 

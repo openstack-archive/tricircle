@@ -74,6 +74,9 @@ def _get_resource(context, model, pk_value):
 def create_resource(context, model, res_dict):
     res_obj = model.from_dict(res_dict)
     context.session.add(res_obj)
+    context.session.flush()
+    # retrieve auto-generated fields
+    context.session.refresh(res_obj)
     return res_obj.to_dict()
 
 

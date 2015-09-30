@@ -13,8 +13,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import uuid
+
+import oslo_log.log as logging
 import pecan
+from pecan import request
 from pecan import rest
+
+import tricircle.context as t_context
+from tricircle.db import client
+from tricircle.db import exception
+from tricircle.db import models
+
+LOG = logging.getLogger(__name__)
 
 
 def expose(*args, **kwargs):
@@ -81,22 +92,101 @@ class V1Controller(object):
         }
 
 
+def _extract_context_from_environ(environ):
+    context_paras = {'auth_token': 'HTTP_X_AUTH_TOKEN',
+                     'user': 'HTTP_X_USER_ID',
+                     'tenant': 'HTTP_X_TENANT_ID',
+                     'user_name': 'HTTP_X_USER_NAME',
+                     'tenant_name': 'HTTP_X_PROJECT_NAME',
+                     'domain': 'HTTP_X_DOMAIN_ID',
+                     'user_domain': 'HTTP_X_USER_DOMAIN_ID',
+                     'project_domain': 'HTTP_X_PROJECT_DOMAIN_ID',
+                     'request_id': 'openstack.request_id'}
+    for key in context_paras:
+        context_paras[key] = environ.get(context_paras[key])
+    role = environ.get('HTTP_X_ROLE')
+    # TODO(zhiyuan): replace with policy check
+    context_paras['is_admin'] = role == 'admin'
+    return t_context.Context(**context_paras)
+
+
+def _get_environment():
+    return request.environ
+
+
 class SitesController(rest.RestController):
+    """ReST controller to handle CRUD operations of site resource"""
 
-    @expose(generic=True)
-    def index(self):
-        if pecan.request.method != 'GET':
-            pecan.abort(405)
-        return {'message': 'GET'}
-
-    @when(index, method='PUT')
-    def put(self, **kw):
+    @expose()
+    def put(self, site_id, **kw):
         return {'message': 'PUT'}
 
-    @when(index, method='POST')
-    def post(self, **kw):
-        return {'message': 'POST'}
+    @expose()
+    def get_one(self, site_id):
+        context = _extract_context_from_environ(_get_environment())
+        try:
+            return {'site': models.get_site(context, site_id)}
+        except exception.ResourceNotFound:
+            pecan.abort(404, 'Site with id %s not found' % site_id)
 
-    @when(index, method='DELETE')
-    def delete(self):
+    @expose()
+    def get_all(self):
+        context = _extract_context_from_environ(_get_environment())
+        sites = models.list_sites(context, [])
+        return {'sites': sites}
+
+    @expose()
+    def post(self, **kw):
+        context = _extract_context_from_environ(_get_environment())
+        if not context.is_admin:
+            pecan.abort(400, 'Admin role required to create sites')
+            return
+
+        site_name = kw.get('name')
+        is_top_site = kw.get('top', False)
+
+        if not site_name:
+            pecan.abort(400, 'Name of site required')
+            return
+
+        site_filters = [{'key': 'site_name', 'comparator': 'eq',
+                         'value': site_name}]
+        sites = models.list_sites(context, site_filters)
+        if sites:
+            pecan.abort(409, 'Site with name %s exists' % site_name)
+            return
+
+        ag_name = 'ag_%s' % site_name
+        # top site doesn't need az
+        az_name = 'az_%s' % site_name if not is_top_site else ''
+
+        try:
+            site_dict = {'site_id': str(uuid.uuid4()),
+                         'site_name': site_name,
+                         'az_id': az_name}
+            site = models.create_site(context, site_dict)
+        except Exception as e:
+            LOG.debug(e.message)
+            pecan.abort(500, 'Fail to create site')
+            return
+
+        # top site doesn't need aggregate
+        if is_top_site:
+            pecan.response.status = 201
+            return {'site': site}
+        else:
+            try:
+                top_client = client.Client()
+                top_client.create_aggregates(context, ag_name, az_name)
+            except Exception as e:
+                LOG.debug(e.message)
+                # delete previously created site
+                models.delete_site(context, site['site_id'])
+                pecan.abort(500, 'Fail to create aggregate')
+                return
+            pecan.response.status = 201
+            return {'site': site}
+
+    @expose()
+    def delete(self, site_id):
         return {'message': 'DELETE'}

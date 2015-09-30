@@ -44,11 +44,6 @@ def update_site(context, site_id, update_dict):
         return core.update_resource(context, Site, site_id, update_dict)
 
 
-def create_service_type(context, type_dict):
-    with context.session.begin():
-        return core.create_resource(context, ServiceType, type_dict)
-
-
 def create_site_service_configuration(context, config_dict):
     with context.session.begin():
         return core.create_resource(context, SiteServiceConfiguration,
@@ -61,7 +56,7 @@ def delete_site_service_configuration(context, config_id):
                                     SiteServiceConfiguration, config_id)
 
 
-def list_site_service_configuration(context, filters):
+def list_site_service_configurations(context, filters):
     with context.session.begin():
         return core.query_resource(context, SiteServiceConfiguration, filters)
 
@@ -83,29 +78,16 @@ class Site(core.ModelBase, core.DictBase):
 
 class SiteServiceConfiguration(core.ModelBase, core.DictBase):
     __tablename__ = 'cascaded_site_service_configuration'
-    attributes = ['service_id', 'site_id', 'service_name',
-                  'service_type', 'service_url']
+    attributes = ['service_id', 'site_id', 'service_type', 'service_url']
     service_id = sql.Column('service_id', sql.String(length=64),
                             primary_key=True)
     site_id = sql.Column('site_id', sql.String(length=64),
                          sql.ForeignKey('cascaded_sites.site_id'),
                          nullable=False)
-    service_name = sql.Column('service_name', sql.String(length=64),
-                              unique=True, nullable=False)
-    service_type = sql.Column(
-        'service_type', sql.String(length=64),
-        sql.ForeignKey('cascaded_service_types.service_type'),
-        nullable=False)
+    service_type = sql.Column('service_type', sql.String(length=64),
+                              nullable=False)
     service_url = sql.Column('service_url', sql.String(length=512),
                              nullable=False)
-
-
-class ServiceType(core.ModelBase, core.DictBase):
-    __tablename__ = 'cascaded_service_types'
-    attributes = ['id', 'service_type']
-    id = sql.Column('id', sql.Integer, primary_key=True)
-    service_type = sql.Column('service_type', sql.String(length=64),
-                              unique=True)
 
 
 class SiteService(core.ModelBase, core.DictBase):

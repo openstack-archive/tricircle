@@ -15,6 +15,7 @@
 
 
 import unittest
+import uuid
 
 import mock
 from oslo_config import cfg
@@ -31,7 +32,6 @@ FAKE_RESOURCE = 'fake_res'
 FAKE_SITE_ID = 'fake_site_id'
 FAKE_SITE_NAME = 'fake_site_name'
 FAKE_SERVICE_ID = 'fake_service_id'
-FAKE_SERVICE_NAME = 'fake_service_name'
 FAKE_TYPE = 'fake_type'
 FAKE_URL = 'http://127.0.0.1:12345'
 FAKE_URL_INVALID = 'http://127.0.0.1:23456'
@@ -105,6 +105,8 @@ class ClientTest(unittest.TestCase):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
+        # enforce foreign key constraint for sqlite
+        core.get_engine().execute('pragma foreign_keys=on')
         self.context = context.Context()
 
         site_dict = {
@@ -112,19 +114,13 @@ class ClientTest(unittest.TestCase):
             'site_name': FAKE_SITE_NAME,
             'az_id': FAKE_AZ
         }
-        type_dict = {
-            'id': 1,
-            'service_type': FAKE_TYPE
-        }
         config_dict = {
             'service_id': FAKE_SERVICE_ID,
             'site_id': FAKE_SITE_ID,
-            'service_name': FAKE_SERVICE_NAME,
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
         models.create_site(self.context, site_dict)
-        models.create_service_type(self.context, type_dict)
         models.create_site_service_configuration(self.context, config_dict)
 
         global FAKE_RESOURCES
@@ -207,7 +203,6 @@ class ClientTest(unittest.TestCase):
         config_dict = {
             'service_id': FAKE_SERVICE_ID + '_new',
             'site_id': FAKE_SITE_ID,
-            'service_name': FAKE_SERVICE_NAME + '_new',
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
@@ -248,6 +243,31 @@ class ClientTest(unittest.TestCase):
         resources = self.client.list_resources(
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
+
+    def test_update_endpoint_from_keystone(self):
+        self.client._get_admin_token = mock.Mock()
+        self.client._get_endpoint_from_keystone = mock.Mock()
+        self.client._get_endpoint_from_keystone.return_value = {
+            FAKE_SITE_NAME: {FAKE_TYPE: FAKE_URL,
+                             'another_fake_type': 'http://127.0.0.1:34567'},
+            'not_registered_site': {FAKE_TYPE: FAKE_URL}
+        }
+        models.create_site_service_configuration = mock.Mock()
+        models.update_site_service_configuration = mock.Mock()
+        uuid.uuid4 = mock.Mock()
+        uuid.uuid4.return_value = 'another_fake_service_id'
+
+        self.client.update_endpoint_from_keystone(self.context)
+        update_dict = {'service_url': FAKE_URL}
+        create_dict = {'service_id': 'another_fake_service_id',
+                       'site_id': FAKE_SITE_ID,
+                       'service_type': 'another_fake_type',
+                       'service_url': 'http://127.0.0.1:34567'}
+        # not registered site is skipped
+        models.update_site_service_configuration.assert_called_once_with(
+            self.context, FAKE_SERVICE_ID, update_dict)
+        models.create_site_service_configuration.assert_called_once_with(
+            self.context, create_dict)
 
     def test_get_endpoint(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,

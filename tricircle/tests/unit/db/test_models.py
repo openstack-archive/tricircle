@@ -43,15 +43,9 @@ class ModelsTest(unittest.TestCase):
         site_ret = models.create_site(self.context, site)
         self.assertEqual(site_ret, site)
 
-        service_type = {'id': 1,
-                        'service_type': 'nova'}
-        type_ret = models.create_service_type(self.context, service_type)
-        self.assertEqual(type_ret, service_type)
-
         configuration = {
             'service_id': 'test_config_uuid',
             'site_id': 'test_site_uuid',
-            'service_name': 'nova_service',
             'service_type': 'nova',
             'service_url': 'http://test_url'
         }

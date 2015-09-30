@@ -156,7 +156,7 @@ class Client(object):
         return region_service_endpoint_map
 
     def _get_config_with_retry(self, cxt, filters, site, service, retry):
-        conf_list = models.list_site_service_configuration(cxt, filters)
+        conf_list = models.list_site_service_configurations(cxt, filters)
         if len(conf_list) > 1:
             raise exception.EndpointNotUnique(site, service)
         if len(conf_list) == 0:
@@ -204,12 +204,12 @@ class Client(object):
             endpoint_map = self._get_endpoint_from_keystone(admin_context)
         else:
             endpoint_map = self._get_endpoint_from_keystone(cxt)
+
         for region in endpoint_map:
             # use region name to query site
             site_filters = [{'key': 'site_name', 'comparator': 'eq',
                              'value': region}]
             site_list = models.list_sites(cxt, site_filters)
-
             # skip region/site not registered in cascade service
             if len(site_list) != 1:
                 continue
@@ -219,7 +219,7 @@ class Client(object):
                                    'value': site_id},
                                   {'key': 'service_type', 'comparator': 'eq',
                                    'value': service}]
-                config_list = models.list_site_service_configuration(
+                config_list = models.list_site_service_configurations(
                     cxt, config_filters)
 
                 if len(config_list) > 1:
@@ -234,7 +234,6 @@ class Client(object):
                     config_dict = {
                         'service_id': str(uuid.uuid4()),
                         'site_id': site_id,
-                        'service_name': '%s_%s' % (region, service),
                         'service_type': service,
                         'service_url': endpoint_map[region][service]
                     }

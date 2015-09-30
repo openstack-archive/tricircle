@@ -34,16 +34,8 @@ def upgrade(migrate_engine):
         'cascaded_site_service_configuration', meta,
         sql.Column('service_id', sql.String(length=64), primary_key=True),
         sql.Column('site_id', sql.String(length=64), nullable=False),
-        sql.Column('service_name', sql.String(length=64), unique=True,
-                   nullable=False),
         sql.Column('service_type', sql.String(length=64), nullable=False),
         sql.Column('service_url', sql.String(length=512), nullable=False),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-    cascaded_service_types = sql.Table(
-        'cascaded_service_types', meta,
-        sql.Column('id', sql.Integer, primary_key=True),
-        sql.Column('service_type', sql.String(length=64), unique=True),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
     cascaded_site_services = sql.Table(
@@ -53,20 +45,15 @@ def upgrade(migrate_engine):
         mysql_charset='utf8')
 
     tables = [cascaded_sites, cascaded_site_service_configuration,
-              cascaded_service_types, cascaded_site_services]
+              cascaded_site_services]
     for table in tables:
         table.create()
 
-    fkeys = [
-        {'columns': [cascaded_site_service_configuration.c.site_id],
-         'references': [cascaded_sites.c.site_id]},
-        {'columns': [cascaded_site_service_configuration.c.service_type],
-         'references': [cascaded_service_types.c.service_type]}
-    ]
-    for fkey in fkeys:
-        migrate.ForeignKeyConstraint(columns=fkey['columns'],
-                                     refcolumns=fkey['references'],
-                                     name=fkey.get('name')).create()
+    fkey = {'columns': [cascaded_site_service_configuration.c.site_id],
+            'references': [cascaded_sites.c.site_id]}
+    migrate.ForeignKeyConstraint(columns=fkey['columns'],
+                                 refcolumns=fkey['references'],
+                                 name=fkey.get('name')).create()
 
 
 def downgrade(migrate_engine):
