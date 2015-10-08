@@ -56,6 +56,9 @@ function configure_tricircle_plugin {
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
         cp -p $TRICIRCLE_DIR/etc/cascade_service.conf $TRICIRCLE_CASCADE_CONF
 
+        TRICIRCLE_POLICY_FILE=$TRICIRCLE_CONF_DIR/policy.json
+        cp $TRICIRCLE_DIR/etc/policy.json $TRICIRCLE_POLICY_FILE
+
         iniset $TRICIRCLE_CASCADE_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_CASCADE_CONF DEFAULT verbose True
         setup_colorized_logging $TRICIRCLE_CASCADE_CONF DEFAULT
@@ -117,7 +120,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         echo_summary "Initializing Cascading Service"
 
         if is_service_enabled t-svc; then
-            run_process t-svc "python $TRICIRCLE_CASCADE_SERVICE --config-file $TRICIRCLE_CASCADE_CONF"
+            run_process t-svc "python $TRICIRCLE_CASCADE_SERVICE --config-file $TRICIRCLE_CASCADE_CONF --config-dir $TRICIRCLE_CONF_DIR"
         fi
 
         if is_service_enabled t-svc-api; then

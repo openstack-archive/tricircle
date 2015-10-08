@@ -22,6 +22,7 @@ import oslo_messaging
 
 from tricircle.common import topics
 from tricircle.common.serializer import CascadeSerializer as Serializer
+from tricircle.cascade_service import scheduler
 
 # import endpoints here
 from tricircle.cascade_service.endpoints.networking import (
@@ -42,7 +43,7 @@ class ServerControlEndpoint(object):
             self.server.stop()
 
 
-def setup_server():
+def _create_main_cascade_server():
     transport = oslo_messaging.get_transport(cfg.CONF)
     target = oslo_messaging.Target(
         exchange="tricircle",
@@ -62,4 +63,11 @@ def setup_server():
         serializer=Serializer(),
     )
     server_control_endpoint.server = server
+
     return server
+
+
+def setup_server():
+    scheduler_server = scheduler.create_server()
+    scheduler_server.start()
+    return _create_main_cascade_server()
