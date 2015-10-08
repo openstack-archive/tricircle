@@ -29,6 +29,7 @@ TRANSPORT = oslo_messaging.get_transport(cfg.CONF)
 
 LOG = logging.getLogger(__name__)
 
+
 class NetworkingRpcApi(object):
     def __init__(self):
         if not neutron_rpc.TRANSPORT:
