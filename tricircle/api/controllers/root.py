@@ -20,6 +20,8 @@ import pecan
 from pecan import request
 from pecan import rest
 
+from tricircle.common import cascading_site_api
+from tricircle.common import utils
 import tricircle.context as t_context
 from tricircle.db import client
 from tricircle.db import exception
@@ -156,9 +158,9 @@ class SitesController(rest.RestController):
             pecan.abort(409, 'Site with name %s exists' % site_name)
             return
 
-        ag_name = 'ag_%s' % site_name
+        ag_name = utils.get_ag_name(site_name)
         # top site doesn't need az
-        az_name = 'az_%s' % site_name if not is_top_site else ''
+        az_name = utils.get_az_name(site_name) if not is_top_site else ''
 
         try:
             site_dict = {'site_id': str(uuid.uuid4()),
@@ -178,6 +180,8 @@ class SitesController(rest.RestController):
             try:
                 top_client = client.Client()
                 top_client.create_aggregates(context, ag_name, az_name)
+                site_api = cascading_site_api.CascadingSiteNotifyAPI()
+                site_api.create_site(context, site_name)
             except Exception as e:
                 LOG.debug(e.message)
                 # delete previously created site

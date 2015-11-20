@@ -16,7 +16,11 @@
 from oslo_serialization import jsonutils as json
 
 from tricircle.common.singleton import Singleton
-from tricircle.cascade_service.compute import ComputeHostManager
+from tricircle.common import utils
+import tricircle.context as t_context
+from tricircle.dispatcher.compute import ComputeHostManager
+from tricircle.db import client
+from tricircle.db import models
 
 
 class Node(object):
@@ -101,21 +105,37 @@ class _SiteManager(object):
         self._sites = {}
         self.compute_host_manager = ComputeHostManager(self)
 
-        # create fake data
-        # NOTE(saggi) replace with DAL access when available
-        self.create_site("Fake01")
-        self.create_site("Fake02")
+        sites = models.list_sites(t_context.get_db_context(), [])
+        for site in sites:
+            # skip top site
+            if not site['az_id']:
+                continue
+            self.create_site(t_context.get_admin_context(), site['site_name'])
 
-    def create_site(self, site_name):
+    def create_site(self, context, site_name):
         """creates a fake site, in reality the information about available
         sites should be pulled from the DAL and not created at will.
         """
-        # TODO(saggi): thread safty
+        # TODO(saggi): thread safety
         if site_name in self._sites:
             raise RuntimeError("Site already exists in site map")
 
+        # TODO(zhiyuan): use DHT to judge whether host this site or not
         self._sites[site_name] = Site(site_name)
         self.compute_host_manager.create_host_adapter(site_name)
+
+        ag_name = utils.get_ag_name(site_name)
+        top_client = client.Client()
+        aggregates = top_client.list_resources('aggregate', context)
+        for aggregate in aggregates:
+            if aggregate['name'] == ag_name:
+                if site_name in aggregate['hosts']:
+                    return
+                else:
+                    top_client.action_resources('aggregate', context,
+                                                'add_host', aggregate['id'],
+                                                site_name)
+                    return
 
     def get_site(self, site_name):
         return self._sites[site_name]

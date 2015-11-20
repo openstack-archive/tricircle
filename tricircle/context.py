@@ -18,6 +18,16 @@ from oslo_context import context as oslo_ctx
 from tricircle.db import core
 
 
+def get_db_context():
+    return Context()
+
+
+def get_admin_context():
+    ctx = Context()
+    ctx.is_admin = True
+    return ctx
+
+
 class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
                  is_admin=False, request_id=None, overwrite=True,

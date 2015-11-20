@@ -70,6 +70,14 @@ class FakeClient(object):
         except ValueError:
             pass
 
+    def action_fake_res(self, name, rename):
+        if self.endpoint != FAKE_URL:
+            raise FakeException()
+        for res in FAKE_RESOURCES:
+            if res['name'] == name:
+                res['name'] = rename
+                break
+
 
 class FakeResHandle(resource_handle.ResourceHandle):
     def _get_client(self, cxt):
@@ -96,6 +104,14 @@ class FakeResHandle(resource_handle.ResourceHandle):
         try:
             cli = self._get_client(cxt)
             cli.delete_fake_res(name)
+        except FakeException:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
+
+    def handle_action(self, cxt, resource, action, name, rename):
+        try:
+            cli = self._get_client(cxt)
+            cli.action_fake_res(name, rename)
         except FakeException:
             self.endpoint_url = None
             raise exception.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
@@ -133,6 +149,7 @@ class ClientTest(unittest.TestCase):
         self.client.operation_resources_map['list'].add(FAKE_RESOURCE)
         self.client.operation_resources_map['create'].add(FAKE_RESOURCE)
         self.client.operation_resources_map['delete'].add(FAKE_RESOURCE)
+        self.client.operation_resources_map['action'].add(FAKE_RESOURCE)
         self.client.service_handle_map[FAKE_TYPE] = FakeResHandle(None)
 
     def test_list(self):
@@ -159,6 +176,12 @@ class ClientTest(unittest.TestCase):
         self.client.delete_resources(FAKE_RESOURCE, self.context, 'res1')
         resources = self.client.list_resources(FAKE_RESOURCE, self.context)
         self.assertEqual(resources, [{'name': 'res2'}])
+
+    def test_action(self):
+        self.client.action_resources(FAKE_RESOURCE, self.context,
+                                     'rename', 'res1', 'res3')
+        resources = self.client.list_resources(FAKE_RESOURCE, self.context)
+        self.assertEqual(resources, [{'name': 'res3'}, {'name': 'res2'}])
 
     def test_list_endpoint_not_found(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,

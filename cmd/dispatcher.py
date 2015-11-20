@@ -34,7 +34,7 @@ import nova.objects as nova_objects
 from nova.objects import base as objects_base
 import nova.rpc as nova_rpc
 
-import tricircle.cascade_service.service as service
+import tricircle.dispatcher.service as service
 
 
 def block_db_access():
@@ -62,7 +62,7 @@ def process_command_line_arguments():
     logging.register_options(cfg.CONF)
     logging.set_defaults()
     cfg.CONF(sys.argv[1:])
-    logging.setup(cfg.CONF, "cascade_service", version='0.1')
+    logging.setup(cfg.CONF, "dispatcher", version='0.1')
 
 
 def _set_up_nova_objects():

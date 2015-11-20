@@ -22,7 +22,6 @@ from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging
 
-from tricircle.common import topics
 from tricircle.common.serializer import CascadeSerializer as Serializer
 
 TRANSPORT = oslo_messaging.get_transport(cfg.CONF)
@@ -58,15 +57,7 @@ class NetworkingRpcApi(object):
                                  'update_port_down', port_id=port_id)
 
 
-def create_client(component_name):
-    topic = topics.CASCADING_SERVICE
-    target = oslo_messaging.Target(
-        exchange="tricircle",
-        topic=topic,
-        namespace=component_name,
-        version='1.0',
-    )
-
+def create_client(target):
     return oslo_messaging.RPCClient(
         TRANSPORT,
         target,

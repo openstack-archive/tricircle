@@ -18,9 +18,9 @@ function create_tricircle_accounts {
         create_service_user "tricircle"
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-            local tricircle_cascade_service=$(get_or_create_service "tricircle" \
+            local tricircle_dispatcher=$(get_or_create_service "tricircle" \
                 "Cascading" "OpenStack Cascading Service")
-            get_or_create_endpoint $tricircle_cascade_service \
+            get_or_create_endpoint $tricircle_dispatcher \
                 "$REGION_NAME" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_CASCADE_API_HOST:$TRICIRCLE_CASCADE_API_PORT/v1.0" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_CASCADE_API_HOST:$TRICIRCLE_CASCADE_API_PORT/v1.0" \
@@ -54,18 +54,18 @@ function configure_tricircle_plugin {
     if is_service_enabled t-svc ; then
         echo "Configuring Neutron for Tricircle Cascade Service"
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
-        cp -p $TRICIRCLE_DIR/etc/cascade_service.conf $TRICIRCLE_CASCADE_CONF
+        cp -p $TRICIRCLE_DIR/etc/dispatcher.conf $TRICIRCLE_DISPATCHER_CONF
 
         TRICIRCLE_POLICY_FILE=$TRICIRCLE_CONF_DIR/policy.json
         cp $TRICIRCLE_DIR/etc/policy.json $TRICIRCLE_POLICY_FILE
 
-        iniset $TRICIRCLE_CASCADE_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_CASCADE_CONF DEFAULT verbose True
-        setup_colorized_logging $TRICIRCLE_CASCADE_CONF DEFAULT
-        iniset $TRICIRCLE_CASCADE_CONF DEFAULT bind_host $TRICIRCLE_CASCADE_LISTEN_ADDRESS
-        iniset $TRICIRCLE_CASCADE_CONF DEFAULT use_syslog $SYSLOG
-        iniset_rpc_backend tricircle $TRICIRCLE_CASCADE_CONF
-        iniset $TRICIRCLE_CASCADE_CONF database connection `database_connection_url tricircle`
+        iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+        iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT verbose True
+        setup_colorized_logging $TRICIRCLE_DISPATCHER_CONF DEFAULT tenant_name
+        iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT bind_host $TRICIRCLE_DISPATCHER_LISTEN_ADDRESS
+        iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT use_syslog $SYSLOG
+        iniset_rpc_backend tricircle $TRICIRCLE_DISPATCHER_CONF
+        iniset $TRICIRCLE_DISPATCHER_CONF database connection `database_connection_url tricircle`
     fi
 }
 
@@ -121,13 +121,13 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
         recreate_database tricircle
-        python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_CASCADE_CONF"
+        python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_DISPATCHER_CONF"
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         echo_summary "Initializing Cascading Service"
 
         if is_service_enabled t-svc; then
-            run_process t-svc "python $TRICIRCLE_CASCADE_SERVICE --config-file $TRICIRCLE_CASCADE_CONF --config-dir $TRICIRCLE_CONF_DIR"
+            run_process t-svc "python $TRICIRCLE_DISPATCHER --config-file $TRICIRCLE_DISPATCHER_CONF --config-dir $TRICIRCLE_CONF_DIR"
         fi
 
         if is_service_enabled t-svc-api; then

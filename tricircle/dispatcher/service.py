@@ -22,11 +22,13 @@ import oslo_messaging
 
 from tricircle.common import topics
 from tricircle.common.serializer import CascadeSerializer as Serializer
-from tricircle.cascade_service import scheduler
+from tricircle.dispatcher import site_manager
 
 # import endpoints here
-from tricircle.cascade_service.endpoints.networking import (
+from tricircle.dispatcher.endpoints.networking import (
     CascadeNetworkingServiceEndpoint)
+from tricircle.dispatcher.endpoints.site import (
+    CascadeSiteServiceEndpoint)
 
 LOG = logging.getLogger(__name__)
 
@@ -54,6 +56,7 @@ def _create_main_cascade_server():
     endpoints = [
         server_control_endpoint,
         CascadeNetworkingServiceEndpoint(),
+        CascadeSiteServiceEndpoint()
     ]
     server = oslo_messaging.get_rpc_server(
         transport,
@@ -64,10 +67,11 @@ def _create_main_cascade_server():
     )
     server_control_endpoint.server = server
 
+    # init _SiteManager to start fake nodes
+    site_manager.get_instance()
+
     return server
 
 
 def setup_server():
-    scheduler_server = scheduler.create_server()
-    scheduler_server.start()
     return _create_main_cascade_server()

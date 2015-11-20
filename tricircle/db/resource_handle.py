@@ -40,8 +40,9 @@ client_opts = [
 cfg.CONF.register_opts(client_opts, group='client')
 
 
-LIST, CREATE, DELETE = 1, 2, 4
-operation_index_map = {'list': LIST, 'create': CREATE, 'delete': DELETE}
+LIST, CREATE, DELETE, ACTION = 1, 2, 4, 8
+operation_index_map = {'list': LIST, 'create': CREATE,
+                       'delete': DELETE, 'action': ACTION}
 
 LOG = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class NovaResourceHandle(ResourceHandle):
     service_type = 'nova'
     support_resource = {'flavor': LIST,
                         'server': LIST,
-                        'aggregate': LIST | CREATE | DELETE}
+                        'aggregate': LIST | CREATE | DELETE | ACTION}
 
     def _get_client(self, cxt):
         cli = n_client.Client('2',
@@ -177,3 +178,14 @@ class NovaResourceHandle(ResourceHandle):
         except n_exceptions.NotFound:
             LOG.debug("Delete %(resource)s %(resource_id)s which not found",
                       {'resource': resource, 'resource_id': resource_id})
+
+    def handle_action(self, cxt, resource, action, *args, **kwargs):
+        try:
+            client = self._get_client(cxt)
+            collection = '%ss' % resource
+            resource_manager = getattr(client, collection)
+            getattr(resource_manager, action)(*args, **kwargs)
+        except r_exceptions.ConnectTimeout:
+            self.endpoint_url = None
+            raise exception.EndpointNotAvailable('nova',
+                                                 client.client.management_url)

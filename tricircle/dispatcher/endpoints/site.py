@@ -14,13 +14,19 @@
 # limitations under the License.
 
 
-def get_import_path(cls):
-    return cls.__module__ + "." + cls.__name__
+import oslo_messaging
+
+from oslo_log import log as logging
+
+from tricircle.dispatcher import site_manager
+
+LOG = logging.getLogger(__name__)
 
 
-def get_ag_name(site_name):
-    return 'ag_%s' % site_name
+class CascadeSiteServiceEndpoint(object):
 
+    target = oslo_messaging.Target(namespace="site",
+                                   version='1.0')
 
-def get_az_name(site_name):
-    return 'az_%s' % site_name
+    def create_site(self, ctx, payload):
+        site_manager.get_instance().create_site(ctx, payload)

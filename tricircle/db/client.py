@@ -119,7 +119,7 @@ class Client(object):
                                 getattr(self, '%s_resources' % operation),
                                 resource))
 
-    def _get_admin_token(self):
+    def _get_keystone_session(self):
         auth = auth_identity.Password(
             auth_url=cfg.CONF.client.identity_url,
             username=cfg.CONF.client.admin_username,
@@ -127,8 +127,13 @@ class Client(object):
             project_name=cfg.CONF.client.admin_tenant,
             user_domain_name=cfg.CONF.client.admin_user_domain_name,
             project_domain_name=cfg.CONF.client.admin_tenant_domain_name)
-        sess = session.Session(auth=auth)
-        return sess.get_token()
+        return session.Session(auth=auth)
+
+    def _get_admin_token(self):
+        return self._get_keystone_session().get_token()
+
+    def _get_admin_project_id(self):
+        return self._get_keystone_session().get_project_id()
 
     def _get_endpoint_from_keystone(self, cxt):
         auth = token_endpoint.Token(cfg.CONF.client.identity_url,
@@ -285,6 +290,10 @@ class Client(object):
         :return: list of dict containing resources information
         :raises: EndpointNotAvailable
         """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         filters = filters or []
@@ -310,6 +319,10 @@ class Client(object):
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
         """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_create(cxt, resource, *args, **kwargs)
@@ -328,6 +341,39 @@ class Client(object):
         :return: None
         :raises: EndpointNotAvailable
         """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         handle.handle_delete(cxt, resource, resource_id)
+
+    @_safe_operation('action')
+    def action_resources(self, resource, cxt, action, *args, **kwargs):
+        """Apply action on resource in site of top layer
+
+        Directly invoke this method to apply action, or use
+        action_(resource)s (self, cxt, action, *args, **kwargs). These methods
+        are automatically generated according to the supported resources of
+        each ResourceHandle class.
+
+        :param resource: resource type
+        :param cxt: context object
+        :param action: action applied on resource
+        :param args, kwargs: passed according to resource type
+               --------------------------
+               resource -> action -> args -> kwargs
+               --------------------------
+               aggregate -> add_host -> aggregate, host -> none
+               --------------------------
+        :return: None
+        :raises: EndpointNotAvailable
+        """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
+        service = self.resource_service_map[resource]
+        handle = self.service_handle_map[service]
+        return handle.handle_action(cxt, resource, action, *args, **kwargs)

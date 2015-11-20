@@ -17,6 +17,8 @@ import six
 from oslo_messaging import Serializer
 from neutron.api.v2.attributes import ATTR_NOT_SPECIFIED
 
+import tricircle.context as t_context
+
 
 class Mapping(object):
     def __init__(self, mapping):
@@ -70,13 +72,7 @@ class CascadeSerializer(Serializer):
         return entity
 
     def serialize_context(self, context):
-        if self._base is not None:
-            context = self._base.serialize_context(context)
-
-        return context
+        return context.to_dict()
 
     def deserialize_context(self, context):
-        if self._base is not None:
-            context = self._base.deserialize_context(context)
-
-        return context
+        return t_context.Context.from_dict(context)
