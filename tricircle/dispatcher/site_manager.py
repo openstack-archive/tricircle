@@ -15,12 +15,12 @@
 # TODO(saggi) change to oslo before release
 from oslo_serialization import jsonutils as json
 
+import tricircle.common.context as t_context
 from tricircle.common.singleton import Singleton
 from tricircle.common import utils
-import tricircle.context as t_context
-from tricircle.dispatcher.compute import ComputeHostManager
 from tricircle.db import client
 from tricircle.db import models
+from tricircle.dispatcher.compute import ComputeHostManager
 
 
 class Node(object):
@@ -113,9 +113,8 @@ class _SiteManager(object):
             self.create_site(t_context.get_admin_context(), site['site_name'])
 
     def create_site(self, context, site_name):
-        """creates a fake site, in reality the information about available
-        sites should be pulled from the DAL and not created at will.
-        """
+        """creates a fake node as nova-compute and add it to az"""
+
         # TODO(saggi): thread safety
         if site_name in self._sites:
             raise RuntimeError("Site already exists in site map")

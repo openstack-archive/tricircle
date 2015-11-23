@@ -44,7 +44,7 @@ function configure_tricircle_plugin {
     echo "Configuring Neutron for Tricircle"
 
     if is_service_enabled q-svc ; then
-        Q_PLUGIN_CLASS="tricircle.networking_tricircle.plugin.TricirclePlugin"
+        Q_PLUGIN_CLASS="tricircle.networking.plugin.TricirclePlugin"
 
         #NEUTRON_CONF=/etc/neutron/neutron.conf
         iniset $NEUTRON_CONF DEFAULT core_plugin "$Q_PLUGIN_CLASS"
@@ -61,7 +61,7 @@ function configure_tricircle_plugin {
 
         iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT verbose True
-        setup_colorized_logging $TRICIRCLE_DISPATCHER_CONF DEFAULT tenant_name
+        setup_colorized_logging $TRICIRCLE_DISPATCHER_CONF DEFAULT tenant
         iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT bind_host $TRICIRCLE_DISPATCHER_LISTEN_ADDRESS
         iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT use_syslog $SYSLOG
         iniset_rpc_backend tricircle $TRICIRCLE_DISPATCHER_CONF

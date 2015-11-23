@@ -19,7 +19,7 @@ Tricircle base exception handling.
 
 from oslo_utils import excutils
 import six
-from tricircle.i18n import _
+from tricircle.common.i18n import _
 
 
 class TricircleException(Exception):

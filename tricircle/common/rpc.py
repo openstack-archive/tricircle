@@ -91,7 +91,7 @@ class AutomaticRpcWrapper(object):
             return cctx.call(context, method, payload=payload)
 
     def send(self, cast):
-        """ Autowrap an API call with a send_message() call
+        """Autowrap an API call with a send_message() call
 
         This function uses python tricks to implement a passthrough call from
         the calling API to the cascade service

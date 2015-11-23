@@ -20,8 +20,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging
 
-from tricircle.common import topics
 from tricircle.common.serializer import CascadeSerializer as Serializer
+from tricircle.common import topics
 from tricircle.dispatcher import site_manager
 
 # import endpoints here

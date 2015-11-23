@@ -21,8 +21,8 @@ from neutron.common import constants as neutron_const
 from neutron.common import rpc as neutron_rpc
 from neutron import manager
 
-from tricircle.networking_tricircle import plugin
-from tricircle.networking_tricircle import rpc
+from tricircle.networking import plugin
+from tricircle.networking import rpc
 
 
 FAKE_PORT_ID = 'fake_port_uuid'

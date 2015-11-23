@@ -22,8 +22,8 @@ from neutron.common import exceptions as neutron_exceptions
 from neutron.common import rpc as neutron_rpc
 from neutron.db import db_base_plugin_v2
 
-from tricircle import context
-from tricircle.networking_tricircle.plugin import TricirclePlugin
+from tricircle.common import context
+from tricircle.networking.plugin import TricirclePlugin
 
 
 FAKE_PORT_ID = 'fake_port_uuid'

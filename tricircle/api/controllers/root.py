@@ -21,8 +21,8 @@ from pecan import request
 from pecan import rest
 
 from tricircle.common import cascading_site_api
+import tricircle.common.context as t_context
 from tricircle.common import utils
-import tricircle.context as t_context
 from tricircle.db import client
 from tricircle.db import exception
 from tricircle.db import models

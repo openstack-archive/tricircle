@@ -26,7 +26,7 @@ from keystoneclient.v3 import client as keystone_client
 from oslo_config import cfg
 from oslo_log import log as logging
 
-import tricircle.context as tricircle_context
+import tricircle.common.context as tricircle_context
 from tricircle.db import exception
 from tricircle.db import models
 from tricircle.db import resource_handle

@@ -30,6 +30,7 @@ ModelBase = declarative.declarative_base()
 
 def _filter_query(model, query, filters):
     """Apply filter to query
+
     :param model:
     :param query:
     :param filters: list of filter dict with key 'key', 'comparator', 'value'

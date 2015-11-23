@@ -14,10 +14,10 @@
 # limitations under the License.
 import six
 
-from oslo_messaging import Serializer
 from neutron.api.v2.attributes import ATTR_NOT_SPECIFIED
+from oslo_messaging import Serializer
 
-import tricircle.context as t_context
+import tricircle.common.context as t_context
 
 
 class Mapping(object):

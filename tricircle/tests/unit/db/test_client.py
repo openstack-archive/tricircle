@@ -20,7 +20,7 @@ import uuid
 import mock
 from oslo_config import cfg
 
-from tricircle import context
+from tricircle.common import context
 from tricircle.db import client
 from tricircle.db import core
 from tricircle.db import exception

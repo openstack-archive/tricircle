@@ -18,8 +18,8 @@ from oslo_log import log as logging
 import oslo_messaging
 
 from neutron.common import rpc as n_rpc
-from tricircle.common import topics
 from tricircle.common.serializer import CascadeSerializer as Serializer
+from tricircle.common import topics
 
 LOG = logging.getLogger(__name__)
 

@@ -14,12 +14,12 @@
 # limitations under the License.
 
 from nova.compute.manager import ComputeManager
+from nova.virt.fake import FakeDriver
 
+import nova.rpc as nova_rpc
 from nova.service import Service
 import nova.version as nova_version
-import nova.rpc as nova_rpc
 
-from tricircle.compute_tricircle.driver import TricircleComputeDriver
 from tricircle.common.utils import get_import_path
 
 _REPORT_INTERVAL = 30
@@ -27,7 +27,7 @@ _REPORT_INTERVAL_MAX = 60
 
 
 def _patch_nova_service():
-    if (nova_version.loaded):
+    if nova_version.loaded:
         return
 
     nova_version.NOVA_PACKAGE = "tricircle"
@@ -67,8 +67,7 @@ class NovaService(Service):
 
 
 def _fix_compute_service_exchange(service):
-    """Fix service exchange value for nova
-    """
+    """Fix service exchange value for nova"""
 
     manager = service.manager
     for client in (
@@ -83,7 +82,6 @@ def _fix_compute_service_exchange(service):
 class ComputeHostManager(object):
     def __init__(self, site_manager):
         self._compute_nodes = []
-        TricircleComputeDriver.site_manager = site_manager
 
     def _create_compute_node_service(self, host):
         service = NovaService(
@@ -95,7 +93,10 @@ class ComputeHostManager(object):
             report_interval=_REPORT_INTERVAL,
             periodic_interval_max=_REPORT_INTERVAL_MAX,
             manager=get_import_path(ComputeManager),
-            compute_driver=get_import_path(TricircleComputeDriver),
+            # temporally use FakeDriver, new compute manager doesn't require
+            # compute driver so this can be removed after new compute manager
+            # is finished
+            compute_driver=get_import_path(FakeDriver)
         )
 
         _fix_compute_service_exchange(service)
@@ -103,8 +104,7 @@ class ComputeHostManager(object):
         return service
 
     def create_host_adapter(self, host):
-        """Creates an adapter between the nova compute API and Site object
-        """
+        """Creates an adapter between the nova compute API and Site object"""
         service = self._create_compute_node_service(host)
         service.start()
         self._compute_nodes.append(service)

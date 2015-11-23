@@ -27,8 +27,8 @@ from werkzeug import serving
 from tricircle.api import app
 from tricircle.common import config
 
-from tricircle.i18n import _LI
-from tricircle.i18n import _LW
+from tricircle.common.i18n import _LI
+from tricircle.common.i18n import _LW
 
 
 CONF = cfg.CONF

@@ -16,7 +16,7 @@
 
 import unittest
 
-from tricircle import context
+from tricircle.common import context
 from tricircle.db import core
 from tricircle.db import exception
 from tricircle.db import models

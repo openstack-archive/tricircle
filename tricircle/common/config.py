@@ -24,11 +24,11 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from paste import deploy
 
-from tricircle.i18n import _
-from tricircle.i18n import _LI
+from tricircle.common.i18n import _
+from tricircle.common.i18n import _LI
 
 # from tricircle import policy
-from tricircle import version
+from tricircle.common import version
 
 
 LOG = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def reset_service():
     # daemon mode.
     setup_logging()
 
-    # (TODO) enforce policy later
+    # TODO(zhiyuan) enforce policy later
     # policy.refresh()
 
 

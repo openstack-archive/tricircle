@@ -31,7 +31,7 @@ from neutron.db import portbindings_db
 from neutron.db import securitygroups_db
 from neutron.i18n import _LI
 from tricircle.common import cascading_networking_api as c_net_api
-from tricircle.networking_tricircle import rpc as c_net_rpc
+from tricircle.networking import rpc as c_net_rpc
 
 LOG = log.getLogger(__name__)
 
