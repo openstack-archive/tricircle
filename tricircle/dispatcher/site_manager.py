@@ -12,15 +12,13 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# TODO(saggi) change to oslo before release
-from oslo_serialization import jsonutils as json
 
 import tricircle.common.context as t_context
 from tricircle.common.singleton import Singleton
 from tricircle.common import utils
 from tricircle.db import client
 from tricircle.db import models
-from tricircle.dispatcher.compute import ComputeHostManager
+from tricircle.dispatcher.host_manager import ComputeHostManager
 
 
 class Node(object):
@@ -40,11 +38,11 @@ class Node(object):
         self.running_vms = 0
         self.cpu_info = ""
         self.disk_available_least = 1
-        self.supported_instances = []
+        self.supported_hv_specs = []
         self.metrics = None
         self.pci_stats = None
         self.extra_resources = None
-        self.stats = json.dumps({})
+        self.stats = {}
         self.numa_topology = None
 
     def get_available_resource(self):
@@ -64,12 +62,12 @@ class Node(object):
             "running_vms": self.running_vms,
             "cpu_info": self.cpu_info,
             "disk_available_least": self.disk_available_least,
-            "supported_instances": self.supported_instances,
+            "supported_hv_specs": self.supported_hv_specs,
             "metrics": self.metrics,
             "pci_stats": self.pci_stats,
             "extra_resources": self.extra_resources,
-            "stats": (self.stats),
-            "numa_topology": (self.numa_topology),
+            "stats": self.stats,
+            "numa_topology": self.numa_topology,
         }
 
 
@@ -79,7 +77,7 @@ class Site(object):
 
         # We currently just hold one aggregate subnode representing the
         # resources owned by all the site's nodes.
-        self._aggragate_node = Node("cascade_" + name)
+        self._aggragate_node = Node(utils.get_node_name(name))
 
         self._instance_launch_information = {}
 

@@ -3,7 +3,7 @@
 # Test if any tricircle services are enabled
 # is_tricircle_enabled
 function is_tricircle_enabled {
-    [[ ,${ENABLED_SERVICES} =~ ,"t-svc-" ]] && return 0
+    [[ ,${ENABLED_SERVICES} =~ ,"t-" ]] && return 0
     return 1
 }
 
@@ -14,7 +14,7 @@ function is_tricircle_enabled {
 # $SERVICE_TENANT_NAME  tricircle       service
 
 function create_tricircle_accounts {
-    if [[ "$ENABLED_SERVICES" =~ "t-svc-api" ]]; then
+    if [[ "$ENABLED_SERVICES" =~ "t-api" ]]; then
         create_service_user "tricircle"
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
@@ -22,9 +22,9 @@ function create_tricircle_accounts {
                 "Cascading" "OpenStack Cascading Service")
             get_or_create_endpoint $tricircle_dispatcher \
                 "$REGION_NAME" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CASCADE_API_HOST:$TRICIRCLE_CASCADE_API_PORT/v1.0" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CASCADE_API_HOST:$TRICIRCLE_CASCADE_API_PORT/v1.0" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CASCADE_API_HOST:$TRICIRCLE_CASCADE_API_PORT/v1.0"
+                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0"
         fi
     fi
 }
@@ -40,10 +40,9 @@ function create_tricircle_cache_dir {
 }
 
 
-function configure_tricircle_plugin {
-    echo "Configuring Neutron for Tricircle"
-
+function configure_tricircle_dispatcher {
     if is_service_enabled q-svc ; then
+        echo "Configuring Neutron plugin for Tricircle"
         Q_PLUGIN_CLASS="tricircle.networking.plugin.TricirclePlugin"
 
         #NEUTRON_CONF=/etc/neutron/neutron.conf
@@ -51,8 +50,8 @@ function configure_tricircle_plugin {
         iniset $NEUTRON_CONF DEFAULT service_plugins ""
     fi
 
-    if is_service_enabled t-svc ; then
-        echo "Configuring Neutron for Tricircle Cascade Service"
+    if is_service_enabled t-dis ; then
+        echo "Configuring Tricircle Dispatcher"
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
         cp -p $TRICIRCLE_DIR/etc/dispatcher.conf $TRICIRCLE_DISPATCHER_CONF
 
@@ -66,37 +65,52 @@ function configure_tricircle_plugin {
         iniset $TRICIRCLE_DISPATCHER_CONF DEFAULT use_syslog $SYSLOG
         iniset_rpc_backend tricircle $TRICIRCLE_DISPATCHER_CONF
         iniset $TRICIRCLE_DISPATCHER_CONF database connection `database_connection_url tricircle`
+
+        iniset $TRICIRCLE_DISPATCHER_CONF client admin_username admin
+        iniset $TRICIRCLE_DISPATCHER_CONF client admin_password $ADMIN_PASSWORD
+        iniset $TRICIRCLE_DISPATCHER_CONF client admin_tenant demo
+        iniset $TRICIRCLE_DISPATCHER_CONF client auto_refresh_endpoint True
+        iniset $TRICIRCLE_DISPATCHER_CONF client top_site_name $OS_REGION_NAME
     fi
 }
 
-function configure_tricircle_cascade_api {
-    echo "Configuring tricircle cascade api service"
+function configure_tricircle_proxy {
+    if is_service_enabled t-prx ; then
+        echo "Configuring Tricircle Proxy"
 
-    if is_service_enabled t-svc-api ; then
-        cp -p $TRICIRCLE_DIR/etc/api.conf $TRICIRCLE_CASCADE_API_CONF
-        iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT verbose True
-        iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_CASCADE_API_CONF database connection `database_connection_url tricircle`
+        cp -p $NOVA_CONF $TRICIRCLE_CONF_DIR
+        mv $TRICIRCLE_CONF_DIR/nova.conf $TRICIRCLE_PROXY_CONF
+    fi
+}
 
-        iniset $TRICIRCLE_CASCADE_API_CONF client admin_username admin
-        iniset $TRICIRCLE_CASCADE_API_CONF client admin_password $ADMIN_PASSWORD
-        iniset $TRICIRCLE_CASCADE_API_CONF client admin_tenant demo
-        iniset $TRICIRCLE_CASCADE_API_CONF client auto_refresh_endpoint True
-        iniset $TRICIRCLE_CASCADE_API_CONF client top_site_name $OS_REGION_NAME
+function configure_tricircle_api {
+    if is_service_enabled t-api ; then
+        echo "Configuring Tricircle API"
 
-        setup_colorized_logging $TRICIRCLE_CASCADE_API_CONF DEFAULT tenant_name
+        cp -p $TRICIRCLE_DIR/etc/api.conf $TRICIRCLE_API_CONF
+        iniset $TRICIRCLE_API_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+        iniset $TRICIRCLE_API_CONF DEFAULT verbose True
+        iniset $TRICIRCLE_API_CONF DEFAULT use_syslog $SYSLOG
+        iniset $TRICIRCLE_API_CONF database connection `database_connection_url tricircle`
+
+        iniset $TRICIRCLE_API_CONF client admin_username admin
+        iniset $TRICIRCLE_API_CONF client admin_password $ADMIN_PASSWORD
+        iniset $TRICIRCLE_API_CONF client admin_tenant demo
+        iniset $TRICIRCLE_API_CONF client auto_refresh_endpoint True
+        iniset $TRICIRCLE_API_CONF client top_site_name $OS_REGION_NAME
+
+        setup_colorized_logging $TRICIRCLE_API_CONF DEFAULT tenant_name
 
         if is_service_enabled keystone; then
 
             create_tricircle_cache_dir
 
             # Configure auth token middleware
-            configure_auth_token_middleware $TRICIRCLE_CASCADE_API_CONF tricircle \
+            configure_auth_token_middleware $TRICIRCLE_API_CONF tricircle \
                 $TRICIRCLE_AUTH_CACHE_DIR
 
         else
-            iniset $TRICIRCLE_CASCADE_API_CONF DEFAULT auth_strategy noauth
+            iniset $TRICIRCLE_API_CONF DEFAULT auth_strategy noauth
         fi
 
     fi
@@ -113,10 +127,11 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
 
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-        echo_summary "Configure Tricircle"
+        echo_summary "Configuring Tricircle"
 
-        configure_tricircle_plugin
-        configure_tricircle_cascade_api
+        configure_tricircle_dispatcher
+        configure_tricircle_proxy
+        configure_tricircle_api
 
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
@@ -124,28 +139,36 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_DISPATCHER_CONF"
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
-        echo_summary "Initializing Cascading Service"
+        echo_summary "Initializing Tricircle Service"
 
-        if is_service_enabled t-svc; then
-            run_process t-svc "python $TRICIRCLE_DISPATCHER --config-file $TRICIRCLE_DISPATCHER_CONF --config-dir $TRICIRCLE_CONF_DIR"
+        if is_service_enabled t-dis; then
+            run_process t-dis "python $TRICIRCLE_DISPATCHER --config-file $TRICIRCLE_DISPATCHER_CONF"
         fi
 
-        if is_service_enabled t-svc-api; then
+        if is_service_enabled t-prx; then
+            run_process t-prx "python $TRICIRCLE_PROXY --config-file $TRICIRCLE_PROXY_CONF"
+        fi
+
+        if is_service_enabled t-api; then
 
             create_tricircle_accounts
 
-            run_process t-svc-api "python $TRICIRCLE_CASCADE_API --config-file $TRICIRCLE_CASCADE_API_CONF"
+            run_process t-api "python $TRICIRCLE_API --config-file $TRICIRCLE_API_CONF"
         fi
     fi
 
     if [[ "$1" == "unstack" ]]; then
 
-        if is_service_enabled t-svc; then
-           stop_process t-svc
+        if is_service_enabled t-dis; then
+           stop_process t-dis
         fi
 
-        if is_service_enabled t-svc-api; then
-           stop_process t-svc-api
+        if is_service_enabled t-prx; then
+           stop_process t-prx
+        fi
+
+        if is_service_enabled t-api; then
+           stop_process t-api
         fi
     fi
 fi

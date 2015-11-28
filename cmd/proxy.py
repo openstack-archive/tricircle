@@ -33,7 +33,7 @@ from tricircle.common.nova_lib import objects as nova_objects
 from tricircle.common.nova_lib import objects_base
 from tricircle.common.nova_lib import quota
 from tricircle.common.nova_lib import rpc as nova_rpc
-from tricircle.dispatcher import service
+from tricircle.proxy import service
 
 
 def block_db_access():
@@ -61,7 +61,7 @@ def process_command_line_arguments():
     logging.register_options(cfg.CONF)
     logging.set_defaults()
     cfg.CONF(sys.argv[1:])
-    logging.setup(cfg.CONF, "dispatcher", version='0.1')
+    logging.setup(cfg.CONF, "proxy", version='0.1')
 
 
 def _set_up_nova_objects():

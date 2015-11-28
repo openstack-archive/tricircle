@@ -131,7 +131,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if self._cascading_rpc_api:
             self._cascading_rpc_api.delete_port(context,
                                                 port_id,
-                                                l3_port_checki=True)
+                                                l3_port_check=True)
 
         return ret_val
 

@@ -58,7 +58,9 @@ def _wrap_app(app):
     if cfg.CONF.auth_strategy == 'noauth':
         pass
     elif cfg.CONF.auth_strategy == 'keystone':
-        app = auth_token.AuthProtocol(app, {})
+        # NOTE(zhiyuan) pkg_resources will try to load tricircle to get module
+        # version, passing "project" as empty string to bypass it
+        app = auth_token.AuthProtocol(app, {'project': ''})
     else:
         raise t_exc.InvalidConfigurationOption(
             opt_name='auth_strategy', opt_value=cfg.CONF.auth_strategy)

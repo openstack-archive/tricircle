@@ -32,8 +32,9 @@ Q_ENABLE_TRICIRCLE=True
 enable_plugin tricircle https://git.openstack.org/openstack/tricircle master
 
 # Tricircle Services
-enable_service t-svc
-enable_service t-svc-api
+enable_service t-api
+enable_service t-prx
+enable_service t-dis
 
 # Use Neutron instead of nova-network
 disable_service n-net
