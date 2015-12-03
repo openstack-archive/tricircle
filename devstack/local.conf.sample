@@ -1,0 +1,49 @@
+#
+# Sample DevStack local.conf.
+#
+# This sample file is intended to be used for your typical Cascade DevStack Top
+# environment that's running all of OpenStack on a single host.  This can also
+#
+# No changes to this sample configuration are required for this to work.
+#
+
+[[local|localrc]]
+
+DATABASE_PASSWORD=password
+RABBIT_PASSWORD=password
+SERVICE_PASSWORD=password
+SERVICE_TOKEN=password
+ADMIN_PASSWORD=password
+LOGFILE=/opt/stack/logs/stack.sh.log
+VERBOSE=True
+LOG_COLOR=True
+SCREEN_LOGDIR=/opt/stack/logs
+HOST_IP=172.16.10.10
+FIXED_RANGE=10.0.0.0/24
+NETWORK_GATEWAY=10.0.0.1
+FIXED_NETWORK_SIZE=256
+FLOATING_RANGE=10.100.100.160/24
+Q_FLOATING_ALLOCATION_POOL=start=10.100.100.160,end=10.100.100.192
+
+PUBLIC_NETWORK_GATEWAY=10.100.100.3
+
+
+Q_ENABLE_TRICIRCLE=True
+enable_plugin tricircle https://git.openstack.org/openstack/tricircle master
+
+# Tricircle Services
+enable_service t-api
+
+# Use Neutron instead of nova-network
+disable_service n-net
+disable_service n-cpu
+disable_service n-sch
+enable_service q-svc
+disable_service q-dhcp
+disable_service q-l3
+disable_service q-agt
+disable_service c-api
+disable_service c-vol
+disable_service c-bak
+disable_service c-sch
+disable_service cinder
