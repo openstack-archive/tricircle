@@ -24,7 +24,7 @@ from tricircle.common import client
 import tricircle.common.context as t_context
 from tricircle.common import exceptions
 from tricircle.common import utils
-from tricircle.db import models
+import tricircle.db.api as db_api
 
 LOG = logging.getLogger(__name__)
 
@@ -126,14 +126,14 @@ class SitesController(rest.RestController):
     def get_one(self, site_id):
         context = _extract_context_from_environ(_get_environment())
         try:
-            return {'site': models.get_site(context, site_id)}
+            return {'site': db_api.get_site(context, site_id)}
         except exceptions.ResourceNotFound:
             pecan.abort(404, 'Site with id %s not found' % site_id)
 
     @expose()
     def get_all(self):
         context = _extract_context_from_environ(_get_environment())
-        sites = models.list_sites(context, [])
+        sites = db_api.list_sites(context, [])
         return {'sites': sites}
 
     @expose()
@@ -152,7 +152,7 @@ class SitesController(rest.RestController):
 
         site_filters = [{'key': 'site_name', 'comparator': 'eq',
                          'value': site_name}]
-        sites = models.list_sites(context, site_filters)
+        sites = db_api.list_sites(context, site_filters)
         if sites:
             pecan.abort(409, 'Site with name %s exists' % site_name)
             return
@@ -165,7 +165,7 @@ class SitesController(rest.RestController):
             site_dict = {'site_id': str(uuid.uuid4()),
                          'site_name': site_name,
                          'az_id': az_name}
-            site = models.create_site(context, site_dict)
+            site = db_api.create_site(context, site_dict)
         except Exception as e:
             LOG.debug(e.message)
             pecan.abort(500, 'Fail to create site')
@@ -182,7 +182,7 @@ class SitesController(rest.RestController):
             except Exception as e:
                 LOG.debug(e.message)
                 # delete previously created site
-                models.delete_site(context, site['site_id'])
+                db_api.delete_site(context, site['site_id'])
                 pecan.abort(500, 'Fail to create aggregate')
                 return
             pecan.response.status = 201

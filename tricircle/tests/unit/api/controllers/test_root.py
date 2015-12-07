@@ -22,8 +22,8 @@ import pecan
 import tricircle.api.controllers.root as root_controller
 from tricircle.common import client
 from tricircle.common import context
+from tricircle.db import api
 from tricircle.db import core
-from tricircle.db import models
 
 
 class ControllerTest(unittest.TestCase):
@@ -52,7 +52,7 @@ class SitesControllerTest(ControllerTest):
     def test_post_top_site(self):
         kw = {'name': 'TopSite', 'top': True}
         site_id = self.controller.post(**kw)['site']['site_id']
-        site = models.get_site(self.context, site_id)
+        site = api.get_site(self.context, site_id)
         self.assertEqual(site['site_name'], 'TopSite')
         self.assertEqual(site['az_id'], '')
 
@@ -60,7 +60,7 @@ class SitesControllerTest(ControllerTest):
     def test_post_bottom_site(self, mock_method):
         kw = {'name': 'BottomSite'}
         site_id = self.controller.post(**kw)['site']['site_id']
-        site = models.get_site(self.context, site_id)
+        site = api.get_site(self.context, site_id)
         self.assertEqual(site['site_name'], 'BottomSite')
         self.assertEqual(site['az_id'], 'az_BottomSite')
         mock_method.assert_called_once_with('aggregate', self.context,
@@ -100,7 +100,7 @@ class SitesControllerTest(ControllerTest):
                            'az_Site%d' % i) for i in xrange(2, 4)]
         mock_method.assert_has_calls(calls)
 
-    @patch.object(models, 'create_site')
+    @patch.object(api, 'create_site')
     def test_post_create_site_exception(self, mock_method):
         mock_method.side_effect = Exception
         kw = {'name': 'BottomSite'}
@@ -118,7 +118,7 @@ class SitesControllerTest(ControllerTest):
         site_filter = [{'key': 'site_name',
                         'comparator': 'eq',
                         'value': 'BottomSite'}]
-        sites = models.list_sites(self.context, site_filter)
+        sites = api.list_sites(self.context, site_filter)
         self.assertEqual(len(sites), 0)
 
     def test_get_one(self):

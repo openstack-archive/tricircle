@@ -25,8 +25,8 @@ from tricircle.common import client
 from tricircle.common import context
 from tricircle.common import exceptions
 from tricircle.common import resource_handle
+from tricircle.db import api
 from tricircle.db import core
-from tricircle.db import models
 
 
 FAKE_AZ = 'fake_az'
@@ -138,8 +138,8 @@ class ClientTest(unittest.TestCase):
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
-        models.create_site(self.context, site_dict)
-        models.create_site_service_configuration(self.context, config_dict)
+        api.create_site(self.context, site_dict)
+        api.create_site_service_configuration(self.context, config_dict)
 
         global FAKE_RESOURCES
         FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
@@ -189,7 +189,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        models.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotFound,
                           self.client.list_resources,
@@ -211,7 +211,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=True,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        models.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -231,7 +231,7 @@ class ClientTest(unittest.TestCase):
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
-        models.create_site_service_configuration(self.context, config_dict)
+        api.create_site_service_configuration(self.context, config_dict)
         self.assertRaises(exceptions.EndpointNotUnique,
                           self.client.list_resources,
                           FAKE_RESOURCE, self.context, [])
@@ -241,9 +241,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        models.update_site_service_configuration(self.context,
-                                                 FAKE_SERVICE_ID,
-                                                 update_dict)
+        api.update_site_service_configuration(self.context,
+                                              FAKE_SERVICE_ID,
+                                              update_dict)
 
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotAvailable,
@@ -255,9 +255,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        models.update_site_service_configuration(self.context,
-                                                 FAKE_SERVICE_ID,
-                                                 update_dict)
+        api.update_site_service_configuration(self.context,
+                                              FAKE_SERVICE_ID,
+                                              update_dict)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -269,8 +269,8 @@ class ClientTest(unittest.TestCase):
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
-    @patch.object(models, 'create_site_service_configuration')
-    @patch.object(models, 'update_site_service_configuration')
+    @patch.object(api, 'create_site_service_configuration')
+    @patch.object(api, 'update_site_service_configuration')
     def test_update_endpoint_from_keystone(self, update_mock, create_mock):
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()

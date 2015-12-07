@@ -87,6 +87,8 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Configuring Tricircle"
 
+        sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
+
         configure_tricircle_api
 
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto

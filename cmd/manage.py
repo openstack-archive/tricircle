@@ -28,7 +28,7 @@ def main(argv=None, config_files=None):
              project='tricircle',
              default_config_files=config_files)
     migration_helpers.find_migrate_repo()
-    migration_helpers.sync_repo(1)
+    migration_helpers.sync_repo(2)
 
 
 if __name__ == '__main__':

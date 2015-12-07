@@ -29,6 +29,7 @@ from oslo_log import log as logging
 import tricircle.common.context as tricircle_context
 from tricircle.common import exceptions
 from tricircle.common import resource_handle
+from tricircle.db import api
 from tricircle.db import models
 
 
@@ -165,7 +166,7 @@ class Client(object):
         return region_service_endpoint_map
 
     def _get_config_with_retry(self, cxt, filters, site, service, retry):
-        conf_list = models.list_site_service_configurations(cxt, filters)
+        conf_list = api.list_site_service_configurations(cxt, filters)
         if len(conf_list) > 1:
             raise exceptions.EndpointNotUnique(site, service)
         if len(conf_list) == 0:
@@ -182,7 +183,7 @@ class Client(object):
             site_filters = [{'key': 'site_name',
                              'comparator': 'eq',
                              'value': self.site_name}]
-            site_list = models.list_sites(cxt, site_filters)
+            site_list = api.list_sites(cxt, site_filters)
             if len(site_list) == 0:
                 raise exceptions.ResourceNotFound(models.Site,
                                                   self.site_name)
@@ -218,7 +219,7 @@ class Client(object):
             # use region name to query site
             site_filters = [{'key': 'site_name', 'comparator': 'eq',
                              'value': region}]
-            site_list = models.list_sites(cxt, site_filters)
+            site_list = api.list_sites(cxt, site_filters)
             # skip region/site not registered in cascade service
             if len(site_list) != 1:
                 continue
@@ -228,7 +229,7 @@ class Client(object):
                                    'value': site_id},
                                   {'key': 'service_type', 'comparator': 'eq',
                                    'value': service}]
-                config_list = models.list_site_service_configurations(
+                config_list = api.list_site_service_configurations(
                     cxt, config_filters)
 
                 if len(config_list) > 1:
@@ -237,7 +238,7 @@ class Client(object):
                     config_id = config_list[0]['service_id']
                     update_dict = {
                         'service_url': endpoint_map[region][service]}
-                    models.update_site_service_configuration(
+                    api.update_site_service_configuration(
                         cxt, config_id, update_dict)
                 else:
                     config_dict = {
@@ -246,7 +247,7 @@ class Client(object):
                         'service_type': service,
                         'service_url': endpoint_map[region][service]
                     }
-                    models.create_site_service_configuration(
+                    api.create_site_service_configuration(
                         cxt, config_dict)
 
     def get_endpoint(self, cxt, site_id, service):
