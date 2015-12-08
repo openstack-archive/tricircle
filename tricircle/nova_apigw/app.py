@@ -12,7 +12,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
 import pecan
 
 from oslo_config import cfg
@@ -24,7 +23,7 @@ from tricircle.common import restapp
 common_opts = [
     cfg.StrOpt('bind_host', default='0.0.0.0',
                help=_("The host IP to bind to")),
-    cfg.IntOpt('bind_port', default=19999,
+    cfg.IntOpt('bind_port', default=19998,
                help=_("The port to bind to")),
     cfg.IntOpt('api_workers', default=1,
                help=_("number of api workers")),
@@ -52,8 +51,8 @@ def setup_app(*args, **kwargs):
             'host': cfg.CONF.bind_host
         },
         'app': {
-            'root': 'tricircle.api.controllers.root.RootController',
-            'modules': ['tricircle.api'],
+            'root': 'tricircle.nova_apigw.controllers.root.RootController',
+            'modules': ['tricircle.nova_apigw'],
             'errors': {
                 400: '/error',
                 '__force_dict__': True

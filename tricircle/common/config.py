@@ -40,7 +40,7 @@ def init(opts, args, **kwargs):
     logging.register_options(cfg.CONF)
 
     cfg.CONF(args=args, project='tricircle',
-             version='%%(prog)s %s' % version.version_info.release_string(),
+             version=version.version_info,
              **kwargs)
 
     _setup_logging()
@@ -53,7 +53,7 @@ def _setup_logging():
     LOG.info(_LI("Logging enabled!"))
     LOG.info(_LI("%(prog)s version %(version)s"),
              {'prog': sys.argv[0],
-              'version': version.version_info.release_string()})
+              'version': version.version_info})
     LOG.debug("command line: %s", " ".join(sys.argv))
 
 

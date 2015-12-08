@@ -1,4 +1,5 @@
-#    Copyright 2011 OpenStack Foundation
+# Copyright 2015 Huawei Technologies Co., Ltd.
+# All Rights Reserved
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -12,4 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-version_info = "tricircle 1.0"
+import tricircle.cinder_apigw.app
+
+
+def list_opts():
+    return [
+        ('DEFAULT', tricircle.cinder_apigw.app.common_opts),
+    ]

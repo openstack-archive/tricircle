@@ -24,7 +24,7 @@ from tricircle.common import restapp
 common_opts = [
     cfg.StrOpt('bind_host', default='0.0.0.0',
                help=_("The host IP to bind to")),
-    cfg.IntOpt('bind_port', default=19999,
+    cfg.IntOpt('bind_port', default=19997,
                help=_("The port to bind to")),
     cfg.IntOpt('api_workers', default=1,
                help=_("number of api workers")),
@@ -52,8 +52,8 @@ def setup_app(*args, **kwargs):
             'host': cfg.CONF.bind_host
         },
         'app': {
-            'root': 'tricircle.api.controllers.root.RootController',
-            'modules': ['tricircle.api'],
+            'root': 'tricircle.cinder_apigw.controllers.root.RootController',
+            'modules': ['tricircle.cinder_apigw'],
             'errors': {
                 400: '/error',
                 '__force_dict__': True
