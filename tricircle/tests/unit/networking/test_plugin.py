@@ -45,6 +45,11 @@ def fake_update_port(instance, context, port_id, port):
     return FAKE_PORT
 
 
+class FakePlugin(TricirclePlugin):
+    def __init__(self):
+        pass
+
+
 class TricirclePluginTest(unittest.TestCase):
     def setUp(self):
         FAKE_PORT['status'] = neutron_const.PORT_STATUS_DOWN
@@ -55,7 +60,7 @@ class TricirclePluginTest(unittest.TestCase):
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2,
                   'get_port', new=fake_get_port)
     def test_update_port_status(self):
-        plugin = TricirclePlugin()
+        plugin = FakePlugin()
         # this method requires a neutron context, but for test we just pass
         # a tricircle context
         port = plugin.update_port_status(context.Context(), FAKE_PORT_ID,
@@ -69,7 +74,7 @@ class TricirclePluginTest(unittest.TestCase):
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2,
                   'get_port', new=fake_get_port)
     def test_update_port_status_port_not_found(self):
-        plugin = TricirclePlugin()
+        plugin = FakePlugin()
         port = plugin.update_port_status(context.Context(), 'no_such_port',
                                          neutron_const.PORT_STATUS_ACTIVE)
         self.assertEqual(FAKE_PORT['status'], neutron_const.PORT_STATUS_DOWN)

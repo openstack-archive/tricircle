@@ -20,10 +20,22 @@ import unittest
 import pecan
 
 import tricircle.api.controllers.root as root_controller
+
+from tricircle.common import cascading_site_api
 from tricircle.common import context
+from tricircle.common import rpc
+
 from tricircle.db import client
 from tricircle.db import core
 from tricircle.db import models
+
+
+def fake_create_client(target):
+    return None
+
+
+def fake_cast_message(self, context, method, payload):
+    return None
 
 
 class ControllerTest(unittest.TestCase):
@@ -49,6 +61,9 @@ class SitesControllerTest(ControllerTest):
         super(SitesControllerTest, self).setUp()
         self.controller = root_controller.SitesController()
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_post_top_site(self):
         kw = {'name': 'TopSite', 'top': True}
         site_id = self.controller.post(**kw)['site']['site_id']
@@ -56,6 +71,9 @@ class SitesControllerTest(ControllerTest):
         self.assertEqual(site['site_name'], 'TopSite')
         self.assertEqual(site['az_id'], '')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     @patch.object(client.Client, 'create_resources')
     def test_post_bottom_site(self, mock_method):
         kw = {'name': 'BottomSite'}
@@ -66,11 +84,17 @@ class SitesControllerTest(ControllerTest):
         mock_method.assert_called_once_with('aggregate', self.context,
                                             'ag_BottomSite', 'az_BottomSite')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_post_site_name_missing(self):
         kw = {'top': True}
         self.controller.post(**kw)
         pecan.abort.assert_called_once_with(400, 'Name of site required')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_post_conflict(self):
         kw = {'name': 'TopSite', 'top': True}
         self.controller.post(**kw)
@@ -78,6 +102,9 @@ class SitesControllerTest(ControllerTest):
         pecan.abort.assert_called_once_with(409,
                                             'Site with name TopSite exists')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_post_not_admin(self):
         self.context.is_admin = False
         kw = {'name': 'TopSite', 'top': True}
@@ -85,6 +112,9 @@ class SitesControllerTest(ControllerTest):
         pecan.abort.assert_called_once_with(
             400, 'Admin role required to create sites')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     @patch.object(client.Client, 'create_resources')
     def test_post_decide_top(self, mock_method):
         # 'top' default to False
@@ -100,6 +130,9 @@ class SitesControllerTest(ControllerTest):
                            'az_Site%d' % i) for i in xrange(2, 4)]
         mock_method.assert_has_calls(calls)
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     @patch.object(models, 'create_site')
     def test_post_create_site_exception(self, mock_method):
         mock_method.side_effect = Exception
@@ -121,6 +154,9 @@ class SitesControllerTest(ControllerTest):
         sites = models.list_sites(self.context, site_filter)
         self.assertEqual(len(sites), 0)
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_get_one(self):
         kw = {'name': 'TopSite', 'top': True}
         site_id = self.controller.post(**kw)['site']['site_id']
@@ -129,11 +165,17 @@ class SitesControllerTest(ControllerTest):
                                        'site_name': 'TopSite',
                                        'az_id': ''})
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     def test_get_one_not_found(self):
         self.controller.get_one('fake_id')
         pecan.abort.assert_called_once_with(404,
                                             'Site with id fake_id not found')
 
+    @patch.object(rpc, 'create_client', new=fake_create_client)
+    @patch.object(cascading_site_api.CascadingSiteNotifyAPI,
+                  '_cast_message', new=fake_cast_message)
     @patch.object(client.Client, 'create_resources', new=mock.Mock)
     def test_get_all(self):
         kw1 = {'name': 'TopSite', 'top': True}

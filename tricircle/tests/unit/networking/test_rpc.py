@@ -29,6 +29,11 @@ FAKE_PORT_ID = 'fake_port_uuid'
 FAKE_CONTEXT = object()
 
 
+class FakePlugin(plugin.TricirclePlugin):
+    def __init__(self):
+        pass
+
+
 class RpcCallbacksTest(unittest.TestCase):
     def setUp(self):
         self.callbacks = rpc.RpcCallbacks()
@@ -39,7 +44,7 @@ class RpcCallbacksTest(unittest.TestCase):
                           'get_plugin') as get_plugin_method:
             with patch.object(plugin.TricirclePlugin,
                               'update_port_status') as update_method:
-                get_plugin_method.return_value = plugin.TricirclePlugin()
+                get_plugin_method.return_value = FakePlugin()
                 self.callbacks.update_port_up(FAKE_CONTEXT,
                                               port_id=FAKE_PORT_ID)
                 update_method.assert_called_once_with(
@@ -52,7 +57,7 @@ class RpcCallbacksTest(unittest.TestCase):
                           'get_plugin') as get_plugin_method:
             with patch.object(plugin.TricirclePlugin,
                               'update_port_status') as update_method:
-                get_plugin_method.return_value = plugin.TricirclePlugin()
+                get_plugin_method.return_value = FakePlugin()
                 self.callbacks.update_port_down(FAKE_CONTEXT,
                                                 port_id=FAKE_PORT_ID)
                 update_method.assert_called_once_with(
