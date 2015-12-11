@@ -13,14 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import tricircle.common.client
-
-# Todo: adding rpc cap negotiation configuration after first release
-# import tricircle.common.xrpcapi
+import tricircle.xjob.xservice
 
 
 def list_opts():
     return [
-        ('client', tricircle.common.client.client_opts),
-        # ('upgrade_levels', tricircle.common.xrpcapi.rpcapi_cap_opt),
+        ('DEFAULT', tricircle.xjob.xservice.common_opts),
+        ('DEFAULT', tricircle.xjob.xservice.service_opts),
     ]

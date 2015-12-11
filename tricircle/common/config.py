@@ -25,6 +25,7 @@ import oslo_log.log as logging
 from tricircle.common.i18n import _LI
 
 # from tricircle import policy
+from tricircle.common import rpc
 from tricircle.common import version
 
 
@@ -44,6 +45,8 @@ def init(opts, args, **kwargs):
              **kwargs)
 
     _setup_logging()
+
+    rpc.init(cfg.CONF)
 
 
 def _setup_logging():

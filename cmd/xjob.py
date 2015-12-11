@@ -26,43 +26,36 @@ import sys
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_service import wsgi
 
 from tricircle.common import config
 from tricircle.common.i18n import _LI
 from tricircle.common.i18n import _LW
-from tricircle.common import restapp
 
-from tricircle.nova_apigw import app
+from tricircle.xjob import xservice
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
 def main():
-    config.init(app.common_opts, sys.argv[1:])
-    application = app.setup_app()
+    config.init(xservice.common_opts, sys.argv[1:])
 
-    host = CONF.bind_host
-    port = CONF.bind_port
-    workers = CONF.api_workers
+    host = CONF.host
+    workers = CONF.workers
 
     if workers < 1:
         LOG.warning(_LW("Wrong worker number, worker = %(workers)s"), workers)
         workers = 1
 
-    LOG.info(_LI("Nova_APIGW on http://%(host)s:%(port)s with %(workers)s"),
-             {'host': host, 'port': port, 'workers': workers})
+    LOG.info(_LI("XJob Server on http://%(host)s with %(workers)s"),
+             {'host': host, 'workers': workers})
 
-    service = wsgi.Server(CONF, 'Tricircle Nova_APIGW',
-                          application, host, port)
-    restapp.serve(service, CONF, workers)
+    xservice.serve(xservice.create_service(), workers)
 
     LOG.info(_LI("Configuration:"))
     CONF.log_opt_values(LOG, std_logging.INFO)
 
-    restapp.wait()
-
+    xservice.wait()
 
 if __name__ == '__main__':
     main()

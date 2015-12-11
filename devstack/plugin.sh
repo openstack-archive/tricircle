@@ -179,6 +179,23 @@ function configure_tricircle_cinder_apigw {
     fi
 }
 
+function configure_tricircle_xjob {
+    if is_service_enabled t-job ; then
+        echo "Configuring Tricircle xjob"
+
+        touch $TRICIRCLE_XJOB_CONF
+
+        iniset $TRICIRCLE_XJOB_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+        iniset $TRICIRCLE_XJOB_CONF DEFAULT verbose True
+        iniset $TRICIRCLE_XJOB_CONF DEFAULT use_syslog $SYSLOG
+        iniset $TRICIRCLE_XJOB_CONF database connection `database_connection_url tricircle`
+
+        iniset $TRICIRCLE_XJOB_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+
+        setup_colorized_logging $TRICIRCLE_XJOB_CONF DEFAULT
+    fi
+}
+
 
 if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
     if [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
@@ -193,6 +210,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         configure_tricircle_api
         configure_tricircle_nova_apigw
         configure_tricircle_cinder_apigw
+        configure_tricircle_xjob
 
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
@@ -222,6 +240,11 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
             run_process t-cgw "python $TRICIRCLE_CINDER_APIGW --config-file $TRICIRCLE_CINDER_APIGW_CONF"
         fi
+
+        if is_service_enabled t-job; then
+
+            run_process t-job "python $TRICIRCLE_XJOB --config-file $TRICIRCLE_XJOB_CONF"
+        fi
     fi
 
     if [[ "$1" == "unstack" ]]; then
@@ -236,6 +259,10 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
         if is_service_enabled t-cgw; then
            stop_process t-cgw
+        fi
+
+        if is_service_enabled t-job; then
+           stop_process t-job
         fi
     fi
 fi

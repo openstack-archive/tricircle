@@ -35,6 +35,7 @@ enable_plugin tricircle https://github.com/openstack/tricircle/ experiment
 enable_service t-api
 enable_service t-ngw
 enable_service t-cgw
+enable_service t-job
 
 # Use Neutron instead of nova-network
 disable_service n-net

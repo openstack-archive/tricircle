@@ -15,7 +15,13 @@
 
 import pecan
 
+from pecan import expose
+from pecan import rest
+
 import oslo_log.log as logging
+
+from tricircle.common import context as ctx
+from tricircle.common import xrpcapi
 
 
 LOG = logging.getLogger(__name__)
@@ -64,6 +70,7 @@ class V21Controller(object):
     def __init__(self):
 
         self.sub_controllers = {
+            "testrpc": TestRPCController()
         }
 
         for name, ctrl in self.sub_controllers.items():
@@ -105,3 +112,20 @@ class V21Controller(object):
     @index.when(method='PATCH')
     def not_supported(self):
         pecan.abort(405)
+
+
+class TestRPCController(rest.RestController):
+    def __init__(self, *args, **kwargs):
+        super(TestRPCController, self).__init__(*args, **kwargs)
+        self.xjobapi = xrpcapi.XJobAPI()
+
+    @expose(generic=True, template='json')
+    def index(self):
+        if pecan.request.method != 'GET':
+            pecan.abort(405)
+
+        context = ctx.extract_context_from_environ()
+
+        payload = '#result from xjob rpc'
+
+        return self.xjobapi.test_rpc(context, payload)
