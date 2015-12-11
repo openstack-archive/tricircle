@@ -258,8 +258,8 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
             'top_id', 'site_id',
             name='cascaded_sites_resource_routing0top_id0site_id'),
     )
-    attributes = ['id', 'top_id', 'bottom_id', 'site_id',
-                  'created_at', 'updated_at']
+    attributes = ['id', 'top_id', 'bottom_id', 'site_id', 'project_id',
+                  'resource_type', 'created_at', 'updated_at']
 
     id = sql.Column('id', sql.Integer, primary_key=True)
     top_id = sql.Column('top_id', sql.String(length=36), nullable=False)
@@ -267,3 +267,6 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
     site_id = sql.Column('site_id', sql.String(length=64),
                          sql.ForeignKey('cascaded_sites.site_id'),
                          nullable=False)
+    project_id = sql.Column('project_id', sql.String(length=36))
+    resource_type = sql.Column('resource_type', sql.String(length=64),
+                               nullable=False)

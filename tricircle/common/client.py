@@ -113,6 +113,7 @@ class Client(object):
             self.service_handle_map[handle_obj.service_type] = handle_obj
             for resource in handle_obj.support_resource:
                 self.resource_service_map[resource] = handle_obj.service_type
+                self.operation_resources_map['client'].add(resource)
                 for operation, index in six.iteritems(
                         resource_handle.operation_index_map):
                     # add parentheses to emphasize we mean to do bitwise and
@@ -277,6 +278,24 @@ class Client(object):
         """
         self._update_endpoint_from_keystone(cxt, False)
 
+    @_safe_operation('client')
+    def get_native_client(self, resource, cxt):
+        """Get native python client instance
+
+        Use this function only when for complex operations
+
+        :param resource: resource type
+        :param cxt: resource type
+        :return: client instance
+        """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
+        service = self.resource_service_map[resource]
+        handle = self.service_handle_map[service]
+        return handle._get_client(cxt)
+
     @_safe_operation('list')
     def list_resources(self, resource, cxt, filters=None):
         """Query resource in site of top layer
@@ -288,7 +307,7 @@ class Client(object):
         of each ResourceHandle class.
 
         :param resource: resource type
-        :param cxt: context object
+        :param cxt: resource type
         :param filters: list of dict with key 'key', 'comparator', 'value'
         like {'key': 'name', 'comparator': 'eq', 'value': 'private'}, 'key'
         is the field name of resources
@@ -374,7 +393,7 @@ class Client(object):
 
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
-        handle.handle_get(cxt, resource, resource_id)
+        return handle.handle_get(cxt, resource, resource_id)
 
     @_safe_operation('action')
     def action_resources(self, resource, cxt, action, *args, **kwargs):

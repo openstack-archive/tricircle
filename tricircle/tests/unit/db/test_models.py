@@ -178,6 +178,23 @@ class ModelsTest(unittest.TestCase):
         sites = api.list_sites(self.context, filters)
         self.assertEqual(len(sites), 0)
 
+    def test_sort(self):
+        site1 = {'site_id': 'test_site1_uuid',
+                 'site_name': 'test_site1',
+                 'az_id': 'test_az1_uuid'}
+        site2 = {'site_id': 'test_site2_uuid',
+                 'site_name': 'test_site2',
+                 'az_id': 'test_az2_uuid'}
+        site3 = {'site_id': 'test_site3_uuid',
+                 'site_name': 'test_site3',
+                 'az_id': 'test_az3_uuid'}
+        sites = [site1, site2, site3]
+        for site in sites:
+            api.create_site(self.context, site)
+        sites = api.list_sites(self.context,
+                               sorts=[(models.Site.site_id, False)])
+        self.assertEqual(sites, [site3, site2, site1])
+
     def test_resources(self):
         """Create all the resources to test model definition"""
         try:
@@ -200,7 +217,8 @@ class ModelsTest(unittest.TestCase):
                 'az_id': 'test_az1_uuid'}
         api.create_site(self.context, site)
         routing = {'top_id': 'top_uuid',
-                   'site_id': 'test_site1_uuid'}
+                   'site_id': 'test_site1_uuid',
+                   'resource_type': 'port'}
         with self.context.session.begin():
             core.create_resource(self.context, models.ResourceRouting, routing)
         self.assertRaises(oslo_db.exception.DBDuplicateEntry,

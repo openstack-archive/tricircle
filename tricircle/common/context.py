@@ -51,6 +51,17 @@ def extract_context_from_environ():
     return Context(**context_paras)
 
 
+def get_context_from_neutron_context(context):
+    ctx = Context()
+    ctx.auth_token = context.auth_token
+    ctx.user = context.user_id
+    ctx.tenant = context.tenant_id
+    ctx.tenant_name = context.tenant_name
+    ctx.user_name = context.user_name
+    ctx.resource_uuid = context.resource_uuid
+    return ctx
+
+
 class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
                  is_admin=False, request_id=None, overwrite=True,

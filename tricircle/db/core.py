@@ -24,6 +24,13 @@ from sqlalchemy.inspection import inspect
 
 from tricircle.common import exceptions
 
+
+db_opts = [
+    cfg.StrOpt('tricircle_db_connection',
+               help='db connection string for tricircle'),
+]
+cfg.CONF.register_opts(db_opts)
+
 _engine_facade = None
 ModelBase = declarative.declarative_base()
 
@@ -60,8 +67,14 @@ def _get_engine_facade():
     global _engine_facade
 
     if not _engine_facade:
-        _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
-
+        connection = cfg.CONF.database.connection
+        t_connection = cfg.CONF.tricircle_db_connection
+        if connection.startswith('sqlite'):
+            _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
+        else:
+            cfg.CONF.set_override('connection', t_connection, group='database')
+            _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
+            cfg.CONF.clear_override('connection', group='database')
     return _engine_facade
 
 
@@ -104,10 +117,13 @@ def initialize():
         connection='sqlite:///:memory:')
 
 
-def query_resource(context, model, filters):
+def query_resource(context, model, filters, sorts):
     query = context.session.query(model)
-    objs = _filter_query(model, query, filters)
-    return [obj.to_dict() for obj in objs]
+    query = _filter_query(model, query, filters)
+    for sort_key, sort_dir in sorts:
+        sort_dir_func = sql.asc if sort_dir else sql.desc
+        query = query.order_by(sort_dir_func(sort_key))
+    return [obj.to_dict() for obj in query]
 
 
 def update_resource(context, model, pk_value, update_dict):

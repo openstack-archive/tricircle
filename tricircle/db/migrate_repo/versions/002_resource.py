@@ -151,6 +151,8 @@ def upgrade(migrate_engine):
         sql.Column('top_id', sql.String(length=36), nullable=False),
         sql.Column('bottom_id', sql.String(length=36)),
         sql.Column('site_id', sql.String(length=64), nullable=False),
+        sql.Column('project_id', sql.String(length=36)),
+        sql.Column('resource_type', sql.String(length=64), nullable=False),
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
         mysql_engine='InnoDB',

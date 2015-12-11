@@ -86,6 +86,7 @@ function create_tricircle_cache_dir {
 }
 
 function configure_tricircle_api {
+
     if is_service_enabled t-api ; then
         echo "Configuring Tricircle API"
 
@@ -93,7 +94,7 @@ function configure_tricircle_api {
         iniset $TRICIRCLE_API_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_API_CONF DEFAULT verbose True
         iniset $TRICIRCLE_API_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_API_CONF database connection `database_connection_url tricircle`
+        iniset $TRICIRCLE_API_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
 
         iniset $TRICIRCLE_API_CONF client admin_username admin
         iniset $TRICIRCLE_API_CONF client admin_password $ADMIN_PASSWORD
@@ -128,7 +129,7 @@ function configure_tricircle_nova_apigw {
         iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT verbose True
         iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_NOVA_APIGW_CONF database connection `database_connection_url tricircle`
+        iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
 
         iniset $TRICIRCLE_NOVA_APIGW_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 
@@ -149,7 +150,6 @@ function configure_tricircle_nova_apigw {
     fi
 }
 
-
 function configure_tricircle_cinder_apigw {
     if is_service_enabled t-cgw ; then
         echo "Configuring Tricircle Cinder APIGW"
@@ -158,7 +158,7 @@ function configure_tricircle_cinder_apigw {
         iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT verbose True
         iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_CINDER_APIGW_CONF database connection `database_connection_url tricircle`
+        iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
 
         iniset $TRICIRCLE_CINDER_APIGW_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 
@@ -196,6 +196,29 @@ function configure_tricircle_xjob {
     fi
 }
 
+function start_new_neutron_server {
+    local server_index=$1
+    local region_name=$2
+    local q_port=$3
+
+    get_or_create_service "neutron" "network" "Neutron Service"
+    get_or_create_endpoint "network" \
+        "$region_name" \
+        "$Q_PROTOCOL://$SERVICE_HOST:$q_port/" \
+        "$Q_PROTOCOL://$SERVICE_HOST:$q_port/" \
+        "$Q_PROTOCOL://$SERVICE_HOST:$q_port/"
+
+    cp $NEUTRON_CONF $NEUTRON_CONF.$server_index
+    iniset $NEUTRON_CONF.$server_index database connection `database_connection_url $Q_DB_NAME$server_index`
+    iniset $NEUTRON_CONF.$server_index DEFAULT bind_port $q_port
+    iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins ""
+
+    recreate_database $Q_DB_NAME$server_index
+    $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head
+
+    run_process q-svc$server_index "$NEUTRON_BIN_DIR/neutron-server --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE"
+}
+
 
 if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
     if [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
@@ -216,6 +239,24 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
         recreate_database tricircle
         python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_API_CONF"
+
+        if is_service_enabled q-svc ; then
+            start_new_neutron_server 1 Site1 20001
+            start_new_neutron_server 2 Site2 20002
+
+            # reconfigure neutron server to use our own plugin
+            echo "Configuring Neutron plugin for Tricircle"
+            Q_PLUGIN_CLASS="tricircle.network.plugin.TricirclePlugin"
+
+            iniset $NEUTRON_CONF DEFAULT core_plugin "$Q_PLUGIN_CLASS"
+            iniset $NEUTRON_CONF DEFAULT service_plugins ""
+            iniset $NEUTRON_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
+            iniset $NEUTRON_CONF client admin_username admin
+            iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
+            iniset $NEUTRON_CONF client admin_tenant demo
+            iniset $NEUTRON_CONF client auto_refresh_endpoint True
+            iniset $NEUTRON_CONF client top_site_name $TRICIRCLE_REGION_NAME
+        fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         echo_summary "Initializing Tricircle Service"

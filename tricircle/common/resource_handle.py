@@ -101,9 +101,9 @@ class GlanceResourceHandle(ResourceHandle):
 
 class NeutronResourceHandle(ResourceHandle):
     service_type = 'neutron'
-    support_resource = {'network': LIST,
-                        'subnet': LIST,
-                        'port': LIST,
+    support_resource = {'network': LIST | DELETE,
+                        'subnet': LIST | DELETE,
+                        'port': LIST | DELETE | GET,
                         'router': LIST,
                         'security_group': LIST,
                         'security_group_rule': LIST}
@@ -126,6 +126,30 @@ class NeutronResourceHandle(ResourceHandle):
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
+
+    def handle_get(self, cxt, resource, resource_id):
+        try:
+            client = self._get_client(cxt)
+            return getattr(client, 'show_%s' % resource)(resource_id)[resource]
+        except q_exceptions.ConnectionFailed:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable(
+                'neutron', client.httpclient.endpoint_url)
+        except q_exceptions.NotFound:
+            LOG.debug("%(resource)s %(resource_id)s not found",
+                      {'resource': resource, 'resource_id': resource_id})
+
+    def handle_delete(self, cxt, resource, resource_id):
+        try:
+            client = self._get_client(cxt)
+            return getattr(client, 'delete_%s' % resource)(resource_id)
+        except q_exceptions.ConnectionFailed:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable(
+                'neutron', client.httpclient.endpoint_url)
+        except q_exceptions.NotFound:
+            LOG.debug("Delete %(resource)s %(resource_id)s which not found",
+                      {'resource': resource, 'resource_id': resource_id})
 
 
 class NovaResourceHandle(ResourceHandle):

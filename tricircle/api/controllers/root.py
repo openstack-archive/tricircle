@@ -133,7 +133,7 @@ class SitesController(rest.RestController):
     @expose()
     def get_all(self):
         context = _extract_context_from_environ(_get_environment())
-        sites = db_api.list_sites(context, [])
+        sites = db_api.list_sites(context)
         return {'sites': sites}
 
     @expose()
