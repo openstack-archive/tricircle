@@ -18,6 +18,7 @@ from oslo_config import cfg
 
 from tricircle.common.i18n import _
 from tricircle.common import restapp
+from tricircle.nova_apigw.controllers import root
 
 
 common_opts = [
@@ -61,14 +62,14 @@ def setup_app(*args, **kwargs):
     }
     pecan_config = pecan.configuration.conf_from_dict(config)
 
-    # app_hooks = [], hook collection will be put here later
+    app_hooks = [root.ErrorHook()]
 
     app = pecan.make_app(
         pecan_config.app.root,
         debug=False,
         wrap_app=restapp.auth_app,
         force_canonical=False,
-        hooks=[],
+        hooks=app_hooks,
         guess_content_type_from_ext=True
     )
 

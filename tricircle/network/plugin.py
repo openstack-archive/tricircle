@@ -17,8 +17,6 @@
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
-from neutron.common import rpc as n_rpc
-from neutron.common import topics
 from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
@@ -77,10 +75,12 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     @log_helpers.log_method_call
     def start_rpc_listeners(self):
-        self.topic = topics.PLUGIN
-        self.conn = n_rpc.create_connection(new=True)
-        self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
-        return self.conn.consume_in_threads()
+        pass
+        # NOTE(zhiyuan) use later
+        # self.topic = topics.PLUGIN
+        # self.conn = n_rpc.create_connection(new=True)
+        # self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
+        # return self.conn.consume_in_threads()
 
     def create_network(self, context, network):
         return super(TricirclePlugin, self).create_network(context, network)
@@ -156,10 +156,31 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 t_ctx, bottom_port_id)
             port['id'] = port_id
             if fields:
-                return dict(
+                port = dict(
                     [(k, v) for k, v in port.iteritems() if k in fields])
-            else:
+            if 'network_id' not in port and 'fixed_ips' not in port:
                 return port
+
+            bottom_top_map = {}
+            with t_ctx.session.begin():
+                for resource in ('subnet', 'network'):
+                    route_filters = [{'key': 'resource_type',
+                                      'comparator': 'eq',
+                                      'value': resource}]
+                    routes = core.query_resource(
+                        t_ctx, models.ResourceRouting, route_filters, [])
+                    for route in routes:
+                        if route['bottom_id']:
+                            bottom_top_map[
+                                route['bottom_id']] = route['top_id']
+            if 'network_id' in port and port['network_id'] in bottom_top_map:
+                port['network_id'] = bottom_top_map[port['network_id']]
+            if 'fixed_ips' in port:
+                for ip in port['fixed_ips']:
+                    if ip['subnet_id'] in bottom_top_map:
+                        ip['subnet_id'] = bottom_top_map[ip['subnet_id']]
+
+            return port
         else:
             return super(TricirclePlugin, self).get_port(context,
                                                          port_id, fields)
@@ -227,8 +248,21 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     @staticmethod
     def _map_ports_from_bottom_to_top(res, bottom_top_map):
+        # TODO(zhiyuan) judge if it's fine to remove unmapped port
+        port_list = []
         for port in res['ports']:
+            if port['id'] not in bottom_top_map:
+                continue
             port['id'] = bottom_top_map[port['id']]
+            if 'network_id' in port and port['network_id'] in bottom_top_map:
+                port['network_id'] = bottom_top_map[port['network_id']]
+            if 'fixed_ips' in port:
+                for ip in port['fixed_ips']:
+                    if ip['subnet_id'] in bottom_top_map:
+                        ip['subnet_id'] = bottom_top_map[ip['subnet_id']]
+            port_list.append(port)
+        del res['ports']
+        res['ports'] = port_list
 
     def _get_ports_from_site_with_number(self, context,
                                          current_site, number, last_port_id,
@@ -243,18 +277,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             current_site['site_name']).get_native_client('port', t_ctx)
         params = {'limit': number}
         if filters:
-            if 'id' in filters:
-                _filters = dict(filters)
-                id_list = []
-                for _id in _filters['id']:
-                    if _id in top_bottom_map:
-                        id_list.append(top_bottom_map[_id])
-                    else:
-                        id_list.append(_id)
-                _filters['id'] = id_list
-                params.update(_filters)
-            else:
-                params.update(filters)
+            _filters = dict(filters)
+            for key, value in _filters:
+                if key == 'id' or key == 'network_id':
+                    id_list = []
+                    for _id in value:
+                        if _id in top_bottom_map:
+                            id_list.append(top_bottom_map[_id])
+                        else:
+                            id_list.append(_id)
+                    _filters['id'] = id_list
+            params.update(_filters)
         if last_port_id:
             # map top id to bottom id in request
             params['marker'] = top_bottom_map[last_port_id]
@@ -287,17 +320,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                   limit=None, marker=None, page_reverse=False):
         t_ctx = t_context.get_context_from_neutron_context(context)
         with t_ctx.session.begin():
-            route_filters = [{'key': 'resource_type',
-                              'comparator': 'eq',
-                              'value': 'port'}]
-            routes = core.query_resource(t_ctx, models.ResourceRouting,
-                                         route_filters, [])
             bottom_top_map = {}
             top_bottom_map = {}
-            for route in routes:
-                # port mapping should not have empty bottom id
-                bottom_top_map[route['bottom_id']] = route['top_id']
-                top_bottom_map[route['top_id']] = route['bottom_id']
+            for resource in ('port', 'subnet', 'network'):
+                route_filters = [{'key': 'resource_type',
+                                  'comparator': 'eq',
+                                  'value': resource}]
+                routes = core.query_resource(t_ctx, models.ResourceRouting,
+                                             route_filters, [])
+
+                for route in routes:
+                    if route['bottom_id']:
+                        bottom_top_map[route['bottom_id']] = route['top_id']
+                        top_bottom_map[route['top_id']] = route['bottom_id']
 
         if limit:
             if marker:
@@ -342,7 +377,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 _filters = []
                 if filters:
                     for key, value in filters.iteritems():
-                        if key == 'id':
+                        if key == 'id' or key == 'network_id':
                             id_list = []
                             for _id in value:
                                 if _id in top_bottom_map:

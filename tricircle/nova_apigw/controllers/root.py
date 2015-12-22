@@ -16,15 +16,31 @@
 import pecan
 
 from pecan import expose
+from pecan import hooks
 from pecan import rest
 
 import oslo_log.log as logging
 
+import webob.exc as web_exc
+
 from tricircle.common import context as ctx
 from tricircle.common import xrpcapi
+from tricircle.nova_apigw.controllers import aggregate
+from tricircle.nova_apigw.controllers import flavor
+from tricircle.nova_apigw.controllers import image
+from tricircle.nova_apigw.controllers import server
 
 
 LOG = logging.getLogger(__name__)
+
+
+class ErrorHook(hooks.PecanHook):
+    # NOTE(zhiyuan) pecan's default error body is not compatible with nova
+    # client, clear body in this hook
+    def on_error(self, state, exc):
+        if isinstance(exc, web_exc.HTTPException):
+            exc.body = ''
+            return exc
 
 
 class RootController(object):
@@ -68,13 +84,29 @@ class V21Controller(object):
     _media_type = "application/vnd.openstack.compute+json;version=2.1"
 
     def __init__(self):
-
-        self.sub_controllers = {
-            "testrpc": TestRPCController()
+        self.resource_controller = {
+            'flavors': flavor.FlavorController,
+            'os-aggregates': aggregate.AggregateController,
+            'servers': server.ServerController,
+            'images': image.ImageController,
         }
 
-        for name, ctrl in self.sub_controllers.items():
-            setattr(self, name, ctrl)
+    def _get_resource_controller(self, project_id, remainder):
+        if not remainder:
+            pecan.abort(404)
+            return
+        resource = remainder[0]
+        if resource not in self.resource_controller:
+            pecan.abort(404)
+            return
+        return self.resource_controller[resource](project_id), remainder[1:]
+
+    @pecan.expose()
+    def _lookup(self, project_id, *remainder):
+        if project_id == 'testrpc':
+            return TestRPCController(), remainder
+        else:
+            return self._get_resource_controller(project_id, remainder)
 
     @pecan.expose(generic=True, template='json')
     def index(self):

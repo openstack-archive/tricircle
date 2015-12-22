@@ -67,14 +67,8 @@ def _get_engine_facade():
     global _engine_facade
 
     if not _engine_facade:
-        connection = cfg.CONF.database.connection
         t_connection = cfg.CONF.tricircle_db_connection
-        if connection.startswith('sqlite'):
-            _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
-        else:
-            cfg.CONF.set_override('connection', t_connection, group='database')
-            _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
-            cfg.CONF.clear_override('connection', group='database')
+        _engine_facade = db_session.EngineFacade(t_connection, _conf=cfg.CONF)
     return _engine_facade
 
 
@@ -97,6 +91,14 @@ def create_resource(context, model, res_dict):
 def delete_resource(context, model, pk_value):
     res_obj = _get_resource(context, model, pk_value)
     context.session.delete(res_obj)
+
+
+def delete_resources(context, model, filters, delete_all=False):
+    # passing empty filter requires delete_all confirmation
+    assert filters or delete_all
+    query = context.session.query(model)
+    query = _filter_query(model, query, filters)
+    query.delete(synchronize_session=False)
 
 
 def get_engine():

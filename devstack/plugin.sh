@@ -45,9 +45,9 @@ function create_nova_apigw_accounts {
                 "compute" "Nova Compute Service")
             get_or_create_endpoint $tricircle_nova_apigw \
                 "$TRICIRCLE_REGION_NAME" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"
+                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s' \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s' \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s'
         fi
     fi
 }
@@ -100,7 +100,7 @@ function configure_tricircle_api {
         iniset $TRICIRCLE_API_CONF client admin_password $ADMIN_PASSWORD
         iniset $TRICIRCLE_API_CONF client admin_tenant demo
         iniset $TRICIRCLE_API_CONF client auto_refresh_endpoint True
-        iniset $TRICIRCLE_API_CONF client top_site_name $TRICIRCLE_REGION_NAME
+        iniset $TRICIRCLE_API_CONF client top_site_name $REGION_NAME
 
         iniset $TRICIRCLE_API_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 
@@ -132,6 +132,12 @@ function configure_tricircle_nova_apigw {
         iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
 
         iniset $TRICIRCLE_NOVA_APIGW_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+
+        iniset $NEUTRON_CONF client admin_username admin
+        iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
+        iniset $NEUTRON_CONF client admin_tenant demo
+        iniset $NEUTRON_CONF client auto_refresh_endpoint True
+        iniset $NEUTRON_CONF client top_site_name $REGION_NAME
 
         setup_colorized_logging $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tenant_name
 
@@ -210,6 +216,7 @@ function start_new_neutron_server {
 
     cp $NEUTRON_CONF $NEUTRON_CONF.$server_index
     iniset $NEUTRON_CONF.$server_index database connection `database_connection_url $Q_DB_NAME$server_index`
+    iniset $NEUTRON_CONF.$server_index nova region_name $region_name
     iniset $NEUTRON_CONF.$server_index DEFAULT bind_port $q_port
     iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins ""
 
@@ -255,7 +262,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
             iniset $NEUTRON_CONF client admin_tenant demo
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
-            iniset $NEUTRON_CONF client top_site_name $TRICIRCLE_REGION_NAME
+            iniset $NEUTRON_CONF client top_site_name $REGION_NAME
         fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then

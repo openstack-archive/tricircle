@@ -78,7 +78,7 @@ class ResourceHandle(object):
 
 class GlanceResourceHandle(ResourceHandle):
     service_type = 'glance'
-    support_resource = {'image': LIST}
+    support_resource = {'image': LIST | GET}
 
     def _get_client(self, cxt):
         return g_client.Client('1',
@@ -98,12 +98,25 @@ class GlanceResourceHandle(ResourceHandle):
             raise exceptions.EndpointNotAvailable('glance',
                                                   client.http_client.endpoint)
 
+    def handle_get(self, cxt, resource, resource_id):
+        try:
+            client = self._get_client(cxt)
+            collection = '%ss' % resource
+            return getattr(client, collection).get(resource_id).to_dict()
+        except g_exceptions.InvalidEndpoint:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable('glance',
+                                                  client.http_client.endpoint)
+        except g_exceptions.HTTPNotFound:
+            LOG.debug("%(resource)s %(resource_id)s not found",
+                      {'resource': resource, 'resource_id': resource_id})
+
 
 class NeutronResourceHandle(ResourceHandle):
     service_type = 'neutron'
-    support_resource = {'network': LIST | DELETE,
-                        'subnet': LIST | DELETE,
-                        'port': LIST | DELETE | GET,
+    support_resource = {'network': LIST | CREATE | DELETE | GET,
+                        'subnet': LIST | CREATE | DELETE | GET,
+                        'port': LIST | CREATE | DELETE | GET,
                         'router': LIST,
                         'security_group': LIST,
                         'security_group_rule': LIST}
@@ -122,6 +135,16 @@ class NeutronResourceHandle(ResourceHandle):
             search_opts = _transform_filters(filters)
             return [res for res in getattr(
                 client, 'list_%s' % collection)(**search_opts)[collection]]
+        except q_exceptions.ConnectionFailed:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable(
+                'neutron', client.httpclient.endpoint_url)
+
+    def handle_create(self, cxt, resource, *args, **kwargs):
+        try:
+            client = self._get_client(cxt)
+            return getattr(client, 'create_%s' % resource)(
+                *args, **kwargs)[resource]
         except q_exceptions.ConnectionFailed:
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
@@ -155,7 +178,7 @@ class NeutronResourceHandle(ResourceHandle):
 class NovaResourceHandle(ResourceHandle):
     service_type = 'nova'
     support_resource = {'flavor': LIST,
-                        'server': LIST,
+                        'server': LIST | CREATE | GET,
                         'aggregate': LIST | CREATE | DELETE | ACTION}
 
     def _get_client(self, cxt):
@@ -194,6 +217,19 @@ class NovaResourceHandle(ResourceHandle):
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable('nova',
                                                   client.client.management_url)
+
+    def handle_get(self, cxt, resource, resource_id):
+        try:
+            client = self._get_client(cxt)
+            collection = '%ss' % resource
+            return getattr(client, collection).get(resource_id).to_dict()
+        except r_exceptions.ConnectTimeout:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable('nova',
+                                                  client.client.management_url)
+        except n_exceptions.NotFound:
+            LOG.debug("%(resource)s %(resource_id)s not found",
+                      {'resource': resource, 'resource_id': resource_id})
 
     def handle_delete(self, cxt, resource, resource_id):
         try:

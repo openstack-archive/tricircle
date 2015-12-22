@@ -28,3 +28,10 @@ def get_az_name(site_name):
 
 def get_node_name(site_name):
     return "cascade_%s" % site_name
+
+
+def validate_required_fields_set(body, fields):
+    for field in fields:
+        if field not in body:
+            return False
+    return True

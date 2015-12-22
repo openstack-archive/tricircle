@@ -80,12 +80,14 @@ def _safe_operation(operation_name):
                     operation_name]:
                 raise exceptions.ResourceNotSupported(resource, operation_name)
             retries = 1
-            for _ in xrange(retries + 1):
+            for i in xrange(retries + 1):
                 try:
                     service = instance.resource_service_map[resource]
                     instance._ensure_endpoint_set(context, service)
                     return func(*args, **kwargs)
                 except exceptions.EndpointNotAvailable as e:
+                    if i == retries:
+                        raise
                     if cfg.CONF.client.auto_refresh_endpoint:
                         LOG.warn(e.message + ', update endpoint and try again')
                         instance._update_endpoint_from_keystone(context, True)
@@ -339,6 +341,10 @@ class Client(object):
                resource -> args -> kwargs
                --------------------------
                aggregate -> name, availability_zone_name -> none
+               server -> name, image, flavor -> nics
+               network -> body -> none
+               subnet -> body -> none
+               port -> body -> none
                --------------------------
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
@@ -378,7 +384,7 @@ class Client(object):
         """Get resource in site of top layer
 
         Directly invoke this method to get resources, or use
-        get(resource)s (self, cxt, obj_id). These methods are
+        get_(resource)s (self, cxt, obj_id). These methods are
         automatically generated according to the supported resources
         of each ResourceHandle class.
         :param resource: resource type

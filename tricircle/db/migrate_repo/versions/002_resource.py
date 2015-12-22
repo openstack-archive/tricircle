@@ -31,6 +31,8 @@ def upgrade(migrate_engine):
         'aggregates', meta,
         sql.Column('id', sql.Integer, primary_key=True),
         sql.Column('name', sql.String(255)),
+        sql.Column('created_at', sql.DateTime),
+        sql.Column('updated_at', sql.DateTime),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
@@ -40,6 +42,11 @@ def upgrade(migrate_engine):
         sql.Column('key', sql.String(255), nullable=False),
         sql.Column('value', sql.String(255), nullable=False),
         sql.Column('aggregate_id', sql.Integer, nullable=False),
+        sql.Column('created_at', sql.DateTime),
+        sql.Column('updated_at', sql.DateTime),
+        migrate.UniqueConstraint(
+            'aggregate_id', 'key',
+            name='uniq_aggregate_metadata0aggregate_id0key'),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
