@@ -80,15 +80,23 @@ class ServerController(rest.RestController):
                                                  route['id'])
                         except db_exc.ResourceNotFound:
                             pass
-            try:
-                route = core.create_resource(context, models.ResourceRouting,
-                                             {'top_id': _id,
-                                              'site_id': site['site_id'],
-                                              'project_id': self.project_id,
-                                              'resource_type': _type})
-                return route, True
-            except db_exc.DBDuplicateEntry:
-                return None, False
+        try:
+            # NOTE(zhiyuan) try/except block inside a with block will cause
+            # problem, so move them out of the block and manually handle the
+            # session context
+            context.session.begin()
+            route = core.create_resource(context, models.ResourceRouting,
+                                         {'top_id': _id,
+                                          'site_id': site['site_id'],
+                                          'project_id': self.project_id,
+                                          'resource_type': _type})
+            context.session.commit()
+            return route, True
+        except db_exc.DBDuplicateEntry:
+            context.session.rollback()
+            return None, False
+        finally:
+            context.session.close()
 
     def _get_create_network_body(self, network):
         body = {
@@ -142,7 +150,7 @@ class ServerController(rest.RestController):
                 'name': port['id'],
                 'network_id': bottom_net_id,
                 'fixed_ips': [
-                    {'subnet': bottom_subnet_id,
+                    {'subnet_id': bottom_subnet_id,
                      'ip_address': port['fixed_ips'][0]['ip_address']}
                 ],
                 'mac_address': port['mac_address'],

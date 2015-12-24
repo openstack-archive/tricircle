@@ -91,7 +91,7 @@ class AggregateController(rest.RestController):
 
         host_aggregate = kw['aggregate']
         name = host_aggregate['name'].strip()
-        avail_zone = host_aggregate.get("availability_zone")
+        avail_zone = host_aggregate.get('availability_zone')
         if avail_zone:
             avail_zone = avail_zone.strip()
 

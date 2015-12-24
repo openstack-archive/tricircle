@@ -269,9 +269,11 @@ class ClientTest(unittest.TestCase):
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
+    @patch.object(uuid, 'uuid4')
     @patch.object(api, 'create_site_service_configuration')
     @patch.object(api, 'update_site_service_configuration')
-    def test_update_endpoint_from_keystone(self, update_mock, create_mock):
+    def test_update_endpoint_from_keystone(self, update_mock, create_mock,
+                                           uuid_mock):
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
         self.client._get_endpoint_from_keystone.return_value = {
@@ -279,8 +281,7 @@ class ClientTest(unittest.TestCase):
                              'another_fake_type': 'http://127.0.0.1:34567'},
             'not_registered_site': {FAKE_TYPE: FAKE_URL}
         }
-        uuid.uuid4 = mock.Mock()
-        uuid.uuid4.return_value = 'another_fake_service_id'
+        uuid_mock.return_value = 'another_fake_service_id'
 
         self.client.update_endpoint_from_keystone(self.context)
         update_dict = {'service_url': FAKE_URL}
