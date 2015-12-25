@@ -20,6 +20,7 @@ import pecan
 from pecan import request
 from pecan import rest
 
+from tricircle.api.controllers import pod
 from tricircle.common import client
 import tricircle.common.context as t_context
 from tricircle.common import exceptions
@@ -48,7 +49,7 @@ class RootController(object):
         if version == 'v1.0':
             return V1Controller(), remainder
 
-    @pecan.expose('json')
+    @pecan.expose(generic=True, template='json')
     def index(self):
         return {
             "versions": [
@@ -66,19 +67,29 @@ class RootController(object):
                 ]
             }
 
+    @index.when(method='POST')
+    @index.when(method='PUT')
+    @index.when(method='DELETE')
+    @index.when(method='HEAD')
+    @index.when(method='PATCH')
+    def not_supported(self):
+        pecan.abort(405)
+
 
 class V1Controller(object):
 
     def __init__(self):
 
         self.sub_controllers = {
-            "sites": SitesController()
+            "sites": SitesController(),
+            "pods": pod.PodsController(),
+            "bindings": pod.BindingsController()
         }
 
         for name, ctrl in self.sub_controllers.items():
             setattr(self, name, ctrl)
 
-    @pecan.expose('json')
+    @pecan.expose(generic=True, template='json')
     def index(self):
         return {
             "version": "1.0",
@@ -91,6 +102,14 @@ class V1Controller(object):
                 for name in sorted(self.sub_controllers)
             ]
         }
+
+    @index.when(method='POST')
+    @index.when(method='PUT')
+    @index.when(method='DELETE')
+    @index.when(method='HEAD')
+    @index.when(method='PATCH')
+    def not_supported(self):
+        pecan.abort(405)
 
 
 def _extract_context_from_environ(environ):

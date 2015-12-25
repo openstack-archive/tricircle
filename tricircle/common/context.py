@@ -30,6 +30,10 @@ def get_admin_context():
     return ctx
 
 
+def is_admin_context(ctx):
+    return ctx.is_admin
+
+
 def extract_context_from_environ():
     context_paras = {'auth_token': 'HTTP_X_AUTH_TOKEN',
                      'user': 'HTTP_X_USER_ID',
