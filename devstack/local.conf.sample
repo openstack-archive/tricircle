@@ -39,14 +39,19 @@ enable_service t-job
 
 # Use Neutron instead of nova-network
 disable_service n-net
-disable_service n-cpu
-disable_service n-sch
 enable_service q-svc
-disable_service q-dhcp
+enable_service q-svc1
+enable_service q-dhcp
+enable_service q-agt
+
+disable_service n-obj
+disable_service n-cauth
+disable_service n-novnc
 disable_service q-l3
-disable_service q-agt
 disable_service c-api
 disable_service c-vol
 disable_service c-bak
 disable_service c-sch
 disable_service cinder
+disable_service tempest
+disable_service horizon

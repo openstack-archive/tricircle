@@ -21,7 +21,7 @@ function create_tricircle_accounts {
             local tricircle_api=$(get_or_create_service "tricircle" \
                 "Cascading" "OpenStack Cascading Service")
             get_or_create_endpoint $tricircle_api \
-                "$TRICIRCLE_REGION_NAME" \
+                "$REGION_NAME" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0"
@@ -43,8 +43,23 @@ function create_nova_apigw_accounts {
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
             local tricircle_nova_apigw=$(get_or_create_service "nova" \
                 "compute" "Nova Compute Service")
+
+            local endpoint_id
+            interface_list="public admin internal"
+            for interface in $interface_list; do
+                endpoint_id=$(openstack endpoint list \
+                    --service "$tricircle_nova_apigw" \
+                    --interface "$interface" \
+                    --region "$REGION_NAME" \
+                    -c ID -f value)
+                if [[ -n "$endpoint_id" ]]; then
+                    # Delete endpoint
+                    openstack endpoint delete "$endpoint_id"
+                fi
+            done
+
             get_or_create_endpoint $tricircle_nova_apigw \
-                "$TRICIRCLE_REGION_NAME" \
+                "$REGION_NAME" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s' \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s' \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_NOVA_APIGW_HOST:$TRICIRCLE_NOVA_APIGW_PORT/v2.1/"'$(tenant_id)s'
@@ -67,7 +82,7 @@ function create_cinder_apigw_accounts {
             local tricircle_cinder_apigw=$(get_or_create_service "cinder" \
                 "volume" "Cinder Volume Service")
             get_or_create_endpoint $tricircle_cinder_apigw \
-                "$TRICIRCLE_REGION_NAME" \
+                "$REGION_NAME" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/" \
                 "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/"
@@ -248,8 +263,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_API_CONF"
 
         if is_service_enabled q-svc ; then
-            start_new_neutron_server 1 Site1 20001
-            start_new_neutron_server 2 Site2 20002
+            start_new_neutron_server 1 $POD_REGION_NAME $TRICIRCLE_NEUTRON_PORT
 
             # reconfigure neutron server to use our own plugin
             echo "Configuring Neutron plugin for Tricircle"
@@ -280,6 +294,26 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             create_nova_apigw_accounts
 
             run_process t-ngw "python $TRICIRCLE_NOVA_APIGW --config-file $TRICIRCLE_NOVA_APIGW_CONF"
+
+            # Nova services are running, but we need to re-configure them to
+            # move them to bottom region
+            iniset $NOVA_CONF neutron region_name $POD_REGION_NAME
+            iniset $NOVA_CONF neutron url "$Q_PROTOCOL://$SERVICE_HOST:$TRICIRCLE_NEUTRON_PORT"
+
+            get_or_create_endpoint "compute" \
+                "$POD_REGION_NAME" \
+                "$NOVA_SERVICE_PROTOCOL://$NOVA_SERVICE_HOST:$NOVA_SERVICE_PORT/v2.1/"'$(tenant_id)s' \
+                "$NOVA_SERVICE_PROTOCOL://$NOVA_SERVICE_HOST:$NOVA_SERVICE_PORT/v2.1/"'$(tenant_id)s' \
+                "$NOVA_SERVICE_PROTOCOL://$NOVA_SERVICE_HOST:$NOVA_SERVICE_PORT/v2.1/"'$(tenant_id)s'
+
+            stop_process n-api
+            stop_process n-cpu
+            # remove previous failure flag file since we are going to restart service
+            rm -f "$SERVICE_DIR/$SCREEN_NAME"/n-api.failure
+            rm -f "$SERVICE_DIR/$SCREEN_NAME"/n-cpu.failure
+            sleep 20
+            run_process n-api "$NOVA_BIN_DIR/nova-api"
+            run_process n-cpu "$NOVA_BIN_DIR/nova-compute --config-file $NOVA_CONF" $LIBVIRT_GROUP
         fi
 
         if is_service_enabled t-cgw; then
@@ -311,6 +345,10 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
         if is_service_enabled t-job; then
            stop_process t-job
+        fi
+
+        if is_service_enabled q-svc1; then
+           stop_process q-svc1
         fi
     fi
 fi
