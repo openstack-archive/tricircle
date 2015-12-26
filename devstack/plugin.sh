@@ -97,7 +97,25 @@ function create_tricircle_cache_dir {
     sudo rm -rf $TRICIRCLE_AUTH_CACHE_DIR
     sudo mkdir -p $TRICIRCLE_AUTH_CACHE_DIR
     sudo chown `whoami` $TRICIRCLE_AUTH_CACHE_DIR
+}
 
+# common config-file configuration for tricircle services
+function init_common_tricircle_conf {
+    local conf_file=$1
+
+    touch $conf_file
+    iniset $conf_file DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+    iniset $conf_file DEFAULT verbose True
+    iniset $conf_file DEFAULT use_syslog $SYSLOG
+    iniset $conf_file DEFAULT tricircle_db_connection `database_connection_url tricircle`
+
+    iniset $conf_file client admin_username admin
+    iniset $conf_file client admin_password $ADMIN_PASSWORD
+    iniset $conf_file client admin_tenant demo
+    iniset $conf_file client auto_refresh_endpoint True
+    iniset $conf_file client top_site_name $REGION_NAME
+
+    iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 }
 
 function configure_tricircle_api {
@@ -105,19 +123,7 @@ function configure_tricircle_api {
     if is_service_enabled t-api ; then
         echo "Configuring Tricircle API"
 
-        touch $TRICIRCLE_API_CONF
-        iniset $TRICIRCLE_API_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_API_CONF DEFAULT verbose True
-        iniset $TRICIRCLE_API_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_API_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
-
-        iniset $TRICIRCLE_API_CONF client admin_username admin
-        iniset $TRICIRCLE_API_CONF client admin_password $ADMIN_PASSWORD
-        iniset $TRICIRCLE_API_CONF client admin_tenant demo
-        iniset $TRICIRCLE_API_CONF client auto_refresh_endpoint True
-        iniset $TRICIRCLE_API_CONF client top_site_name $REGION_NAME
-
-        iniset $TRICIRCLE_API_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+        init_common_tricircle_conf $TRICIRCLE_API_CONF
 
         setup_colorized_logging $TRICIRCLE_API_CONF DEFAULT tenant_name
 
@@ -140,13 +146,7 @@ function configure_tricircle_nova_apigw {
     if is_service_enabled t-ngw ; then
         echo "Configuring Tricircle Nova APIGW"
 
-        touch $TRICIRCLE_NOVA_APIGW_CONF
-        iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT verbose True
-        iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
-
-        iniset $TRICIRCLE_NOVA_APIGW_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+        init_common_tricircle_conf $TRICIRCLE_NOVA_APIGW_CONF
 
         iniset $NEUTRON_CONF client admin_username admin
         iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
@@ -175,13 +175,7 @@ function configure_tricircle_cinder_apigw {
     if is_service_enabled t-cgw ; then
         echo "Configuring Tricircle Cinder APIGW"
 
-        touch $TRICIRCLE_CINDER_APIGW_CONF
-        iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT verbose True
-        iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_CINDER_APIGW_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
-
-        iniset $TRICIRCLE_CINDER_APIGW_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+        init_common_tricircle_conf $TRICIRCLE_CINDER_APIGW_CONF
 
         setup_colorized_logging $TRICIRCLE_CINDER_APIGW_CONF DEFAULT tenant_name
 
@@ -204,14 +198,7 @@ function configure_tricircle_xjob {
     if is_service_enabled t-job ; then
         echo "Configuring Tricircle xjob"
 
-        touch $TRICIRCLE_XJOB_CONF
-
-        iniset $TRICIRCLE_XJOB_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
-        iniset $TRICIRCLE_XJOB_CONF DEFAULT verbose True
-        iniset $TRICIRCLE_XJOB_CONF DEFAULT use_syslog $SYSLOG
-        iniset $TRICIRCLE_XJOB_CONF database connection `database_connection_url tricircle`
-
-        iniset $TRICIRCLE_XJOB_CONF oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+        init_common_tricircle_conf $TRICIRCLE_XJOB_CONF
 
         setup_colorized_logging $TRICIRCLE_XJOB_CONF DEFAULT
     fi

@@ -30,7 +30,7 @@ def upgrade(migrate_engine):
     aggregates = sql.Table(
         'aggregates', meta,
         sql.Column('id', sql.Integer, primary_key=True),
-        sql.Column('name', sql.String(255)),
+        sql.Column('name', sql.String(255), unique=True),
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
         mysql_engine='InnoDB',
@@ -132,7 +132,7 @@ def upgrade(migrate_engine):
     volume_types = sql.Table(
         'volume_types', meta,
         sql.Column('id', sql.String(36), primary_key=True),
-        sql.Column('name', sql.String(255)),
+        sql.Column('name', sql.String(255), unique=True),
         sql.Column('description', sql.String(255)),
         sql.Column('qos_specs_id', sql.String(36)),
         sql.Column('is_public', sql.Boolean, default=True),

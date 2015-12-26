@@ -33,7 +33,7 @@ class Aggregate(core.ModelBase, core.DictBase, models.TimestampMixin):
     attributes = ['id', 'name', 'created_at', 'updated_at']
 
     id = sql.Column(sql.Integer, primary_key=True)
-    name = sql.Column(sql.String(255))
+    name = sql.Column(sql.String(255), unique=True)
 
 
 class AggregateMetadata(core.ModelBase, core.DictBase, models.TimestampMixin):
@@ -173,7 +173,7 @@ class VolumeTypes(core.ModelBase, core.DictBase, models.TimestampMixin):
                   'created_at', 'updated_at']
 
     id = sql.Column(sql.String(36), primary_key=True)
-    name = sql.Column(sql.String(255))
+    name = sql.Column(sql.String(255), unique=True)
     description = sql.Column(sql.String(255))
     # A reference to qos_specs entity
     qos_specs_id = sql.Column(sql.String(36),

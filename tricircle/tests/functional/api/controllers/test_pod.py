@@ -23,7 +23,9 @@ from oslo_config import cfg
 from oslo_config import fixture as fixture_config
 
 from tricircle.api import app
+from tricircle.common import az_ag
 from tricircle.common import context
+from tricircle.common import utils
 from tricircle.db import core
 from tricircle.tests import base
 
@@ -52,7 +54,8 @@ class API_FunctionalTest(base.TestCase):
 
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
-        self.context = context.Context()
+
+        self.context = context.get_admin_context()
 
         self.app = self._make_app()
 
@@ -341,7 +344,10 @@ class TestPodController(API_FunctionalTest):
 
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)
-    def test_get_delete_one(self):
+    @patch.object(context, 'extract_context_from_environ')
+    def test_get_delete_one(self, mock_context):
+
+        mock_context.return_value = self.context
 
         pod_maps = [
 
@@ -353,7 +359,7 @@ class TestPodController(API_FunctionalTest):
                     "pod_name": "Pod1",
                     "pod_az_name": "az1"
                 },
-                "expected_error": 200
+                "expected_error": 200,
             },
 
             {
@@ -364,7 +370,18 @@ class TestPodController(API_FunctionalTest):
                     "pod_name": "Pod2",
                     "pod_az_name": "az1"
                 },
-                "expected_error": 200
+                "expected_error": 200,
+            },
+
+            {
+                "pod_map":
+                {
+                    "az_name": "AZ2",
+                    "dc_name": "dc2",
+                    "pod_name": "Pod3",
+                    "pod_az_name": "az1"
+                },
+                "expected_error": 200,
             },
 
             ]
@@ -383,8 +400,8 @@ class TestPodController(API_FunctionalTest):
 
             self.assertEqual(single_ret.status_int, 200)
 
-            one_pot_ret = single_ret.json
-            get_one_pod = one_pot_ret['pod_map']
+            one_pod_ret = single_ret.json
+            get_one_pod = one_pod_ret['pod_map']
 
             self.assertEqual(get_one_pod['id'],
                              ret_pod['id'])
@@ -402,8 +419,21 @@ class TestPodController(API_FunctionalTest):
                              ret_pod['pod_az_name'])
 
             _id = ret_pod['id']
+
+            # check ag and az automaticly added
+            ag_name = utils.get_ag_name(ret_pod['pod_name'])
+            ag = az_ag.get_ag_by_name(self.context, ag_name)
+            self.assertIsNotNone(ag)
+            self.assertEqual(ag['name'],
+                             utils.get_ag_name(ret_pod['pod_name']))
+            self.assertEqual(ag['availability_zone'], ret_pod['az_name'])
+
             single_ret = self.app.delete('/v1.0/pods/' + str(_id))
             self.assertEqual(single_ret.status_int, 200)
+
+            # make sure ag is deleted
+            ag = az_ag.get_ag_by_name(self.context, ag_name)
+            self.assertIsNone(ag)
 
 
 class TestBindingController(API_FunctionalTest):

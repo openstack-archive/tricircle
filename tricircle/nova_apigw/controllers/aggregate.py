@@ -19,28 +19,11 @@ from pecan import rest
 
 import oslo_db.exception as db_exc
 
+from tricircle.common import az_ag
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exc
 from tricircle.db import core
 from tricircle.db import models
-
-
-def _get_one(context, aggregate_id):
-    aggregate = core.get_resource(context, models.Aggregate, aggregate_id)
-    metadatas = core.query_resource(
-        context, models.AggregateMetadata,
-        [{'key': 'key', 'comparator': 'eq',
-          'value': 'availability_zone'},
-         {'key': 'aggregate_id', 'comparator': 'eq',
-          'value': aggregate['id']}], [])
-    if metadatas:
-        aggregate['availability_zone'] = metadatas[0]['value']
-        aggregate['metadata'] = {
-            'availability_zone': metadatas[0]['value']}
-    else:
-        aggregate['availability_zone'] = ''
-        aggregate['metadata'] = {}
-    return {'aggregate': aggregate}
 
 
 class AggregateActionController(rest.RestController):
@@ -65,7 +48,8 @@ class AggregateActionController(rest.RestController):
             pecan.abort(400, 'Add and remove host action not supported')
             return
         # TODO(zhiyuan) handle aggregate metadata updating
-        return _get_one(context, self.aggregate_id)
+        aggregate = az_ag.get_one_ag(context, self.aggregate_id)
+        return {'aggregate': aggregate}
 
 
 class AggregateController(rest.RestController):
@@ -97,18 +81,9 @@ class AggregateController(rest.RestController):
 
         try:
             with context.session.begin():
-                aggregate = core.create_resource(context, models.Aggregate,
-                                                 {'name': name})
-                core.create_resource(
-                    context, models.AggregateMetadata,
-                    {'key': 'availability_zone',
-                     'value': avail_zone,
-                     'aggregate_id': aggregate['id']})
-                extra_fields = {
-                    'availability_zone': avail_zone,
-                    'metadata': {'availability_zone': avail_zone}
-                }
-                aggregate.update(extra_fields)
+                aggregate = az_ag.create_ag_az(context,
+                                               ag_name=name,
+                                               az_name=avail_zone)
         except db_exc.DBDuplicateEntry:
             pecan.abort(409, 'Aggregate already exists')
             return
@@ -123,7 +98,8 @@ class AggregateController(rest.RestController):
         context = t_context.extract_context_from_environ()
         try:
             with context.session.begin():
-                return _get_one(context, _id)
+                aggregate = az_ag.get_one_ag(context, _id)
+                return {'aggregate': aggregate}
         except t_exc.ResourceNotFound:
             pecan.abort(404, 'Aggregate not found')
             return
@@ -131,29 +107,13 @@ class AggregateController(rest.RestController):
     @expose(generic=True, template='json')
     def get_all(self):
         context = t_context.extract_context_from_environ()
-        with context.session.begin():
-            aggregates = core.query_resource(context, models.Aggregate, [], [])
-            metadatas = core.query_resource(
-                context, models.AggregateMetadata,
-                [{'key': 'key',
-                  'comparator': 'eq',
-                  'value': 'availability_zone'}], [])
 
-        agg_meta_map = {}
-        for metadata in metadatas:
-            agg_meta_map[metadata['aggregate_id']] = metadata
-        for aggregate in aggregates:
-            extra_fields = {
-                'availability_zone': '',
-                'metadata': {}
-            }
-            if aggregate['id'] in agg_meta_map:
-                metadata = agg_meta_map[aggregate['id']]
-                extra_fields['availability_zone'] = metadata['value']
-                extra_fields['metadata'] = {
-                    'availability_zone': metadata['value']}
-            aggregate.update(extra_fields)
-
+        try:
+            with context.session.begin():
+                aggregates = az_ag.get_all_ag(context)
+        except Exception:
+            pecan.abort(500, 'Fail to get all host aggregates')
+            return
         return {'aggregates': aggregates}
 
     @expose(generic=True, template='json')
@@ -161,12 +121,8 @@ class AggregateController(rest.RestController):
         context = t_context.extract_context_from_environ()
         try:
             with context.session.begin():
-                core.delete_resources(context, models.AggregateMetadata,
-                                      [{'key': 'aggregate_id',
-                                        'comparator': 'eq',
-                                        'value': _id}])
-                core.delete_resource(context, models.Aggregate, _id)
-                pecan.response.status = 202
+                az_ag.delete_ag(context, _id)
+                pecan.response.status = 200
         except t_exc.ResourceNotFound:
             pecan.abort(404, 'Aggregate not found')
             return

@@ -22,9 +22,12 @@ from oslo_utils import uuidutils
 
 import oslo_db.exception as db_exc
 
+from tricircle.common import az_ag
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exc
 from tricircle.common.i18n import _
+from tricircle.common import utils
+
 from tricircle.db import core
 from tricircle.db import models
 
@@ -80,6 +83,15 @@ class PodsController(rest.RestController):
 
         try:
             with context.session.begin():
+                # if not top region,
+                # then add corresponding ag and az for the pod
+                if az_name != '':
+                    ag_name = utils.get_ag_name(pod_name)
+                    aggregate = az_ag.create_ag_az(context,
+                                                   ag_name=ag_name,
+                                                   az_name=az_name)
+                    if aggregate is None:
+                        return Response(_('Ag creation failure'), 400)
                 pod_map = core.create_resource(context, models.PodMap,
                                                {'id': _uuid,
                                                 'az_name': az_name,
@@ -136,6 +148,12 @@ class PodsController(rest.RestController):
 
         try:
             with context.session.begin():
+                pod_map = core.get_resource(context, models.PodMap, _id)
+                if pod_map is not None:
+                    ag_name = utils.get_ag_name(pod_map['pod_name'])
+                    ag = az_ag.get_ag_by_name(context, ag_name)
+                    if ag is not None:
+                        az_ag.delete_ag(context, ag['id'])
                 core.delete_resource(context, models.PodMap, _id)
                 pecan.response.status = 200
         except t_exc.ResourceNotFound:

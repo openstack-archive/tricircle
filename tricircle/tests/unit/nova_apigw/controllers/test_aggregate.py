@@ -29,6 +29,9 @@ class AggregateTest(unittest.TestCase):
         self.project_id = 'test_project'
         self.controller = aggregate.AggregateController(self.project_id)
 
+    def tearDown(self):
+        core.ModelBase.metadata.drop_all(core.get_engine())
+
     @patch.object(context, 'extract_context_from_environ')
     def test_post(self, mock_context):
         mock_context.return_value = self.context
@@ -41,3 +44,19 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual('az1', aggregate_dict['availability_zone'])
         self.assertEqual('az1',
                          aggregate_dict['metadata']['availability_zone'])
+
+    @patch.object(context, 'extract_context_from_environ')
+    def test_post_action(self, mock_context):
+        mock_context.return_value = self.context
+
+        body = {'aggregate': {'name': 'ag1',
+                              'availability_zone': 'az1'}}
+
+        return_ag1 = self.controller.post(**body)['aggregate']
+        action_controller = aggregate.AggregateActionController(
+            self.project_id, return_ag1['id'])
+
+        return_ag2 = action_controller.post(**body)['aggregate']
+
+        self.assertEqual('ag1', return_ag2['name'])
+        self.assertEqual('az1', return_ag2['availability_zone'])
