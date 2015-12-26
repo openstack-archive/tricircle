@@ -21,7 +21,6 @@ from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
 from neutron.db import extradhcpopt_db
-from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.db import securitygroups_db
@@ -42,7 +41,6 @@ LOG = log.getLogger(__name__)
 
 class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                       securitygroups_db.SecurityGroupDbMixin,
-                      l3_db.L3_NAT_dbonly_mixin,
                       external_net_db.External_net_db_mixin,
                       portbindings_db.PortBindingMixin,
                       extradhcpopt_db.ExtraDhcpOptMixin,
@@ -56,8 +54,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                    "extra_dhcp_opt",
                                    "binding",
                                    "security-group",
-                                   "external-net",
-                                   "router"]
+                                   "external-net"]
 
     def __init__(self):
         super(TricirclePlugin, self).__init__()
