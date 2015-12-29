@@ -36,7 +36,7 @@ class AggregateActionController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create sites')
+            pecan.abort(400, 'Admin role required to operate aggregates')
             return
         try:
             with context.session.begin():
@@ -67,7 +67,7 @@ class AggregateController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create sites')
+            pecan.abort(400, 'Admin role required to create aggregates')
             return
         if 'aggregate' not in kw:
             pecan.abort(400, 'Request body not found')

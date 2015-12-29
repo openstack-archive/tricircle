@@ -225,25 +225,25 @@ class QualityOfServiceSpecs(core.ModelBase, core.DictBase,
 
 
 # Site Model
-class Site(core.ModelBase, core.DictBase):
-    __tablename__ = 'cascaded_sites'
-    attributes = ['site_id', 'site_name', 'az_id']
+class Pod(core.ModelBase, core.DictBase):
+    __tablename__ = 'cascaded_pods'
+    attributes = ['pod_id', 'pod_name', 'az_id']
 
-    site_id = sql.Column('site_id', sql.String(length=64), primary_key=True)
-    site_name = sql.Column('site_name', sql.String(length=64), unique=True,
-                           nullable=False)
+    pod_id = sql.Column('pod_id', sql.String(length=64), primary_key=True)
+    pod_name = sql.Column('pod_name', sql.String(length=64), unique=True,
+                          nullable=False)
     az_id = sql.Column('az_id', sql.String(length=64), nullable=False)
 
 
-class SiteServiceConfiguration(core.ModelBase, core.DictBase):
-    __tablename__ = 'cascaded_site_service_configuration'
-    attributes = ['service_id', 'site_id', 'service_type', 'service_url']
+class PodServiceConfiguration(core.ModelBase, core.DictBase):
+    __tablename__ = 'cascaded_pod_service_configuration'
+    attributes = ['service_id', 'pod_id', 'service_type', 'service_url']
 
     service_id = sql.Column('service_id', sql.String(length=64),
                             primary_key=True)
-    site_id = sql.Column('site_id', sql.String(length=64),
-                         sql.ForeignKey('cascaded_sites.site_id'),
-                         nullable=False)
+    pod_id = sql.Column('pod_id', sql.String(length=64),
+                        sql.ForeignKey('cascaded_pods.pod_id'),
+                        nullable=False)
     service_type = sql.Column('service_type', sql.String(length=64),
                               nullable=False)
     service_url = sql.Column('service_url', sql.String(length=512),
@@ -289,21 +289,21 @@ class PodBinding(core.ModelBase, core.DictBase, models.TimestampMixin):
 
 # Routing Model
 class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
-    __tablename__ = 'cascaded_sites_resource_routing'
+    __tablename__ = 'cascaded_pods_resource_routing'
     __table_args__ = (
         schema.UniqueConstraint(
-            'top_id', 'site_id',
-            name='cascaded_sites_resource_routing0top_id0site_id'),
+            'top_id', 'pod_id',
+            name='cascaded_pods_resource_routing0top_id0pod_id'),
     )
-    attributes = ['id', 'top_id', 'bottom_id', 'site_id', 'project_id',
+    attributes = ['id', 'top_id', 'bottom_id', 'pod_id', 'project_id',
                   'resource_type', 'created_at', 'updated_at']
 
     id = sql.Column('id', sql.Integer, primary_key=True)
     top_id = sql.Column('top_id', sql.String(length=36), nullable=False)
     bottom_id = sql.Column('bottom_id', sql.String(length=36))
-    site_id = sql.Column('site_id', sql.String(length=64),
-                         sql.ForeignKey('cascaded_sites.site_id'),
-                         nullable=False)
+    pod_id = sql.Column('pod_id', sql.String(length=64),
+                        sql.ForeignKey('cascaded_pods.pod_id'),
+                        nullable=False)
     project_id = sql.Column('project_id', sql.String(length=36))
     resource_type = sql.Column('resource_type', sql.String(length=64),
                                nullable=False)

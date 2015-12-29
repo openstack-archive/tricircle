@@ -45,13 +45,13 @@ class FakeServerController(server.ServerController):
         self.clients = {'t_region': FakeClient('t_region')}
         self.project_id = project_id
 
-    def _get_client(self, site_name=None):
-        if not site_name:
+    def _get_client(self, pod_name=None):
+        if not pod_name:
             return self.clients['t_region']
         else:
-            if site_name not in self.clients:
-                self.clients[site_name] = FakeClient(site_name)
-        return self.clients[site_name]
+            if pod_name not in self.clients:
+                self.clients[pod_name] = FakeClient(pod_name)
+        return self.clients[pod_name]
 
 
 class FakeClient(object):
@@ -63,12 +63,12 @@ class FakeClient(object):
                            'subnet': BOTTOM_SUBNETS,
                            'port': BOTTOM_PORTS}}
 
-    def __init__(self, site_name):
-        self.site_name = site_name
+    def __init__(self, pod_name):
+        self.pod_name = pod_name
 
     def _get_res_list(self, _type):
-        site = 'top' if self.site_name == 't_region' else 'bottom'
-        return self._res_map[site][_type]
+        pod = 'top' if self.pod_name == 't_region' else 'bottom'
+        return self._res_map[pod][_type]
 
     def _check_port_ip_conflict(self, subnet_id, ip):
         port_list = self._get_res_list('port')
@@ -165,19 +165,24 @@ class ServerTest(unittest.TestCase):
         self.project_id = 'test_project'
         self.controller = FakeServerController(self.project_id)
 
-    def _prepare_site(self):
-        t_site = {'site_id': 't_site_uuid', 'site_name': 't_region',
-                  'az_id': ''}
-        b_site = {'site_id': 'b_site_uuid', 'site_name': 'b_region',
-                  'az_id': 'b_az'}
-        api.create_site(self.context, t_site)
-        api.create_site(self.context, b_site)
-        return t_site, b_site
+    def _prepare_pod(self):
+        t_pod = {'pod_id': 't_pod_uuid', 'pod_name': 't_region',
+                 'az_id': ''}
+        b_pod = {'pod_id': 'b_pod_uuid', 'pod_name': 'b_region',
+                 'az_id': 'b_az'}
+        pod_map = {'id': 'pod_map_id',
+                   'az_name': b_pod['az_id'],
+                   'pod_name': b_pod['pod_name']}
+        api.create_pod(self.context, t_pod)
+        api.create_pod(self.context, b_pod)
+        with self.context.session.begin():
+            core.create_resource(self.context, models.PodMap, pod_map)
+        return t_pod, b_pod
 
     def test_get_or_create_route(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         self.assertTrue(is_own)
         self.assertEqual('test_top_id', route['top_id'])
         self.assertIsNone(route['bottom_id'])
@@ -185,25 +190,25 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.project_id, route['project_id'])
 
     def test_get_or_create_route_conflict(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         self.assertFalse(is_own)
         self.assertIsNone(route)
 
     def test_get_or_create_route_conflict_expire(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         # manually set update time to expire the routing entry
         with self.context.session.begin():
             update_time = route['created_at'] - datetime.timedelta(0, 60)
             core.update_resource(self.context, models.ResourceRouting,
                                  route['id'], {'updated_at': update_time})
         new_route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         self.assertTrue(is_own)
         self.assertEqual('test_top_id', new_route['top_id'])
         self.assertIsNone(new_route['bottom_id'])
@@ -211,9 +216,9 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.project_id, new_route['project_id'])
 
     def test_get_or_create_route_conflict_expire_has_bottom_res(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         # manually set update time to expire the routing entry
         with self.context.session.begin():
             update_time = route['created_at'] - datetime.timedelta(0, 60)
@@ -222,7 +227,7 @@ class ServerTest(unittest.TestCase):
         # insert a fake bottom port
         BOTTOM_PORTS.append({'id': 'test_bottom_id', 'name': 'test_top_id'})
         new_route, is_own = self.controller._get_or_create_route(
-            self.context, b_site, 'test_top_id', 'port')
+            self.context, b_pod, 'test_top_id', 'port')
         self.assertFalse(is_own)
         self.assertEqual('test_top_id', new_route['top_id'])
         self.assertEqual('test_bottom_id', new_route['bottom_id'])
@@ -230,11 +235,11 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.project_id, new_route['project_id'])
 
     def test_prepare_neutron_element(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         port = {'id': 'top_port_id'}
         body = {'port': {'name': 'top_port_id'}}
         bottom_port_id = self.controller._prepare_neutron_element(
-            self.context, b_site, port, 'port', body)
+            self.context, b_pod, port, 'port', body)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
                                                      'top_port_id', 'port')
         self.assertEqual(bottom_port_id, mappings[0][1])
@@ -242,12 +247,12 @@ class ServerTest(unittest.TestCase):
     @patch.object(FakeClient, 'create_resources')
     def test_prepare_neutron_element_create_res_exception(self, mock_method):
         mock_method.side_effect = FakeException()
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         port = {'id': 'top_port_id'}
         body = {'port': {'name': 'top_port_id'}}
         self.assertRaises(FakeException,
                           self.controller._prepare_neutron_element,
-                          self.context, b_site, port, 'port', body)
+                          self.context, b_pod, port, 'port', body)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
                                                      'top_port_id', 'port')
         self.assertEqual(0, len(mappings))
@@ -280,7 +285,7 @@ class ServerTest(unittest.TestCase):
         self.assertItemsEqual(expect, actual)
 
     def test_handle_network(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         net = {'id': 'top_net_id'}
         subnet = {'id': 'top_subnet_id',
                   'network_id': 'top_net_id',
@@ -292,11 +297,11 @@ class ServerTest(unittest.TestCase):
                   'enable_dhcp': True}
         TOP_NETS.append(net)
         TOP_SUBNETS.append(subnet)
-        self.controller._handle_network(self.context, b_site, net, [subnet])
+        self.controller._handle_network(self.context, b_pod, net, [subnet])
         self._check_routes()
 
     def test_handle_port(self):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         net = {'id': 'top_net_id'}
         subnet = {'id': 'top_subnet_id',
                   'network_id': 'top_net_id',
@@ -316,11 +321,11 @@ class ServerTest(unittest.TestCase):
         TOP_NETS.append(net)
         TOP_SUBNETS.append(subnet)
         TOP_PORTS.append(port)
-        self.controller._handle_port(self.context, b_site, port)
+        self.controller._handle_port(self.context, b_pod, port)
         self._check_routes()
 
     def _test_handle_network_dhcp_port(self, dhcp_ip):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
 
         top_net_id = 'top_net_id'
         bottom_net_id = 'bottom_net_id'
@@ -363,15 +368,15 @@ class ServerTest(unittest.TestCase):
             core.create_resource(
                 self.context, models.ResourceRouting,
                 {'top_id': top_net_id, 'bottom_id': bottom_net_id,
-                 'site_id': b_site['site_id'], 'project_id': self.project_id,
+                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
                  'resource_type': 'network'})
             core.create_resource(
                 self.context, models.ResourceRouting,
                 {'top_id': top_subnet_id, 'bottom_id': bottom_subnet_id,
-                 'site_id': b_site['site_id'], 'project_id': self.project_id,
+                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
                  'resource_type': 'subnet'})
         self.controller._handle_network(self.context,
-                                        b_site, t_net, [t_subnet])
+                                        b_pod, t_net, [t_subnet])
         self._check_routes()
 
     def test_handle_network_dhcp_port_same_ip(self):
@@ -383,7 +388,7 @@ class ServerTest(unittest.TestCase):
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
     def test_post(self, mock_ctx, mock_create):
-        t_site, b_site = self._prepare_site()
+        t_pod, b_pod = self._prepare_pod()
         top_net_id = 'top_net_id'
         top_subnet_id = 'top_subnet_id'
         t_net = {'id': top_net_id}
@@ -406,7 +411,7 @@ class ServerTest(unittest.TestCase):
                 'name': server_name,
                 'imageRef': image_id,
                 'flavorRef': flavor_id,
-                'availability_zone': b_site['az_id'],
+                'availability_zone': b_pod['az_id'],
                 'networks': [{'uuid': top_net_id}]
             }
         }
@@ -430,7 +435,7 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(1, len(routes))
             self.assertEqual(server_dict['id'], routes[0]['top_id'])
             self.assertEqual(server_dict['id'], routes[0]['bottom_id'])
-            self.assertEqual(b_site['site_id'], routes[0]['site_id'])
+            self.assertEqual(b_pod['pod_id'], routes[0]['pod_id'])
             self.assertEqual(self.project_id, routes[0]['project_id'])
 
     def tearDown(self):

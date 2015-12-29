@@ -52,10 +52,10 @@ via "POD_REGION_NAME", new configuration option introduced by Tricircle,
 we use it as the bottom OpenStack.
 - 6 Create site instances for both top and bottom OpenStack
 ```
-curl -X POST http://127.0.0.1:19999/v1.0/sites -H "Content-Type: application/json" \
-     -H "X-Auth-Token: $token" -d '{"name":  "RegionOne", "top": "True"}'
-curl -X POST http://127.0.0.1:19999/v1.0/sites -H "Content-Type: application/json" \
-     -H "X-Auth-Token: $token" -d '{"name":  "Pod1"}'
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+     -H "X-Auth-Token: $token" -d '{"pod_map": {"pod_name":  "RegionOne"}}'
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+     -H "X-Auth-Token: $token" -d '{"pod_map": {"pod_name":  "Pod1", "az_name": "az1"}}'
 ```
 Pay attention to "name" parameter we specify when creating site. Site name
 should exactly match the region name registered in Keystone since it is used
@@ -67,7 +67,7 @@ so command "nova aggregate-list" will show the following result:
 +----+----------+-------------------+
 | Id | Name     | Availability Zone |
 +----+----------+-------------------+
-| 1  | ag_Pod1  | az_Pod1           |
+| 1  | ag_Pod1  | az1               |
 +----+----------+-------------------+
 ```
 - 7 Create necessary resources to boot a virtual machine.
@@ -81,5 +81,5 @@ just a database record and actually flavor in bottom OpenStack with the same id
 will be used.
 - 8 Boot a virtual machine.
 ```
-nova boot --flavor 1 --image $image_id --nic net-id=$net_id --availability-zone az_Pod1 vm1
+nova boot --flavor 1 --image $image_id --nic net-id=$net_id --availability-zone az1 vm1
 ```

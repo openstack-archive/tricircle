@@ -17,7 +17,6 @@
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
-from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
 from neutron.db import extradhcpopt_db
@@ -25,6 +24,7 @@ from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.db import securitygroups_db
 from neutron.db import sqlalchemyutils
+from neutron.extensions import availability_zone as az_ext
 
 from sqlalchemy import sql
 
@@ -43,8 +43,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                       securitygroups_db.SecurityGroupDbMixin,
                       external_net_db.External_net_db_mixin,
                       portbindings_db.PortBindingMixin,
-                      extradhcpopt_db.ExtraDhcpOptMixin,
-                      agentschedulers_db.DhcpAgentSchedulerDbMixin):
+                      extradhcpopt_db.ExtraDhcpOptMixin):
 
     __native_bulk_support = True
     __native_pagination_support = True
@@ -54,7 +53,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                    "extra_dhcp_opt",
                                    "binding",
                                    "security-group",
-                                   "external-net"]
+                                   "external-net",
+                                   "network_availability_zone"]
 
     def __init__(self):
         super(TricirclePlugin, self).__init__()
@@ -65,10 +65,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _setup_rpc(self):
         self.endpoints = []
 
-    def _get_client(self, site_name):
-        if site_name not in self.clients:
-            self.clients[site_name] = t_client.Client(site_name)
-        return self.clients[site_name]
+    def _get_client(self, pod_name):
+        if pod_name not in self.clients:
+            self.clients[pod_name] = t_client.Client(pod_name)
+        return self.clients[pod_name]
 
     @log_helpers.log_method_call
     def start_rpc_listeners(self):
@@ -79,7 +79,28 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
         # return self.conn.consume_in_threads()
 
+    @staticmethod
+    def _validate_availability_zones(context, az_list):
+        if not az_list:
+            return
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        with context.session.begin():
+            pods = core.query_resource(t_ctx, models.PodMap, [], [])
+            az_set = set(az_list)
+            known_az_set = set([pod['pod_name'] for pod in pods])
+            diff = az_set - known_az_set
+            if diff:
+                raise az_ext.AvailabilityZoneNotFound(
+                    availability_zone=diff.pop())
+
     def create_network(self, context, network):
+        net_data = network['network']
+        if az_ext.AZ_HINTS in net_data:
+            self._validate_availability_zones(context,
+                                              net_data[az_ext.AZ_HINTS])
+            az_hints = az_ext.convert_az_list_to_string(
+                net_data[az_ext.AZ_HINTS])
+            net_data[az_ext.AZ_HINTS] = az_hints
         return super(TricirclePlugin, self).create_network(context, network)
 
     def delete_network(self, context, network_id):
@@ -88,9 +109,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, network_id, 'network')
             for mapping in mappings:
-                site_name = mapping[0]['site_name']
+                pod_name = mapping[0]['pod_name']
                 bottom_network_id = mapping[1]
-                self._get_client(site_name).delete_networks(
+                self._get_client(pod_name).delete_networks(
                     t_ctx, bottom_network_id)
         except Exception:
             raise
@@ -109,9 +130,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, subnet_id, 'network')
             for mapping in mappings:
-                site_name = mapping[0]['site_name']
+                pod_name = mapping[0]['pod_name']
                 bottom_subnet_id = mapping[1]
-                self._get_client(site_name).delete_subnets(
+                self._get_client(pod_name).delete_subnets(
                     t_ctx, bottom_subnet_id)
         except Exception:
             raise
@@ -130,9 +151,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(t_ctx,
                                                             port_id, 'port')
             if mappings:
-                site_name = mappings[0][0]['site_name']
+                pod_name = mappings[0][0]['pod_name']
                 bottom_port_id = mappings[0][1]
-                self._get_client(site_name).delete_ports(
+                self._get_client(pod_name).delete_ports(
                     t_ctx, bottom_port_id)
         except Exception:
             raise
@@ -147,9 +168,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         mappings = db_api.get_bottom_mappings_by_top_id(t_ctx,
                                                         port_id, 'port')
         if mappings:
-            site_name = mappings[0][0]['site_name']
+            pod_name = mappings[0][0]['pod_name']
             bottom_port_id = mappings[0][1]
-            port = self._get_client(site_name).get_ports(
+            port = self._get_client(pod_name).get_ports(
                 t_ctx, bottom_port_id)
             port['id'] = port_id
             if fields:
@@ -261,17 +282,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         del res['ports']
         res['ports'] = port_list
 
-    def _get_ports_from_site_with_number(self, context,
-                                         current_site, number, last_port_id,
-                                         bottom_top_map, top_bottom_map,
-                                         filters=None):
+    def _get_ports_from_pod_with_number(self, context,
+                                        current_pod, number, last_port_id,
+                                        bottom_top_map, top_bottom_map,
+                                        filters=None):
         # NOTE(zhiyuan) last_port_id is top id, also id in returned port dict
-        # also uses top id. when interacting with bottom site, need to map
+        # also uses top id. when interacting with bottom pod, need to map
         # top to bottom in request and map bottom to top in response
 
         t_ctx = t_context.get_context_from_neutron_context(context)
         q_client = self._get_client(
-            current_site['site_name']).get_native_client('port', t_ctx)
+            current_pod['pod_name']).get_native_client('port', t_ctx)
         params = {'limit': number}
         if filters:
             _filters = dict(filters)
@@ -295,9 +316,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if len(res['ports']) == number:
             return res
         else:
-            next_site = db_api.get_next_bottom_site(
-                t_ctx, current_site_id=current_site['site_id'])
-            if not next_site:
+            next_pod = db_api.get_next_bottom_pod(
+                t_ctx, current_pod_id=current_pod['pod_id'])
+            if not next_pod:
                 # _get_ports_from_top_with_number uses top id, no need to map
                 next_res = self._get_ports_from_top_with_number(
                     context, number - len(res['ports']), '', top_bottom_map,
@@ -305,10 +326,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 next_res['ports'].extend(res['ports'])
                 return next_res
             else:
-                # _get_ports_from_site_with_number itself returns top id, no
+                # _get_ports_from_pod_with_number itself returns top id, no
                 # need to map
-                next_res = self._get_ports_from_site_with_number(
-                    context, next_site, number - len(res['ports']), '',
+                next_res = self._get_ports_from_pod_with_number(
+                    context, next_pod, number - len(res['ports']), '',
                     bottom_top_map, top_bottom_map, filters)
                 next_res['ports'].extend(res['ports'])
                 return next_res
@@ -338,21 +359,21 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # NOTE(zhiyuan) if mapping exists, we retrieve port information
                 # from bottom, otherwise from top
                 if mappings:
-                    site_id = mappings[0][0]['site_id']
-                    current_site = db_api.get_site(t_ctx, site_id)
-                    res = self._get_ports_from_site_with_number(
-                        context, current_site, limit, marker,
+                    pod_id = mappings[0][0]['pod_id']
+                    current_pod = db_api.get_pod(t_ctx, pod_id)
+                    res = self._get_ports_from_pod_with_number(
+                        context, current_pod, limit, marker,
                         bottom_top_map, top_bottom_map, filters)
                 else:
                     res = self._get_ports_from_top_with_number(
                         context, limit, marker, top_bottom_map, filters)
 
             else:
-                current_site = db_api.get_next_bottom_site(t_ctx)
-                # only top site registered
-                if current_site:
-                    res = self._get_ports_from_site_with_number(
-                        context, current_site, limit, '',
+                current_pod = db_api.get_next_bottom_pod(t_ctx)
+                # only top pod registered
+                if current_pod:
+                    res = self._get_ports_from_pod_with_number(
+                        context, current_pod, limit, '',
                         bottom_top_map, top_bottom_map, filters)
                 else:
                     res = self._get_ports_from_top_with_number(
@@ -361,15 +382,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # NOTE(zhiyuan) we can safely return ports, neutron controller will
             # generate links for us so we do not need to worry about it.
             #
-            # _get_ports_from_site_with_number already traverses all the sites
-            # to try to get ports equal to limit, so site is transparent for
+            # _get_ports_from_pod_with_number already traverses all the pods
+            # to try to get ports equal to limit, so pod is transparent for
             # controller.
             return res['ports']
         else:
             ret = []
-            sites = db_api.list_sites(t_ctx)
-            for site in sites:
-                if not site['az_id']:
+            pods = db_api.list_pods(t_ctx)
+            for pod in pods:
+                if not pod['az_id']:
                     continue
                 _filters = []
                 if filters:
@@ -388,7 +409,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                             _filters.append({'key': key,
                                              'comparator': 'eq',
                                              'value': value})
-                client = self._get_client(site['site_name'])
+                client = self._get_client(pod['pod_name'])
                 ret.extend(client.list_ports(t_ctx, filters=_filters))
             self._map_ports_from_bottom_to_top({'ports': ret}, bottom_top_map)
             ret.extend(self._get_ports_from_top(context, top_bottom_map,

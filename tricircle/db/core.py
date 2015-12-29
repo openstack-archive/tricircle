@@ -41,7 +41,7 @@ def _filter_query(model, query, filters):
     :param model:
     :param query:
     :param filters: list of filter dict with key 'key', 'comparator', 'value'
-    like {'key': 'site_id', 'comparator': 'eq', 'value': 'test_site_uuid'}
+    like {'key': 'pod_id', 'comparator': 'eq', 'value': 'test_pod_uuid'}
     :return:
     """
     filter_dict = {}

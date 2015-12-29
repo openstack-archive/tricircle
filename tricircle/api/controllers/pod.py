@@ -98,6 +98,17 @@ class PodsController(rest.RestController):
                                                 'dc_name': dc_name,
                                                 'pod_name': pod_name,
                                                 'pod_az_name': pod_az_name})
+
+                # create pod instance for internal use
+                pods = core.query_resource(context, models.Pod,
+                                           [{'key': 'pod_name',
+                                             'comparator': 'eq',
+                                             'value': pod_name}], [])
+                if not pods:
+                    core.create_resource(context, models.Pod,
+                                         {'pod_id': uuidutils.generate_uuid(),
+                                          'pod_name': pod_name,
+                                          'az_id': az_name})
         except db_exc.DBDuplicateEntry:
             return Response(_('Pod map already exists'), 409)
         except Exception:
@@ -155,6 +166,18 @@ class PodsController(rest.RestController):
                     if ag is not None:
                         az_ag.delete_ag(context, ag['id'])
                 core.delete_resource(context, models.PodMap, _id)
+                pod_maps = core.query_resource(
+                    context, models.PodMap,
+                    [{'key': 'pod_name',
+                      'comparator': 'eq',
+                      'value': pod_map['pod_name']}], [])
+                # if we delete the last map for one pod, also delete the pod
+                if not pod_maps:
+                    core.delete_resources(
+                        context, models.Pod,
+                        [{'key': 'pod_name',
+                          'comparator': 'eq',
+                          'value': pod_map['pod_name']}])
                 pecan.response.status = 200
         except t_exc.ResourceNotFound:
             pecan.abort(404, _('Pod map not found'))

@@ -18,68 +18,68 @@ from tricircle.db import core
 from tricircle.db import models
 
 
-def create_site(context, site_dict):
+def create_pod(context, pod_dict):
     with context.session.begin():
-        return core.create_resource(context, models.Site, site_dict)
+        return core.create_resource(context, models.Pod, pod_dict)
 
 
-def delete_site(context, site_id):
+def delete_pod(context, pod_id):
     with context.session.begin():
-        return core.delete_resource(context, models.Site, site_id)
+        return core.delete_resource(context, models.Pod, pod_id)
 
 
-def get_site(context, site_id):
+def get_pod(context, pod_id):
     with context.session.begin():
-        return core.get_resource(context, models.Site, site_id)
+        return core.get_resource(context, models.Pod, pod_id)
 
 
-def list_sites(context, filters=None, sorts=None):
+def list_pods(context, filters=None, sorts=None):
     with context.session.begin():
-        return core.query_resource(context, models.Site, filters or [],
+        return core.query_resource(context, models.Pod, filters or [],
                                    sorts or [])
 
 
-def update_site(context, site_id, update_dict):
+def update_pod(context, pod_id, update_dict):
     with context.session.begin():
-        return core.update_resource(context, models.Site, site_id, update_dict)
+        return core.update_resource(context, models.Pod, pod_id, update_dict)
 
 
-def create_site_service_configuration(context, config_dict):
+def create_pod_service_configuration(context, config_dict):
     with context.session.begin():
-        return core.create_resource(context, models.SiteServiceConfiguration,
+        return core.create_resource(context, models.PodServiceConfiguration,
                                     config_dict)
 
 
-def delete_site_service_configuration(context, config_id):
+def delete_pod_service_configuration(context, config_id):
     with context.session.begin():
-        return core.delete_resource(context, models.SiteServiceConfiguration,
+        return core.delete_resource(context, models.PodServiceConfiguration,
                                     config_id)
 
 
-def get_site_service_configuration(context, config_id):
+def get_pod_service_configuration(context, config_id):
     with context.session.begin():
-        return core.get_resource(context, models.SiteServiceConfiguration,
+        return core.get_resource(context, models.PodServiceConfiguration,
                                  config_id)
 
 
-def list_site_service_configurations(context, filters=None, sorts=None):
+def list_pod_service_configurations(context, filters=None, sorts=None):
     with context.session.begin():
-        return core.query_resource(context, models.SiteServiceConfiguration,
+        return core.query_resource(context, models.PodServiceConfiguration,
                                    filters or [], sorts or [])
 
 
-def update_site_service_configuration(context, config_id, update_dict):
+def update_pod_service_configuration(context, config_id, update_dict):
     with context.session.begin():
         return core.update_resource(
-            context, models.SiteServiceConfiguration, config_id, update_dict)
+            context, models.PodServiceConfiguration, config_id, update_dict)
 
 
 def get_bottom_mappings_by_top_id(context, top_id, resource_type):
-    """Get resource id and site name on bottom
+    """Get resource id and pod name on bottom
 
     :param context: context object
     :param top_id: resource id on top
-    :return: a list of tuple (site dict, bottom_id)
+    :return: a list of tuple (pod dict, bottom_id)
     """
     route_filters = [{'key': 'top_id', 'comparator': 'eq', 'value': top_id},
                      {'key': 'resource_type',
@@ -92,18 +92,18 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
         for route in routes:
             if not route['bottom_id']:
                 continue
-            site = core.get_resource(context, models.Site, route['site_id'])
-            mappings.append((site, route['bottom_id']))
+            pod = core.get_resource(context, models.Pod, route['pod_id'])
+            mappings.append((pod, route['bottom_id']))
     return mappings
 
 
-def get_next_bottom_site(context, current_site_id=None):
-    sites = list_sites(context, sorts=[(models.Site.site_id, True)])
-    # NOTE(zhiyuan) number of sites is small, just traverse to filter top site
-    sites = [site for site in sites if site['az_id']]
-    for index, site in enumerate(sites):
-        if not current_site_id:
-            return site
-        if site['site_id'] == current_site_id and index < len(sites) - 1:
-            return sites[index + 1]
+def get_next_bottom_pod(context, current_pod_id=None):
+    pods = list_pods(context, sorts=[(models.Pod.pod_id, True)])
+    # NOTE(zhiyuan) number of pods is small, just traverse to filter top pod
+    pods = [pod for pod in pods if pod['az_id']]
+    for index, pod in enumerate(pods):
+        if not current_pod_id:
+            return pod
+        if pod['pod_id'] == current_pod_id and index < len(pods) - 1:
+            return pods[index + 1]
     return None

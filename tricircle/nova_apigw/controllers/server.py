@@ -21,6 +21,7 @@ from pecan import expose
 from pecan import rest
 
 import oslo_db.exception as db_exc
+from oslo_utils import uuidutils
 
 import tricircle.common.client as t_client
 import tricircle.common.context as t_context
@@ -35,12 +36,12 @@ class ServerController(rest.RestController):
         self.project_id = project_id
         self.clients = {'top': t_client.Client()}
 
-    def _get_client(self, site_name='top'):
-        if site_name not in self.clients:
-            self.clients[site_name] = t_client.Client(site_name)
-        return self.clients[site_name]
+    def _get_client(self, pod_name='top'):
+        if pod_name not in self.clients:
+            self.clients[pod_name] = t_client.Client(pod_name)
+        return self.clients[pod_name]
 
-    def _get_or_create_route(self, context, site, _id, _type):
+    def _get_or_create_route(self, context, pod, _id, _type):
         # use configuration option later
         route_expire_threshold = 30
 
@@ -48,8 +49,8 @@ class ServerController(rest.RestController):
             routes = core.query_resource(
                 context, models.ResourceRouting,
                 [{'key': 'top_id', 'comparator': 'eq', 'value': _id},
-                 {'key': 'site_id', 'comparator': 'eq',
-                  'value': site['site_id']}], [])
+                 {'key': 'pod_id', 'comparator': 'eq',
+                  'value': pod['pod_id']}], [])
             if routes:
                 route = routes[0]
                 if route['bottom_id']:
@@ -63,7 +64,7 @@ class ServerController(rest.RestController):
                         # have a race that other worker is updating this route
                         # with bottom id, we need to check if the bottom
                         # element has been created by other worker
-                        client = self._get_client(site['site_name'])
+                        client = self._get_client(pod['pod_name'])
                         bottom_eles = client.list_resources(
                             _type, context, [{'key': 'name',
                                               'comparator': 'eq',
@@ -87,7 +88,7 @@ class ServerController(rest.RestController):
             context.session.begin()
             route = core.create_resource(context, models.ResourceRouting,
                                          {'top_id': _id,
-                                          'site_id': site['site_id'],
+                                          'pod_id': pod['pod_id'],
                                           'project_id': self.project_id,
                                           'resource_type': _type})
             context.session.commit()
@@ -161,13 +162,13 @@ class ServerController(rest.RestController):
         }
         return body
 
-    def _prepare_neutron_element(self, context, site, ele, _type, body):
-        client = self._get_client(site['site_name'])
+    def _prepare_neutron_element(self, context, pod, ele, _type, body):
+        client = self._get_client(pod['pod_name'])
         # use configuration option later
         max_tries = 5
         for _ in xrange(max_tries):
             route, is_new = self._get_or_create_route(context,
-                                                      site, ele['id'], _type)
+                                                      pod, ele['id'], _type)
             if not route:
                 eventlet.sleep(0)
                 continue
@@ -204,10 +205,10 @@ class ServerController(rest.RestController):
             raise Exception('Fail to bind top and bottom %s' % _type)
         return route['bottom_id']
 
-    def _handle_network(self, context, site, net, subnets, port=None):
+    def _handle_network(self, context, pod, net, subnets, port=None):
         # network
         net_body = self._get_create_network_body(net)
-        bottom_net_id = self._prepare_neutron_element(context, site, net,
+        bottom_net_id = self._prepare_neutron_element(context, pod, net,
                                                       'network', net_body)
 
         # subnet
@@ -215,14 +216,14 @@ class ServerController(rest.RestController):
         for subnet in subnets:
             subnet_body = self._get_create_subnet_body(subnet, bottom_net_id)
             bottom_subnet_id = self._prepare_neutron_element(
-                context, site, subnet, 'subnet', subnet_body)
+                context, pod, subnet, 'subnet', subnet_body)
             subnet_map[subnet['id']] = bottom_subnet_id
         top_client = self._get_client()
         top_port_body = {'port': {'network_id': net['id'],
                                   'admin_state_up': True}}
 
         # dhcp port
-        client = self._get_client(site['site_name'])
+        client = self._get_client(pod['pod_name'])
         t_dhcp_port_filters = [
             {'key': 'device_owner', 'comparator': 'eq',
              'value': 'network:dhcp'},
@@ -259,8 +260,8 @@ class ServerController(rest.RestController):
                                                       top_dhcp_port_body)
             mappings = db_api.get_bottom_mappings_by_top_id(
                 context, t_dhcp_port['id'], 'port')
-            site_list = [mapping[0]['site_id'] for mapping in mappings]
-            if site['site_id'] in site_list:
+            pod_list = [mapping[0]['pod_id'] for mapping in mappings]
+            if pod['pod_id'] in pod_list:
                 # mapping exists, skip this subnet
                 continue
 
@@ -273,7 +274,7 @@ class ServerController(rest.RestController):
                 b_dhcp_port = client.create_ports(context, dhcp_port_body)
             except Exception:
                 # examine if we conflicted with a dhcp port which was
-                # automatically created by bottom site
+                # automatically created by bottom pod
                 b_dhcp_ports = client.list_ports(context,
                                                  b_dhcp_port_filters)
                 dhcp_port_match = False
@@ -286,7 +287,7 @@ class ServerController(rest.RestController):
                                 context, models.ResourceRouting,
                                 {'top_id': t_dhcp_port['id'],
                                  'bottom_id': dhcp_port['id'],
-                                 'site_id': site['site_id'],
+                                 'pod_id': pod['pod_id'],
                                  'project_id': self.project_id,
                                  'resource_type': 'port'})
                         dhcp_port_match = True
@@ -300,11 +301,11 @@ class ServerController(rest.RestController):
                     core.create_resource(context, models.ResourceRouting,
                                          {'top_id': t_dhcp_port['id'],
                                           'bottom_id': b_dhcp_port['id'],
-                                          'site_id': site['site_id'],
+                                          'pod_id': pod['pod_id'],
                                           'project_id': self.project_id,
                                           'resource_type': 'port'})
                 # there is still one thing to do, there may be other dhcp ports
-                # created by bottom site, we need to delete them
+                # created by bottom pod, we need to delete them
                 b_dhcp_ports = client.list_ports(context,
                                                  b_dhcp_port_filters)
                 remove_port_list = []
@@ -323,11 +324,11 @@ class ServerController(rest.RestController):
         if not port:
             port = top_client.create_ports(context, top_port_body)
         port_body = self._get_create_port_body(port, subnet_map, bottom_net_id)
-        bottom_port_id = self._prepare_neutron_element(context, site, port,
+        bottom_port_id = self._prepare_neutron_element(context, pod, port,
                                                        'port', port_body)
         return bottom_port_id
 
-    def _handle_port(self, context, site, port):
+    def _handle_port(self, context, pod, port):
         mappings = db_api.get_bottom_mappings_by_top_id(context,
                                                         port['id'], 'port')
         if mappings:
@@ -344,15 +345,15 @@ class ServerController(rest.RestController):
         for fixed_ip in port['fixed_ips']:
             subnets.append(top_client.get_subnets(context,
                                                   fixed_ip['subnet_id']))
-        return self._handle_network(context, site, net, subnets, port)
+        return self._handle_network(context, pod, net, subnets, port)
 
     @staticmethod
-    def _get_create_server_body(origin):
+    def _get_create_server_body(origin, bottom_az):
         body = {}
         copy_fields = ['name', 'imageRef', 'flavorRef',
                        'max_count', 'min_count']
-        # TODO(zhiyuan) handle availability zone
-        # body['availability_zone'] = origin['availability_zone']
+        if bottom_az:
+            body['availability_zone'] = bottom_az
         for field in copy_fields:
             if field in origin:
                 body[field] = origin[field]
@@ -360,13 +361,54 @@ class ServerController(rest.RestController):
 
     def _get_all(self, context):
         ret = []
-        sites = db_api.list_sites(context)
-        for site in sites:
-            if not site['az_id']:
+        pods = db_api.list_pods(context)
+        for pod in pods:
+            if not pod['az_id']:
                 continue
-            client = self._get_client(site['site_name'])
+            client = self._get_client(pod['pod_name'])
             ret.extend(client.list_servers(context))
         return ret
+
+    def _schedule_pod(self, context, az):
+        with context.session.begin():
+            pod_bindings = core.query_resource(
+                context, models.PodBinding,
+                [{'key': 'tenant_id',
+                  'comparator': 'eq',
+                  'value': self.project_id}], [])
+            for pod_binding in pod_bindings:
+                pod_map = core.get_resource(context, models.PodMap,
+                                            pod_binding['az_pod_map_id'])
+                if pod_map['az_name'] == az:
+                    pods = core.query_resource(
+                        context, models.Pod,
+                        [{'key': 'pod_name',
+                          'comparator': 'eq',
+                          'value': pod_map['pod_name']}], [])
+                    return pods[0], pod_map['pod_az_name']
+            # no proper pod found, try to schedule one
+            pod_maps = core.query_resource(
+                context, models.PodMap,
+                [{'key': 'az_name',
+                  'comparator': 'eq',
+                  'value': az}], [])
+            if pod_maps:
+                # dump schedule, just select the first map
+                select_pod_map = pod_maps[0]
+
+                pods = core.query_resource(
+                    context, models.Pod,
+                    [{'key': 'pod_name',
+                      'comparator': 'eq',
+                      'value': select_pod_map['pod_name']}], [])
+                core.create_resource(
+                    context, models.PodBinding,
+                    {'id': uuidutils.generate_uuid(),
+                     'tenant_id': self.project_id,
+                     'az_pod_map_id': select_pod_map['id']})
+                return pods[0], select_pod_map['pod_az_name']
+            else:
+                return None, None
 
     @expose(generic=True, template='json')
     def get_one(self, _id):
@@ -379,8 +421,8 @@ class ServerController(rest.RestController):
         if not mappings:
             pecan.abort(404, 'Server not found')
             return
-        site, bottom_id = mappings[0]
-        client = self._get_client(site['site_name'])
+        pod, bottom_id = mappings[0]
+        client = self._get_client(pod['pod_name'])
         server = client.get_servers(context, bottom_id)
         if not server:
             pecan.abort(404, 'Server not found')
@@ -405,16 +447,13 @@ class ServerController(rest.RestController):
             pecan.abort(400, 'Availability zone not set')
             return
 
-        sites = core.query_resource(
-            context, models.Site,
-            [{'key': 'az_id',
-              'comparator': 'eq',
-              'value': kw['server']['availability_zone']}], [])
-        if not sites:
-            pecan.abort(400, 'No site bound to availability zone')
+        pod, b_az = self._schedule_pod(context,
+                                       kw['server']['availability_zone'])
+        if not pod:
+            pecan.abort(400, 'No pod bound to availability zone')
             return
 
-        server_body = self._get_create_server_body(kw['server'])
+        server_body = self._get_create_server_body(kw['server'], b_az)
 
         top_client = self._get_client()
         if 'networks' in kw['server']:
@@ -433,17 +472,17 @@ class ServerController(rest.RestController):
                     if not subnets:
                         pecan.abort(400, 'Network not contain subnets')
                         return
-                    bottom_port_id = self._handle_network(context, sites[0],
+                    bottom_port_id = self._handle_network(context, pod,
                                                           network, subnets)
                 elif 'port' in net_info:
                     port = top_client.get_ports(context, net_info['port'])
                     if not port:
                         pecan.abort(400, 'Port not found')
                         return
-                    bottom_port_id = self._handle_port(context, sites[0], port)
+                    bottom_port_id = self._handle_port(context, pod, port)
                 server_body['networks'].append({'port': bottom_port_id})
 
-        client = self._get_client(sites[0]['site_name'])
+        client = self._get_client(pod['pod_name'])
         nics = [
             {'port-id': _port['port']} for _port in server_body['networks']]
         server = client.create_servers(context,
@@ -455,7 +494,7 @@ class ServerController(rest.RestController):
             core.create_resource(context, models.ResourceRouting,
                                  {'top_id': server['id'],
                                   'bottom_id': server['id'],
-                                  'site_id': sites[0]['site_id'],
+                                  'pod_id': pod['pod_id'],
                                   'project_id': self.project_id,
                                   'resource_type': 'server'})
         return {'server': server}

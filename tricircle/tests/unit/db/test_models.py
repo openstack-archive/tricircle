@@ -110,90 +110,90 @@ class ModelsTest(unittest.TestCase):
         self.context = context.Context()
 
     def test_obj_to_dict(self):
-        site = {'site_id': 'test_site_uuid',
-                'site_name': 'test_site',
-                'az_id': 'test_az_uuid'}
-        site_obj = models.Site.from_dict(site)
-        for attr in site_obj.attributes:
-            self.assertEqual(getattr(site_obj, attr), site[attr])
+        pod = {'pod_id': 'test_pod_uuid',
+               'pod_name': 'test_pod',
+               'az_id': 'test_az_uuid'}
+        pod_obj = models.Pod.from_dict(pod)
+        for attr in pod_obj.attributes:
+            self.assertEqual(getattr(pod_obj, attr), pod[attr])
 
     def test_create(self):
-        site = {'site_id': 'test_site_uuid',
-                'site_name': 'test_site',
-                'az_id': 'test_az_uuid'}
-        site_ret = api.create_site(self.context, site)
-        self.assertEqual(site_ret, site)
+        pod = {'pod_id': 'test_pod_uuid',
+               'pod_name': 'test_pod',
+               'az_id': 'test_az_uuid'}
+        pod_ret = api.create_pod(self.context, pod)
+        self.assertEqual(pod_ret, pod)
 
         configuration = {
             'service_id': 'test_config_uuid',
-            'site_id': 'test_site_uuid',
+            'pod_id': 'test_pod_uuid',
             'service_type': 'nova',
             'service_url': 'http://test_url'
         }
-        config_ret = api.create_site_service_configuration(self.context,
-                                                           configuration)
+        config_ret = api.create_pod_service_configuration(self.context,
+                                                          configuration)
         self.assertEqual(config_ret, configuration)
 
     def test_update(self):
-        site = {'site_id': 'test_site_uuid',
-                'site_name': 'test_site',
-                'az_id': 'test_az1_uuid'}
-        api.create_site(self.context, site)
-        update_dict = {'site_id': 'fake_uuid',
-                       'site_name': 'test_site2',
+        pod = {'pod_id': 'test_pod_uuid',
+               'pod_name': 'test_pod',
+               'az_id': 'test_az1_uuid'}
+        api.create_pod(self.context, pod)
+        update_dict = {'pod_id': 'fake_uuid',
+                       'pod_name': 'test_pod2',
                        'az_id': 'test_az2_uuid'}
-        ret = api.update_site(self.context, 'test_site_uuid', update_dict)
+        ret = api.update_pod(self.context, 'test_pod_uuid', update_dict)
         # primary key value will not be updated
-        self.assertEqual(ret['site_id'], 'test_site_uuid')
-        self.assertEqual(ret['site_name'], 'test_site2')
+        self.assertEqual(ret['pod_id'], 'test_pod_uuid')
+        self.assertEqual(ret['pod_name'], 'test_pod2')
         self.assertEqual(ret['az_id'], 'test_az2_uuid')
 
     def test_delete(self):
-        site = {'site_id': 'test_site_uuid',
-                'site_name': 'test_site',
-                'az_id': 'test_az_uuid'}
-        api.create_site(self.context, site)
-        api.delete_site(self.context, 'test_site_uuid')
-        self.assertRaises(exceptions.ResourceNotFound, api.get_site,
-                          self.context, 'test_site_uuid')
+        pod = {'pod_id': 'test_pod_uuid',
+               'pod_name': 'test_pod',
+               'az_id': 'test_az_uuid'}
+        api.create_pod(self.context, pod)
+        api.delete_pod(self.context, 'test_pod_uuid')
+        self.assertRaises(exceptions.ResourceNotFound, api.get_pod,
+                          self.context, 'test_pod_uuid')
 
     def test_query(self):
-        site1 = {'site_id': 'test_site1_uuid',
-                 'site_name': 'test_site1',
-                 'az_id': 'test_az1_uuid'}
-        site2 = {'site_id': 'test_site2_uuid',
-                 'site_name': 'test_site2',
-                 'az_id': 'test_az2_uuid'}
-        api.create_site(self.context, site1)
-        api.create_site(self.context, site2)
-        filters = [{'key': 'site_name',
+        pod1 = {'pod_id': 'test_pod1_uuid',
+                'pod_name': 'test_pod1',
+                'az_id': 'test_az1_uuid'}
+        pod2 = {'pod_id': 'test_pod2_uuid',
+                'pod_name': 'test_pod2',
+                'az_id': 'test_az2_uuid'}
+        api.create_pod(self.context, pod1)
+        api.create_pod(self.context, pod2)
+        filters = [{'key': 'pod_name',
                     'comparator': 'eq',
-                    'value': 'test_site2'}]
-        sites = api.list_sites(self.context, filters)
-        self.assertEqual(len(sites), 1)
-        self.assertEqual(sites[0], site2)
-        filters = [{'key': 'site_name',
+                    'value': 'test_pod2'}]
+        pods = api.list_pods(self.context, filters)
+        self.assertEqual(len(pods), 1)
+        self.assertEqual(pods[0], pod2)
+        filters = [{'key': 'pod_name',
                     'comparator': 'eq',
-                    'value': 'test_site3'}]
-        sites = api.list_sites(self.context, filters)
-        self.assertEqual(len(sites), 0)
+                    'value': 'test_pod3'}]
+        pods = api.list_pods(self.context, filters)
+        self.assertEqual(len(pods), 0)
 
     def test_sort(self):
-        site1 = {'site_id': 'test_site1_uuid',
-                 'site_name': 'test_site1',
-                 'az_id': 'test_az1_uuid'}
-        site2 = {'site_id': 'test_site2_uuid',
-                 'site_name': 'test_site2',
-                 'az_id': 'test_az2_uuid'}
-        site3 = {'site_id': 'test_site3_uuid',
-                 'site_name': 'test_site3',
-                 'az_id': 'test_az3_uuid'}
-        sites = [site1, site2, site3]
-        for site in sites:
-            api.create_site(self.context, site)
-        sites = api.list_sites(self.context,
-                               sorts=[(models.Site.site_id, False)])
-        self.assertEqual(sites, [site3, site2, site1])
+        pod1 = {'pod_id': 'test_pod1_uuid',
+                'pod_name': 'test_pod1',
+                'az_id': 'test_az1_uuid'}
+        pod2 = {'pod_id': 'test_pod2_uuid',
+                'pod_name': 'test_pod2',
+                'az_id': 'test_az2_uuid'}
+        pod3 = {'pod_id': 'test_pod3_uuid',
+                'pod_name': 'test_pod3',
+                'az_id': 'test_az3_uuid'}
+        pods = [pod1, pod2, pod3]
+        for pod in pods:
+            api.create_pod(self.context, pod)
+        pods = api.list_pods(self.context,
+                             sorts=[(models.Pod.pod_id, False)])
+        self.assertEqual(pods, [pod3, pod2, pod1])
 
     def test_resources(self):
         """Create all the resources to test model definition"""
@@ -212,12 +212,12 @@ class ModelsTest(unittest.TestCase):
             self.fail('test_resources raised Exception unexpectedly')
 
     def test_resource_routing_unique_key(self):
-        site = {'site_id': 'test_site1_uuid',
-                'site_name': 'test_site1',
-                'az_id': 'test_az1_uuid'}
-        api.create_site(self.context, site)
+        pod = {'pod_id': 'test_pod1_uuid',
+               'pod_name': 'test_pod1',
+               'az_id': 'test_az1_uuid'}
+        api.create_pod(self.context, pod)
         routing = {'top_id': 'top_uuid',
-                   'site_id': 'test_site1_uuid',
+                   'pod_id': 'test_pod1_uuid',
                    'resource_type': 'port'}
         with self.context.session.begin():
             core.create_resource(self.context, models.ResourceRouting, routing)

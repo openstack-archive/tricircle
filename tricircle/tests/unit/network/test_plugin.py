@@ -30,13 +30,13 @@ from tricircle.network import plugin
 
 class FakeNeutronClient(object):
 
-    def __init__(self, site_name):
-        self.site_name = site_name
+    def __init__(self, pod_name):
+        self.pod_name = pod_name
         self.ports_path = ''
 
     def _get(self, params=None):
-        site_index = self.site_name.split('_')[1]
-        bottom_id = 'bottom_id_%s' % site_index
+        pod_index = self.pod_name.split('_')[1]
+        bottom_id = 'bottom_id_%s' % pod_index
         if not params:
             return {'ports': [{'id': bottom_id, 'name': 'bottom'}]}
         if params.get('marker') == bottom_id:
@@ -49,16 +49,16 @@ class FakeNeutronClient(object):
         return {'ports': [{'id': bottom_id, 'name': 'bottom'}]}
 
     def get(self, path, params=None):
-        if self.site_name == 'site_1' or self.site_name == 'site_2':
+        if self.pod_name == 'pod_1' or self.pod_name == 'pod_2':
             return self._get(params)
         else:
             raise Exception()
 
 
 class FakeClient(object):
-    def __init__(self, site_name):
-        self.site_name = site_name
-        self.client = FakeNeutronClient(self.site_name)
+    def __init__(self, pod_name):
+        self.pod_name = pod_name
+        self.client = FakeNeutronClient(self.pod_name)
 
     def get_native_client(self, resource, ctx):
         return self.client
@@ -152,16 +152,16 @@ class FakeSession(object):
 
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
-        self.clients = {'site_1': t_client.Client('site_1'),
-                        'site_2': t_client.Client('site_2')}
+        self.clients = {'pod_1': t_client.Client('pod_1'),
+                        'pod_2': t_client.Client('pod_2')}
 
 
 def fake_get_context_from_neutron_context(q_context):
     return context.get_db_context()
 
 
-def fake_get_client(self, site_name):
-    return FakeClient(site_name)
+def fake_get_client(self, pod_name):
+    return FakeClient(pod_name)
 
 
 def fake_get_ports_from_db_with_number(self, ctx, number,
@@ -179,26 +179,26 @@ class ModelsTest(unittest.TestCase):
         core.ModelBase.metadata.create_all(core.get_engine())
         self.context = context.Context()
 
-    def _basic_site_route_setup(self):
-        site1 = {'site_id': 'site_id_1',
-                 'site_name': 'site_1',
-                 'az_id': 'az_id_1'}
-        site2 = {'site_id': 'site_id_2',
-                 'site_name': 'site_2',
-                 'az_id': 'az_id_2'}
-        site3 = {'site_id': 'site_id_0',
-                 'site_name': 'top_site',
-                 'az_id': ''}
-        for site in (site1, site2, site3):
-            db_api.create_site(self.context, site)
+    def _basic_pod_route_setup(self):
+        pod1 = {'pod_id': 'pod_id_1',
+                'pod_name': 'pod_1',
+                'az_id': 'az_id_1'}
+        pod2 = {'pod_id': 'pod_id_2',
+                'pod_name': 'pod_2',
+                'az_id': 'az_id_2'}
+        pod3 = {'pod_id': 'pod_id_0',
+                'pod_name': 'top_pod',
+                'az_id': ''}
+        for pod in (pod1, pod2, pod3):
+            db_api.create_pod(self.context, pod)
         route1 = {
             'top_id': 'top_id_1',
-            'site_id': 'site_id_1',
+            'pod_id': 'pod_id_1',
             'bottom_id': 'bottom_id_1',
             'resource_type': 'port'}
         route2 = {
             'top_id': 'top_id_2',
-            'site_id': 'site_id_2',
+            'pod_id': 'pod_id_2',
             'bottom_id': 'bottom_id_2',
             'resource_type': 'port'}
         with self.context.session.begin():
@@ -211,7 +211,7 @@ class ModelsTest(unittest.TestCase):
                   new=fake_get_client)
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'get_port')
     def test_get_port(self, mock_plugin_method):
-        self._basic_site_route_setup()
+        self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
@@ -231,7 +231,7 @@ class ModelsTest(unittest.TestCase):
     @patch.object(plugin.TricirclePlugin, '_get_client',
                   new=fake_get_client)
     def test_get_ports_pagination(self):
-        self._basic_site_route_setup()
+        self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
@@ -259,7 +259,7 @@ class ModelsTest(unittest.TestCase):
     @patch.object(plugin.TricirclePlugin, '_get_client',
                   new=fake_get_client)
     def test_get_ports_filters(self):
-        self._basic_site_route_setup()
+        self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
@@ -278,7 +278,7 @@ class ModelsTest(unittest.TestCase):
     @patch.object(t_client.Client, 'delete_resources')
     def test_delete_port(self, mock_client_method, mock_plugin_method,
                          mock_context_method):
-        self._basic_site_route_setup()
+        self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()

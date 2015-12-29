@@ -92,17 +92,17 @@ class EndpointNotAvailable(TricircleException):
 
 
 class EndpointNotUnique(TricircleException):
-    message = "Endpoint for %(service)s in %(site)s not unique"
+    message = "Endpoint for %(service)s in %(pod)s not unique"
 
-    def __init__(self, site, service):
-        super(EndpointNotUnique, self).__init__(site=site, service=service)
+    def __init__(self, pod, service):
+        super(EndpointNotUnique, self).__init__(pod=pod, service=service)
 
 
 class EndpointNotFound(TricircleException):
-    message = "Endpoint for %(service)s in %(site)s not found"
+    message = "Endpoint for %(service)s in %(pod)s not found"
 
-    def __init__(self, site, service):
-        super(EndpointNotFound, self).__init__(site=site, service=service)
+    def __init__(self, pod, service):
+        super(EndpointNotFound, self).__init__(pod=pod, service=service)
 
 
 class ResourceNotFound(TricircleException):

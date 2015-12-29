@@ -152,12 +152,12 @@ def upgrade(migrate_engine):
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
-    cascaded_sites_resource_routing = sql.Table(
-        'cascaded_sites_resource_routing', meta,
+    cascaded_pods_resource_routing = sql.Table(
+        'cascaded_pods_resource_routing', meta,
         sql.Column('id', sql.Integer, primary_key=True),
         sql.Column('top_id', sql.String(length=36), nullable=False),
         sql.Column('bottom_id', sql.String(length=36)),
-        sql.Column('site_id', sql.String(length=64), nullable=False),
+        sql.Column('pod_id', sql.String(length=64), nullable=False),
         sql.Column('project_id', sql.String(length=36)),
         sql.Column('resource_type', sql.String(length=64), nullable=False),
         sql.Column('created_at', sql.DateTime),
@@ -168,11 +168,11 @@ def upgrade(migrate_engine):
     tables = [aggregates, aggregate_metadata, instance_types,
               instance_type_projects, instance_type_extra_specs, key_pairs,
               quotas, volume_types, quality_of_service_specs,
-              cascaded_sites_resource_routing]
+              cascaded_pods_resource_routing]
     for table in tables:
         table.create()
 
-    cascaded_sites = sql.Table('cascaded_sites', meta, autoload=True)
+    cascaded_pods = sql.Table('cascaded_pods', meta, autoload=True)
 
     fkeys = [{'columns': [instance_type_projects.c.instance_type_id],
               'references': [instance_types.c.id]},
@@ -184,8 +184,8 @@ def upgrade(migrate_engine):
               'references': [quality_of_service_specs.c.id]},
              {'columns': [aggregate_metadata.c.aggregate_id],
               'references': [aggregates.c.id]},
-             {'columns': [cascaded_sites_resource_routing.c.site_id],
-              'references': [cascaded_sites.c.site_id]}]
+             {'columns': [cascaded_pods_resource_routing.c.pod_id],
+              'references': [cascaded_pods.c.pod_id]}]
     for fkey in fkeys:
         migrate.ForeignKeyConstraint(columns=fkey['columns'],
                                      refcolumns=fkey['references'],

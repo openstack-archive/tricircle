@@ -44,8 +44,8 @@ client_opts = [
                 default=False,
                 help='if set to True, endpoint will be automatically'
                      'refreshed if timeout accessing endpoint'),
-    cfg.StrOpt('top_site_name',
-               help='name of top site which client needs to access'),
+    cfg.StrOpt('top_pod_name',
+               help='name of top pod which client needs to access'),
     cfg.StrOpt('admin_username',
                help='username of admin account, needed when'
                     ' auto_refresh_endpoint set to True'),
@@ -98,14 +98,14 @@ def _safe_operation(operation_name):
 
 
 class Client(object):
-    def __init__(self, site_name=None):
+    def __init__(self, pod_name=None):
         self.auth_url = cfg.CONF.client.auth_url
         self.resource_service_map = {}
         self.operation_resources_map = collections.defaultdict(set)
         self.service_handle_map = {}
-        self.site_name = site_name
-        if not self.site_name:
-            self.site_name = cfg.CONF.client.top_site_name
+        self.pod_name = pod_name
+        if not self.pod_name:
+            self.pod_name = cfg.CONF.client.top_pod_name
         for _, handle_class in inspect.getmembers(resource_handle):
             if not inspect.isclass(handle_class):
                 continue
@@ -168,35 +168,35 @@ class Client(object):
             region_service_endpoint_map[region_id][service_name] = url
         return region_service_endpoint_map
 
-    def _get_config_with_retry(self, cxt, filters, site, service, retry):
-        conf_list = api.list_site_service_configurations(cxt, filters)
+    def _get_config_with_retry(self, cxt, filters, pod, service, retry):
+        conf_list = api.list_pod_service_configurations(cxt, filters)
         if len(conf_list) > 1:
-            raise exceptions.EndpointNotUnique(site, service)
+            raise exceptions.EndpointNotUnique(pod, service)
         if len(conf_list) == 0:
             if not retry:
-                raise exceptions.EndpointNotFound(site, service)
+                raise exceptions.EndpointNotFound(pod, service)
             self._update_endpoint_from_keystone(cxt, True)
             return self._get_config_with_retry(cxt,
-                                               filters, site, service, False)
+                                               filters, pod, service, False)
         return conf_list
 
     def _ensure_endpoint_set(self, cxt, service):
         handle = self.service_handle_map[service]
         if not handle.is_endpoint_url_set():
-            site_filters = [{'key': 'site_name',
-                             'comparator': 'eq',
-                             'value': self.site_name}]
-            site_list = api.list_sites(cxt, site_filters)
-            if len(site_list) == 0:
-                raise exceptions.ResourceNotFound(models.Site,
-                                                  self.site_name)
-            # site_name is unique key, safe to get the first element
-            site_id = site_list[0]['site_id']
+            pod_filters = [{'key': 'pod_name',
+                            'comparator': 'eq',
+                            'value': self.pod_name}]
+            pod_list = api.list_pods(cxt, pod_filters)
+            if len(pod_list) == 0:
+                raise exceptions.ResourceNotFound(models.Pod,
+                                                  self.pod_name)
+            # pod_name is unique key, safe to get the first element
+            pod_id = pod_list[0]['pod_id']
             config_filters = [
-                {'key': 'site_id', 'comparator': 'eq', 'value': site_id},
+                {'key': 'pod_id', 'comparator': 'eq', 'value': pod_id},
                 {'key': 'service_type', 'comparator': 'eq', 'value': service}]
             conf_list = self._get_config_with_retry(
-                cxt, config_filters, site_id, service,
+                cxt, config_filters, pod_id, service,
                 cfg.CONF.client.auto_refresh_endpoint)
             url = conf_list[0]['service_url']
             handle.update_endpoint_url(url)
@@ -219,54 +219,54 @@ class Client(object):
             endpoint_map = self._get_endpoint_from_keystone(cxt)
 
         for region in endpoint_map:
-            # use region name to query site
-            site_filters = [{'key': 'site_name', 'comparator': 'eq',
-                             'value': region}]
-            site_list = api.list_sites(cxt, site_filters)
-            # skip region/site not registered in cascade service
-            if len(site_list) != 1:
+            # use region name to query pod
+            pod_filters = [{'key': 'pod_name', 'comparator': 'eq',
+                            'value': region}]
+            pod_list = api.list_pods(cxt, pod_filters)
+            # skip region/pod not registered in cascade service
+            if len(pod_list) != 1:
                 continue
             for service in endpoint_map[region]:
-                site_id = site_list[0]['site_id']
-                config_filters = [{'key': 'site_id', 'comparator': 'eq',
-                                   'value': site_id},
+                pod_id = pod_list[0]['pod_id']
+                config_filters = [{'key': 'pod_id', 'comparator': 'eq',
+                                   'value': pod_id},
                                   {'key': 'service_type', 'comparator': 'eq',
                                    'value': service}]
-                config_list = api.list_site_service_configurations(
+                config_list = api.list_pod_service_configurations(
                     cxt, config_filters)
 
                 if len(config_list) > 1:
-                    raise exceptions.EndpointNotUnique(site_id, service)
+                    raise exceptions.EndpointNotUnique(pod_id, service)
                 if len(config_list) == 1:
                     config_id = config_list[0]['service_id']
                     update_dict = {
                         'service_url': endpoint_map[region][service]}
-                    api.update_site_service_configuration(
+                    api.update_pod_service_configuration(
                         cxt, config_id, update_dict)
                 else:
                     config_dict = {
                         'service_id': str(uuid.uuid4()),
-                        'site_id': site_id,
+                        'pod_id': pod_id,
                         'service_type': service,
                         'service_url': endpoint_map[region][service]
                     }
-                    api.create_site_service_configuration(
+                    api.create_pod_service_configuration(
                         cxt, config_dict)
 
-    def get_endpoint(self, cxt, site_id, service):
-        """Get endpoint url of given site and service
+    def get_endpoint(self, cxt, pod_id, service):
+        """Get endpoint url of given pod and service
 
         :param cxt: context object
-        :param site_id: site id
+        :param pod_id: pod id
         :param service: service type
-        :return: endpoint url for given site and service
+        :return: endpoint url for given pod and service
         :raises: EndpointNotUnique, EndpointNotFound
         """
         config_filters = [
-            {'key': 'site_id', 'comparator': 'eq', 'value': site_id},
+            {'key': 'pod_id', 'comparator': 'eq', 'value': pod_id},
             {'key': 'service_type', 'comparator': 'eq', 'value': service}]
         conf_list = self._get_config_with_retry(
-            cxt, config_filters, site_id, service,
+            cxt, config_filters, pod_id, service,
             cfg.CONF.client.auto_refresh_endpoint)
         return conf_list[0]['service_url']
 
@@ -300,7 +300,7 @@ class Client(object):
 
     @_safe_operation('list')
     def list_resources(self, resource, cxt, filters=None):
-        """Query resource in site of top layer
+        """Query resource in pod of top layer
 
         Directly invoke this method to query resources, or use
         list_(resource)s (self, cxt, filters=None), for example,
@@ -327,7 +327,7 @@ class Client(object):
 
     @_safe_operation('create')
     def create_resources(self, resource, cxt, *args, **kwargs):
-        """Create resource in site of top layer
+        """Create resource in pod of top layer
 
         Directly invoke this method to create resources, or use
         create_(resource)s (self, cxt, *args, **kwargs). These methods are
@@ -359,7 +359,7 @@ class Client(object):
 
     @_safe_operation('delete')
     def delete_resources(self, resource, cxt, resource_id):
-        """Delete resource in site of top layer
+        """Delete resource in pod of top layer
 
         Directly invoke this method to delete resources, or use
         delete_(resource)s (self, cxt, obj_id). These methods are
@@ -381,7 +381,7 @@ class Client(object):
 
     @_safe_operation('get')
     def get_resources(self, resource, cxt, resource_id):
-        """Get resource in site of top layer
+        """Get resource in pod of top layer
 
         Directly invoke this method to get resources, or use
         get_(resource)s (self, cxt, obj_id). These methods are
@@ -403,7 +403,7 @@ class Client(object):
 
     @_safe_operation('action')
     def action_resources(self, resource, cxt, action, *args, **kwargs):
-        """Apply action on resource in site of top layer
+        """Apply action on resource in pod of top layer
 
         Directly invoke this method to apply action, or use
         action_(resource)s (self, cxt, action, *args, **kwargs). These methods

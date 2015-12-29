@@ -31,8 +31,8 @@ from tricircle.db import core
 
 FAKE_AZ = 'fake_az'
 FAKE_RESOURCE = 'fake_res'
-FAKE_SITE_ID = 'fake_site_id'
-FAKE_SITE_NAME = 'fake_site_name'
+FAKE_SITE_ID = 'fake_pod_id'
+FAKE_SITE_NAME = 'fake_pod_name'
 FAKE_SERVICE_ID = 'fake_service_id'
 FAKE_TYPE = 'fake_type'
 FAKE_URL = 'http://127.0.0.1:12345'
@@ -127,24 +127,24 @@ class ClientTest(unittest.TestCase):
         core.get_engine().execute('pragma foreign_keys=on')
         self.context = context.Context()
 
-        site_dict = {
-            'site_id': FAKE_SITE_ID,
-            'site_name': FAKE_SITE_NAME,
+        pod_dict = {
+            'pod_id': FAKE_SITE_ID,
+            'pod_name': FAKE_SITE_NAME,
             'az_id': FAKE_AZ
         }
         config_dict = {
             'service_id': FAKE_SERVICE_ID,
-            'site_id': FAKE_SITE_ID,
+            'pod_id': FAKE_SITE_ID,
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
-        api.create_site(self.context, site_dict)
-        api.create_site_service_configuration(self.context, config_dict)
+        api.create_pod(self.context, pod_dict)
+        api.create_pod_service_configuration(self.context, config_dict)
 
         global FAKE_RESOURCES
         FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
 
-        cfg.CONF.set_override(name='top_site_name', override=FAKE_SITE_NAME,
+        cfg.CONF.set_override(name='top_pod_name', override=FAKE_SITE_NAME,
                               group='client')
         self.client = client.Client()
         self.client.resource_service_map[FAKE_RESOURCE] = FAKE_TYPE
@@ -189,7 +189,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        api.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_pod_service_configuration(self.context, FAKE_SERVICE_ID)
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotFound,
                           self.client.list_resources,
@@ -211,7 +211,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=True,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        api.delete_site_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_pod_service_configuration(self.context, FAKE_SERVICE_ID)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -224,14 +224,14 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
     def test_list_endpoint_not_unique(self):
-        # add a new configuration with same site and service type
+        # add a new configuration with same pod and service type
         config_dict = {
             'service_id': FAKE_SERVICE_ID + '_new',
-            'site_id': FAKE_SITE_ID,
+            'pod_id': FAKE_SITE_ID,
             'service_type': FAKE_TYPE,
             'service_url': FAKE_URL
         }
-        api.create_site_service_configuration(self.context, config_dict)
+        api.create_pod_service_configuration(self.context, config_dict)
         self.assertRaises(exceptions.EndpointNotUnique,
                           self.client.list_resources,
                           FAKE_RESOURCE, self.context, [])
@@ -241,9 +241,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        api.update_site_service_configuration(self.context,
-                                              FAKE_SERVICE_ID,
-                                              update_dict)
+        api.update_pod_service_configuration(self.context,
+                                             FAKE_SERVICE_ID,
+                                             update_dict)
 
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotAvailable,
@@ -255,9 +255,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        api.update_site_service_configuration(self.context,
-                                              FAKE_SERVICE_ID,
-                                              update_dict)
+        api.update_pod_service_configuration(self.context,
+                                             FAKE_SERVICE_ID,
+                                             update_dict)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -270,8 +270,8 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
     @patch.object(uuid, 'uuid4')
-    @patch.object(api, 'create_site_service_configuration')
-    @patch.object(api, 'update_site_service_configuration')
+    @patch.object(api, 'create_pod_service_configuration')
+    @patch.object(api, 'update_pod_service_configuration')
     def test_update_endpoint_from_keystone(self, update_mock, create_mock,
                                            uuid_mock):
         self.client._get_admin_token = mock.Mock()
@@ -279,17 +279,17 @@ class ClientTest(unittest.TestCase):
         self.client._get_endpoint_from_keystone.return_value = {
             FAKE_SITE_NAME: {FAKE_TYPE: FAKE_URL,
                              'another_fake_type': 'http://127.0.0.1:34567'},
-            'not_registered_site': {FAKE_TYPE: FAKE_URL}
+            'not_registered_pod': {FAKE_TYPE: FAKE_URL}
         }
         uuid_mock.return_value = 'another_fake_service_id'
 
         self.client.update_endpoint_from_keystone(self.context)
         update_dict = {'service_url': FAKE_URL}
         create_dict = {'service_id': 'another_fake_service_id',
-                       'site_id': FAKE_SITE_ID,
+                       'pod_id': FAKE_SITE_ID,
                        'service_type': 'another_fake_type',
                        'service_url': 'http://127.0.0.1:34567'}
-        # not registered site is skipped
+        # not registered pod is skipped
         update_mock.assert_called_once_with(
             self.context, FAKE_SERVICE_ID, update_dict)
         create_mock.assert_called_once_with(self.context, create_dict)

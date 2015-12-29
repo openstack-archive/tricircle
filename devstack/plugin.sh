@@ -113,7 +113,7 @@ function init_common_tricircle_conf {
     iniset $conf_file client admin_password $ADMIN_PASSWORD
     iniset $conf_file client admin_tenant demo
     iniset $conf_file client auto_refresh_endpoint True
-    iniset $conf_file client top_site_name $REGION_NAME
+    iniset $conf_file client top_pod_name $REGION_NAME
 
     iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 }
@@ -152,7 +152,7 @@ function configure_tricircle_nova_apigw {
         iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
         iniset $NEUTRON_CONF client admin_tenant demo
         iniset $NEUTRON_CONF client auto_refresh_endpoint True
-        iniset $NEUTRON_CONF client top_site_name $REGION_NAME
+        iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
 
         setup_colorized_logging $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tenant_name
 
@@ -263,7 +263,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
             iniset $NEUTRON_CONF client admin_tenant demo
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
-            iniset $NEUTRON_CONF client top_site_name $REGION_NAME
+            iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
         fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then

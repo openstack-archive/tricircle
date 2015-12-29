@@ -22,19 +22,18 @@ def upgrade(migrate_engine):
     meta = sql.MetaData()
     meta.bind = migrate_engine
 
-    # remove after change the site management to pod management
-    cascaded_sites = sql.Table(
-        'cascaded_sites', meta,
-        sql.Column('site_id', sql.String(length=64), primary_key=True),
-        sql.Column('site_name', sql.String(length=64), unique=True,
+    cascaded_pods = sql.Table(
+        'cascaded_pods', meta,
+        sql.Column('pod_id', sql.String(length=64), primary_key=True),
+        sql.Column('pod_name', sql.String(length=64), unique=True,
                    nullable=False),
         sql.Column('az_id', sql.String(length=64), nullable=False),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
-    cascaded_site_service_configuration = sql.Table(
-        'cascaded_site_service_configuration', meta,
+    cascaded_pod_service_configuration = sql.Table(
+        'cascaded_pod_service_configuration', meta,
         sql.Column('service_id', sql.String(length=64), primary_key=True),
-        sql.Column('site_id', sql.String(length=64), nullable=False),
+        sql.Column('pod_id', sql.String(length=64), nullable=False),
         sql.Column('service_type', sql.String(length=64), nullable=False),
         sql.Column('service_url', sql.String(length=512), nullable=False),
         mysql_engine='InnoDB',
@@ -69,14 +68,13 @@ def upgrade(migrate_engine):
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
-    tables = [cascaded_sites, cascaded_site_service_configuration,
+    tables = [cascaded_pods, cascaded_pod_service_configuration,
               pod_map, pod_binding]
     for table in tables:
         table.create()
 
-    # remove after change the site management to pod management
-    fkey = {'columns': [cascaded_site_service_configuration.c.site_id],
-            'references': [cascaded_sites.c.site_id]}
+    fkey = {'columns': [cascaded_pod_service_configuration.c.pod_id],
+            'references': [cascaded_pods.c.pod_id]}
     migrate.ForeignKeyConstraint(columns=fkey['columns'],
                                  refcolumns=fkey['references'],
                                  name=fkey.get('name')).create()

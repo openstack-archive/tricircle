@@ -37,7 +37,7 @@ class FlavorManageController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create sites')
+            pecan.abort(400, 'Admin role required to create flavors')
             return
 
         required_fields = ['name', 'ram', 'vcpus', 'disk']
@@ -103,7 +103,7 @@ class FlavorController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create sites')
+            pecan.abort(400, 'Admin role required to create flavors')
             return
 
         required_fields = ['name', 'ram', 'vcpus', 'disk']

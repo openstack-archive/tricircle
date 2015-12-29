@@ -30,22 +30,22 @@ class APITest(unittest.TestCase):
 
     def test_get_bottom_mappings_by_top_id(self):
         for i in xrange(3):
-            site = {'site_id': 'test_site_uuid_%d' % i,
-                    'site_name': 'test_site_%d' % i,
-                    'az_id': 'test_az_uuid_%d' % i}
-            api.create_site(self.context, site)
+            pod = {'pod_id': 'test_pod_uuid_%d' % i,
+                   'pod_name': 'test_pod_%d' % i,
+                   'az_id': 'test_az_uuid_%d' % i}
+            api.create_pod(self.context, pod)
         route1 = {
             'top_id': 'top_uuid',
-            'site_id': 'test_site_uuid_0',
+            'pod_id': 'test_pod_uuid_0',
             'resource_type': 'port'}
         route2 = {
             'top_id': 'top_uuid',
-            'site_id': 'test_site_uuid_1',
+            'pod_id': 'test_pod_uuid_1',
             'bottom_id': 'bottom_uuid_1',
             'resource_type': 'port'}
         route3 = {
             'top_id': 'top_uuid',
-            'site_id': 'test_site_uuid_2',
+            'pod_id': 'test_pod_uuid_2',
             'bottom_id': 'bottom_uuid_2',
             'resource_type': 'neutron'}
         routes = [route1, route2, route3]
@@ -55,29 +55,29 @@ class APITest(unittest.TestCase):
                     self.context, models.ResourceRouting, route)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
                                                      'top_uuid', 'port')
-        self.assertEqual('test_site_uuid_1', mappings[0][0]['site_id'])
+        self.assertEqual('test_pod_uuid_1', mappings[0][0]['pod_id'])
         self.assertEqual('bottom_uuid_1', mappings[0][1])
 
-    def test_get_next_bottom_site(self):
-        next_site = api.get_next_bottom_site(self.context)
-        self.assertIsNone(next_site)
-        sites = []
+    def test_get_next_bottom_pod(self):
+        next_pod = api.get_next_bottom_pod(self.context)
+        self.assertIsNone(next_pod)
+        pods = []
         for i in xrange(5):
-            site = {'site_id': 'test_site_uuid_%d' % i,
-                    'site_name': 'test_site_%d' % i,
-                    'az_id': 'test_az_uuid_%d' % i}
-            api.create_site(self.context, site)
-            sites.append(site)
-        next_site = api.get_next_bottom_site(self.context)
-        self.assertEqual(next_site, sites[0])
+            pod = {'pod_id': 'test_pod_uuid_%d' % i,
+                   'pod_name': 'test_pod_%d' % i,
+                   'az_id': 'test_az_uuid_%d' % i}
+            api.create_pod(self.context, pod)
+            pods.append(pod)
+        next_pod = api.get_next_bottom_pod(self.context)
+        self.assertEqual(next_pod, pods[0])
 
-        next_site = api.get_next_bottom_site(
-            self.context, current_site_id='test_site_uuid_2')
-        self.assertEqual(next_site, sites[3])
+        next_pod = api.get_next_bottom_pod(
+            self.context, current_pod_id='test_pod_uuid_2')
+        self.assertEqual(next_pod, pods[3])
 
-        next_site = api.get_next_bottom_site(
-            self.context, current_site_id='test_site_uuid_4')
-        self.assertIsNone(next_site)
+        next_pod = api.get_next_bottom_pod(
+            self.context, current_pod_id='test_pod_uuid_4')
+        self.assertIsNone(next_pod)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
