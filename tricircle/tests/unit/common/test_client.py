@@ -130,7 +130,7 @@ class ClientTest(unittest.TestCase):
         pod_dict = {
             'pod_id': FAKE_SITE_ID,
             'pod_name': FAKE_SITE_NAME,
-            'az_id': FAKE_AZ
+            'az_name': FAKE_AZ
         }
         config_dict = {
             'service_id': FAKE_SERVICE_ID,

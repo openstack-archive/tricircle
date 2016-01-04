@@ -36,13 +36,13 @@ class PodsControllerTest(unittest.TestCase):
     @patch.object(context, 'extract_context_from_environ')
     def test_post_top_pod(self, mock_context):
         mock_context.return_value = self.context
-        kw = {'pod_map': {'pod_name': 'TopPod', 'az_name': ''}}
-        map_id = self.controller.post(**kw)['pod_map']['id']
+        kw = {'pod': {'pod_name': 'TopPod', 'az_name': ''}}
+        pod_id = self.controller.post(**kw)['pod']['pod_id']
 
         with self.context.session.begin():
-            pod_map = core.get_resource(self.context, models.PodMap, map_id)
-            self.assertEqual(pod_map['pod_name'], 'TopPod')
-            self.assertEqual(pod_map['az_name'], '')
+            pod = core.get_resource(self.context, models.Pod, pod_id)
+            self.assertEqual(pod['pod_name'], 'TopPod')
+            self.assertEqual(pod['az_name'], '')
             pods = core.query_resource(self.context, models.Pod,
                                        [{'key': 'pod_name',
                                          'comparator': 'eq',
@@ -52,13 +52,13 @@ class PodsControllerTest(unittest.TestCase):
     @patch.object(context, 'extract_context_from_environ')
     def test_post_bottom_pod(self, mock_context):
         mock_context.return_value = self.context
-        kw = {'pod_map': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
-        map_id = self.controller.post(**kw)['pod_map']['id']
+        kw = {'pod': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
+        pod_id = self.controller.post(**kw)['pod']['pod_id']
 
         with self.context.session.begin():
-            pod_map = core.get_resource(self.context, models.PodMap, map_id)
-            self.assertEqual(pod_map['pod_name'], 'BottomPod')
-            self.assertEqual(pod_map['az_name'], 'TopAZ')
+            pod = core.get_resource(self.context, models.Pod, pod_id)
+            self.assertEqual(pod['pod_name'], 'BottomPod')
+            self.assertEqual(pod['az_name'], 'TopAZ')
             pods = core.query_resource(self.context, models.Pod,
                                        [{'key': 'pod_name',
                                          'comparator': 'eq',
@@ -82,24 +82,24 @@ class PodsControllerTest(unittest.TestCase):
     @patch.object(context, 'extract_context_from_environ')
     def test_get_one(self, mock_context):
         mock_context.return_value = self.context
-        kw = {'pod_map': {'pod_name': 'TopPod', 'az_name': ''}}
-        map_id = self.controller.post(**kw)['pod_map']['id']
+        kw = {'pod': {'pod_name': 'TopPod', 'az_name': ''}}
+        pod_id = self.controller.post(**kw)['pod']['pod_id']
 
-        pod_map = self.controller.get_one(map_id)
-        self.assertEqual(pod_map['pod_map']['pod_name'], 'TopPod')
-        self.assertEqual(pod_map['pod_map']['az_name'], '')
+        pod = self.controller.get_one(pod_id)
+        self.assertEqual(pod['pod']['pod_name'], 'TopPod')
+        self.assertEqual(pod['pod']['az_name'], '')
 
     @patch.object(context, 'extract_context_from_environ')
     def test_get_all(self, mock_context):
         mock_context.return_value = self.context
-        kw1 = {'pod_map': {'pod_name': 'TopPod', 'az_name': ''}}
-        kw2 = {'pod_map': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
+        kw1 = {'pod': {'pod_name': 'TopPod', 'az_name': ''}}
+        kw2 = {'pod': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
         self.controller.post(**kw1)
         self.controller.post(**kw2)
 
-        pod_maps = self.controller.get_all()
-        actual = [(pod_map['pod_name'],
-                   pod_map['az_name']) for pod_map in pod_maps['pod_maps']]
+        pods = self.controller.get_all()
+        actual = [(pod['pod_name'],
+                   pod['az_name']) for pod in pods['pods']]
         expect = [('TopPod', ''), ('BottomPod', 'TopAZ')]
         self.assertItemsEqual(expect, actual)
 
@@ -107,9 +107,9 @@ class PodsControllerTest(unittest.TestCase):
     @patch.object(context, 'extract_context_from_environ')
     def test_delete(self, mock_context):
         mock_context.return_value = self.context
-        kw = {'pod_map': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
-        map_id = self.controller.post(**kw)['pod_map']['id']
-        self.controller.delete(map_id)
+        kw = {'pod': {'pod_name': 'BottomPod', 'az_name': 'TopAZ'}}
+        pod_id = self.controller.post(**kw)['pod']['pod_id']
+        self.controller.delete(pod_id)
 
         with self.context.session.begin():
             pods = core.query_resource(self.context, models.Pod,

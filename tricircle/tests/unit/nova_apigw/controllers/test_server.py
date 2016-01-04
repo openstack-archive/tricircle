@@ -167,16 +167,11 @@ class ServerTest(unittest.TestCase):
 
     def _prepare_pod(self):
         t_pod = {'pod_id': 't_pod_uuid', 'pod_name': 't_region',
-                 'az_id': ''}
+                 'az_name': ''}
         b_pod = {'pod_id': 'b_pod_uuid', 'pod_name': 'b_region',
-                 'az_id': 'b_az'}
-        pod_map = {'id': 'pod_map_id',
-                   'az_name': b_pod['az_id'],
-                   'pod_name': b_pod['pod_name']}
+                 'az_name': 'b_az'}
         api.create_pod(self.context, t_pod)
         api.create_pod(self.context, b_pod)
-        with self.context.session.begin():
-            core.create_resource(self.context, models.PodMap, pod_map)
         return t_pod, b_pod
 
     def test_get_or_create_route(self):
@@ -411,7 +406,7 @@ class ServerTest(unittest.TestCase):
                 'name': server_name,
                 'imageRef': image_id,
                 'flavorRef': flavor_id,
-                'availability_zone': b_pod['az_id'],
+                'availability_zone': b_pod['az_name'],
                 'networks': [{'uuid': top_net_id}]
             }
         }

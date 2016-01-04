@@ -182,13 +182,13 @@ class ModelsTest(unittest.TestCase):
     def _basic_pod_route_setup(self):
         pod1 = {'pod_id': 'pod_id_1',
                 'pod_name': 'pod_1',
-                'az_id': 'az_id_1'}
+                'az_name': 'az_name_1'}
         pod2 = {'pod_id': 'pod_id_2',
                 'pod_name': 'pod_2',
-                'az_id': 'az_id_2'}
+                'az_name': 'az_name_2'}
         pod3 = {'pod_id': 'pod_id_0',
                 'pod_name': 'top_pod',
-                'az_id': ''}
+                'az_name': ''}
         for pod in (pod1, pod2, pod3):
             db_api.create_pod(self.context, pod)
         route1 = {

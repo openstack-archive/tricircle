@@ -224,15 +224,18 @@ class QualityOfServiceSpecs(core.ModelBase, core.DictBase,
     value = sql.Column(sql.String(255))
 
 
-# Site Model
+# Pod Model
 class Pod(core.ModelBase, core.DictBase):
     __tablename__ = 'cascaded_pods'
-    attributes = ['pod_id', 'pod_name', 'az_id']
+    attributes = ['pod_id', 'pod_name', 'pod_az_name', 'dc_name', 'az_name']
 
-    pod_id = sql.Column('pod_id', sql.String(length=64), primary_key=True)
-    pod_name = sql.Column('pod_name', sql.String(length=64), unique=True,
+    pod_id = sql.Column('pod_id', sql.String(length=36), primary_key=True)
+    pod_name = sql.Column('pod_name', sql.String(length=255), unique=True,
                           nullable=False)
-    az_id = sql.Column('az_id', sql.String(length=64), nullable=False)
+    pod_az_name = sql.Column('pod_az_name', sql.String(length=255),
+                             nullable=True)
+    dc_name = sql.Column('dc_name', sql.String(length=255), nullable=True)
+    az_name = sql.Column('az_name', sql.String(length=255), nullable=False)
 
 
 class PodServiceConfiguration(core.ModelBase, core.DictBase):
@@ -250,41 +253,22 @@ class PodServiceConfiguration(core.ModelBase, core.DictBase):
                              nullable=False)
 
 
-# AZ pod mapping model
-class PodMap(core.ModelBase, core.DictBase, models.TimestampMixin):
-    __tablename__ = 'pod_map'
-    __table_args__ = (
-        schema.UniqueConstraint(
-            'az_name', 'pod_name',
-            name='pod_map0az_name0pod_name'),
-    )
-    attributes = ['id', 'az_name', 'dc_name', 'pod_name', 'pod_az_name',
-                  'created_at', 'updated_at']
-
-    id = sql.Column(sql.String(36), primary_key=True)
-    az_name = sql.Column('az_name', sql.String(length=255), nullable=True)
-    dc_name = sql.Column('dc_name', sql.String(length=255), nullable=True)
-    pod_name = sql.Column('pod_name', sql.String(length=255), nullable=False)
-    pod_az_name = sql.Column('pod_az_name', sql.String(length=255),
-                             nullable=True)
-
-
 # Tenant and pod binding model
 class PodBinding(core.ModelBase, core.DictBase, models.TimestampMixin):
     __tablename__ = 'pod_binding'
     __table_args__ = (
         schema.UniqueConstraint(
-            'tenant_id', 'az_pod_map_id',
-            name='pod_binding0tenant_id0az_pod_map_id'),
+            'tenant_id', 'pod_id',
+            name='pod_binding0tenant_id0pod_id'),
     )
-    attributes = ['id', 'tenant_id', 'az_pod_map_id',
+    attributes = ['id', 'tenant_id', 'pod_id',
                   'created_at', 'updated_at']
 
     id = sql.Column(sql.String(36), primary_key=True)
     tenant_id = sql.Column('tenant_id', sql.String(36), nullable=False)
-    az_pod_map_id = sql.Column('az_pod_map_id', sql.String(36),
-                               sql.ForeignKey('pod_map.id'),
-                               nullable=False)
+    pod_id = sql.Column('pod_id', sql.String(36),
+                        sql.ForeignKey('cascaded_pods.pod_id'),
+                        nullable=False)
 
 
 # Routing Model

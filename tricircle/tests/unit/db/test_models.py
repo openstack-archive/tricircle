@@ -112,7 +112,9 @@ class ModelsTest(unittest.TestCase):
     def test_obj_to_dict(self):
         pod = {'pod_id': 'test_pod_uuid',
                'pod_name': 'test_pod',
-               'az_id': 'test_az_uuid'}
+               'pod_az_name': 'test_pod_az_name',
+               'dc_name': 'test_dc_name',
+               'az_name': 'test_az_uuid'}
         pod_obj = models.Pod.from_dict(pod)
         for attr in pod_obj.attributes:
             self.assertEqual(getattr(pod_obj, attr), pod[attr])
@@ -120,7 +122,9 @@ class ModelsTest(unittest.TestCase):
     def test_create(self):
         pod = {'pod_id': 'test_pod_uuid',
                'pod_name': 'test_pod',
-               'az_id': 'test_az_uuid'}
+               'pod_az_name': 'test_pod_az_name',
+               'dc_name': 'test_dc_name',
+               'az_name': 'test_az_uuid'}
         pod_ret = api.create_pod(self.context, pod)
         self.assertEqual(pod_ret, pod)
 
@@ -137,21 +141,21 @@ class ModelsTest(unittest.TestCase):
     def test_update(self):
         pod = {'pod_id': 'test_pod_uuid',
                'pod_name': 'test_pod',
-               'az_id': 'test_az1_uuid'}
+               'az_name': 'test_az1_uuid'}
         api.create_pod(self.context, pod)
         update_dict = {'pod_id': 'fake_uuid',
                        'pod_name': 'test_pod2',
-                       'az_id': 'test_az2_uuid'}
+                       'az_name': 'test_az2_uuid'}
         ret = api.update_pod(self.context, 'test_pod_uuid', update_dict)
         # primary key value will not be updated
         self.assertEqual(ret['pod_id'], 'test_pod_uuid')
         self.assertEqual(ret['pod_name'], 'test_pod2')
-        self.assertEqual(ret['az_id'], 'test_az2_uuid')
+        self.assertEqual(ret['az_name'], 'test_az2_uuid')
 
     def test_delete(self):
         pod = {'pod_id': 'test_pod_uuid',
                'pod_name': 'test_pod',
-               'az_id': 'test_az_uuid'}
+               'az_name': 'test_az_uuid'}
         api.create_pod(self.context, pod)
         api.delete_pod(self.context, 'test_pod_uuid')
         self.assertRaises(exceptions.ResourceNotFound, api.get_pod,
@@ -160,10 +164,14 @@ class ModelsTest(unittest.TestCase):
     def test_query(self):
         pod1 = {'pod_id': 'test_pod1_uuid',
                 'pod_name': 'test_pod1',
-                'az_id': 'test_az1_uuid'}
+                'pod_az_name': 'test_pod_az_name1',
+                'dc_name': 'test_dc_name1',
+                'az_name': 'test_az1_uuid'}
         pod2 = {'pod_id': 'test_pod2_uuid',
                 'pod_name': 'test_pod2',
-                'az_id': 'test_az2_uuid'}
+                'pod_az_name': 'test_pod_az_name2',
+                'dc_name': 'test_dc_name1',
+                'az_name': 'test_az2_uuid'}
         api.create_pod(self.context, pod1)
         api.create_pod(self.context, pod2)
         filters = [{'key': 'pod_name',
@@ -181,13 +189,19 @@ class ModelsTest(unittest.TestCase):
     def test_sort(self):
         pod1 = {'pod_id': 'test_pod1_uuid',
                 'pod_name': 'test_pod1',
-                'az_id': 'test_az1_uuid'}
+                'pod_az_name': 'test_pod_az_name1',
+                'dc_name': 'test_dc_name1',
+                'az_name': 'test_az1_uuid'}
         pod2 = {'pod_id': 'test_pod2_uuid',
                 'pod_name': 'test_pod2',
-                'az_id': 'test_az2_uuid'}
+                'pod_az_name': 'test_pod_az_name2',
+                'dc_name': 'test_dc_name1',
+                'az_name': 'test_az2_uuid'}
         pod3 = {'pod_id': 'test_pod3_uuid',
                 'pod_name': 'test_pod3',
-                'az_id': 'test_az3_uuid'}
+                'pod_az_name': 'test_pod_az_name3',
+                'dc_name': 'test_dc_name1',
+                'az_name': 'test_az3_uuid'}
         pods = [pod1, pod2, pod3]
         for pod in pods:
             api.create_pod(self.context, pod)
@@ -214,7 +228,7 @@ class ModelsTest(unittest.TestCase):
     def test_resource_routing_unique_key(self):
         pod = {'pod_id': 'test_pod1_uuid',
                'pod_name': 'test_pod1',
-               'az_id': 'test_az1_uuid'}
+               'az_name': 'test_az1_uuid'}
         api.create_pod(self.context, pod)
         routing = {'top_id': 'top_uuid',
                    'pod_id': 'test_pod1_uuid',

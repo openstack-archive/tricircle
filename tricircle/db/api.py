@@ -100,7 +100,7 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
 def get_next_bottom_pod(context, current_pod_id=None):
     pods = list_pods(context, sorts=[(models.Pod.pod_id, True)])
     # NOTE(zhiyuan) number of pods is small, just traverse to filter top pod
-    pods = [pod for pod in pods if pod['az_id']]
+    pods = [pod for pod in pods if pod['az_name']]
     for index, pod in enumerate(pods):
         if not current_pod_id:
             return pod

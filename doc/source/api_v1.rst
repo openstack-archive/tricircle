@@ -1,7 +1,7 @@
 ================
 Tricircle API v1
 ================
-This API describes the ways of interacting with Tricircle(Cascade) service via
+This API describes the ways of interacting with Tricircle service via
 HTTP protocol using Representational State Transfer(ReST).
 
 Application Root [/]
@@ -13,106 +13,146 @@ API v1 Root [/v1/]
 ==================
 All API v1 URLs are relative to API v1 root.
 
-Site [/sites/{site_id}]
+Pod [/pods/{pod_id}]
 =======================
-A site represents a region in Keystone. When operating a site, Tricircle
-decides the correct endpoints to send request based on the region of the site.
+A pod represents a region in Keystone. When operating a pod, Tricircle
+decides the correct endpoints to send request based on the region of the pod.
 Considering the 2-layers architecture of Tricircle, we also have 2 kinds of
-sites: top site and bottom site. A site has the following attributes:
+pods: top pod and bottom pod. A pod has the following attributes:
 
-- site_id
-- site_name
-- az_id
+- pod_id
+- pod_name
+- pod_az_name
+- dc_name
+- az_name
 
-**site_id** is automatically generated when creating a site. **site_name** is
-specified by user but **MUST** match the region name registered in Keystone.
-When creating a bottom site, Tricircle automatically creates a host aggregate
-and assigns the new availability zone id to **az_id**. Top site doesn't need a
-host aggregate so **az_id** is left empty.
+
+**pod_id** is automatically generated when creating a site.
+
+**pod_name** is specified by user but **MUST** match the region name
+registered in Keystone. When creating a bottom pod, Tricircle automatically
+creates a host aggregate and assigns the new availability zone id to
+
+**az_name**. When **az_name** is empty, that means this pod is top region,
+no host aggregate will be generated. If **az_name** is not empty, that means
+this pod will belong to this availability zone. Multiple pods with same
+**az_name** means that these pods are under same availability zone.
+
+**pod_az_name** is the az name in the bottom pod, it could be empty, if empty,
+then no az parameter will be added to the request to the bottom pod. If the
+**pod_az_name** is different than **az_name**, then the az parameter will be
+replaced to the **pod_az_name** when the request is forwarded to regarding
+bottom pod.
+
+**dc_name** is the name of the data center where the pod is located.
 
 URL Parameters
 --------------
-- site_id: Site id
+- pod_id: Pod id
 
 Models
 ------
 ::
 
     {
-        "site_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
-        "site_name": "Site1",
-        "az_id": "az_Site1"
+        "pod_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
+        "pod_name": "pod1",
+        "pod_az_name": "az1",
+        "dc_name": "data center 1",
+        "az_name": "az1"
     }
 
-Retrieve Site List [GET]
+Retrieve Pod List [GET]
 ------------------------
-- URL: /sites
+- URL: /pods
 - Status: 200
-- Returns: List of Sites
+- Returns: List of Pods
 
 Response
 ::
 
     {
-        "sites": [
+        "pods": [
             {
-                "site_id": "f91ca3a5-d5c6-45d6-be4c-763f5a2c4aa3",
-                "site_name": "RegionOne",
-                "az_id": ""
+                "pod_id": "f91ca3a5-d5c6-45d6-be4c-763f5a2c4aa3",
+                "pod_name": "RegionOne",
             },
             {
-                "site_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
-                "site_name": "Site1",
-                "az_id": "az_Site1"
+                "pod_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
+                "pod_name": "pod1",
+                "pod_az_name": "az1",
+                "dc_name": "data center 1",
+                "az_name": "az1"
             }
         ]
     }
 
-Retrieve a Single Site [GET]
+Retrieve a Single Pod [GET]
 ----------------------------
-- URL: /sites/site_id
+- URL: /pods/pod_id
 - Status: 200
-- Returns: Site
+- Returns: Pod
 
 Response
 ::
 
     {
-        "site": {
-            "site_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
-            "site_name": "Site1",
-            "az_id": "az_Site1"
+        "pod": {
+           "pod_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
+           "pod_name": "pod1",
+           "pod_az_name": "az1",
+           "dc_name": "data center 1",
+           "az_name": "az1"
         }
     }
 
-Create a Site [POST]
+Create a Pod [POST]
 --------------------
-- URL: /sites
+- URL: /pods
 - Status: 201
-- Returns: Created Site
+- Returns: Created Pod
 
 Request (application/json)
-
-.. csv-table::
-    :header: "Parameter", "Type", "Description"
-
-    name, string, name of the Site
-    top, bool, "indicate whether it's a top Site, optional, default false"
-
 ::
 
+    # for the pod represent the region where the Tricircle is running
     {
-        "name": "RegionOne"
-        "top": true
+        "pod": {
+           "pod_name": "RegionOne",
+        }
+    }
+
+    # for the bottom pod which is managed by Tricircle
+    {
+        "pod": {
+           "pod_name": "pod1",
+           "pod_az_name": "az1",
+           "dc_name": "data center 1",
+           "az_name": "az1"
+        }
     }
 
 Response
 ::
 
+    # for the pod represent the region where the Tricircle is running
     {
-        "site": {
-            "site_id": "f91ca3a5-d5c6-45d6-be4c-763f5a2c4aa3",
-            "site_name": "RegionOne",
-            "az_id": ""
+        "pod": {
+           "pod_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
+           "pod_name": "RegionOne",
+           "pod_az_name": "",
+           "dc_name": "",
+           "az_name": ""
+        }
+    }
+
+    # for the bottom pod which is managed by Tricircle
+    {
+        "pod": {
+           "pod_id": "302e02a6-523c-4a92-a8d1-4939b31a788c",
+           "pod_name": "pod1",
+           "pod_az_name": "az1",
+           "dc_name": "data center 1",
+           "az_name": "az1"
         }
     }

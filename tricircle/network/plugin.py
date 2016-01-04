@@ -390,7 +390,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             ret = []
             pods = db_api.list_pods(t_ctx)
             for pod in pods:
-                if not pod['az_id']:
+                if not pod['az_name']:
                     continue
                 _filters = []
                 if filters:

@@ -87,8 +87,8 @@ class TestPodController(API_FunctionalTest):
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)
     def test_post_no_input(self):
-        pod_maps = [
-            # missing pod_map
+        pods = [
+            # missing pod
             {
                 "pod_xxx":
                 {
@@ -98,7 +98,7 @@ class TestPodController(API_FunctionalTest):
                 "expected_error": 400
             }]
 
-        for test_pod in pod_maps:
+        for test_pod in pods:
             response = self.app.post_json(
                 '/v1.0/pods',
                 dict(pod_xxx=test_pod['pod_xxx']),
@@ -111,11 +111,11 @@ class TestPodController(API_FunctionalTest):
                   new=fake_is_admin)
     def test_post_invalid_input(self):
 
-        pod_maps = [
+        pods = [
 
             # missing az and pod
             {
-                "pod_map":
+                "pod":
                 {
                     "dc_name": "dc1",
                     "pod_az_name": "az1"
@@ -125,167 +125,167 @@ class TestPodController(API_FunctionalTest):
 
             # missing pod
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "az1",
+                    "pod_az_name": "az1",
                     "dc_name": "dc1",
-                    "pod_az_name": "az1"
+                    "az_name": "az1"
                 },
                 "expected_error": 422
             },
 
             # missing pod
             {
-                "pod_map":
+                "pod":
                 {
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
                     "az_name": "",
-                    "dc_name": "dc1",
-                    "pod_az_name": "az1"
                 },
                 "expected_error": 422
             },
 
             # missing az
             {
-                "pod_map":
+                "pod":
                 {
-                    "dc_name": "dc1",
                     "pod_name": "",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1"
                 },
                 "expected_error": 422
             },
 
             # az & pod == ""
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "",
-                    "dc_name": "dc1",
                     "pod_name": "",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
+                    "az_name": ""
                 },
                 "expected_error": 422
             },
 
             # invalid pod
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "az1",
-                    "dc_name": "dc1",
                     "pod_name": "",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
+                    "az_name": "az1"
+
                 },
                 "expected_error": 422
             }
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)
     def test_post_duplicate_top_region(self):
 
-        pod_maps = [
+        pods = [
 
             # the first time to create TopRegion
             {
-                "pod_map":
+                "pod":
                 {
-                    "dc_name": "dc1",
                     "pod_name": "TopRegion",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1"
                 },
                 "expected_error": 200
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "dc_name": "dc1",
                     "pod_name": "TopRegion2",
-                    "pod_az_name": ""
+                    "pod_az_name": "",
+                    "dc_name": "dc1"
                 },
                 "expected_error": 409
             },
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)
     def test_post_duplicate_pod(self):
 
-        pod_maps = [
+        pods = [
 
-            # the first time to create TopRegion
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc1",
                     "pod_name": "Pod1",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod1",
-                    "pod_az_name": "az2"
+                    "pod_az_name": "az2",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 409
             },
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)
     def test_post_pod_duplicate_top_region(self):
 
-        pod_maps = [
+        pods = [
 
             # the first time to create TopRegion
             {
-                "pod_map":
+                "pod":
                 {
-                    "dc_name": "dc1",
                     "pod_name": "TopRegion",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1"
                 },
                 "expected_error": 200
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "TopRegion",
-                    "pod_az_name": "az2"
+                    "pod_az_name": "az2",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 409
             },
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
-    def _test_and_check(self, pod_maps):
+    def _test_and_check(self, pods):
 
-        for test_pod in pod_maps:
+        for test_pod in pods:
             response = self.app.post_json(
                 '/v1.0/pods',
-                dict(pod_map=test_pod['pod_map']),
+                dict(pod=test_pod['pod']),
                 expect_errors=True)
 
             self.assertEqual(response.status_int,
@@ -295,45 +295,45 @@ class TestPodController(API_FunctionalTest):
                   new=fake_is_admin)
     def test_get_all(self):
 
-        pod_maps = [
+        pods = [
 
             # the first time to create TopRegion
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "",
-                    "dc_name": "dc1",
                     "pod_name": "TopRegion",
-                    "pod_az_name": ""
+                    "pod_az_name": "",
+                    "dc_name": "dc1",
+                    "az_name": ""
                 },
                 "expected_error": 200
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod1",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod2",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200
             },
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
         response = self.app.get('/v1.0/pods')
 
@@ -349,68 +349,62 @@ class TestPodController(API_FunctionalTest):
 
         mock_context.return_value = self.context
 
-        pod_maps = [
+        pods = [
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod1",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200,
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod2",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200,
             },
 
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ2",
-                    "dc_name": "dc2",
                     "pod_name": "Pod3",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ2"
                 },
                 "expected_error": 200,
             },
 
             ]
 
-        self._test_and_check(pod_maps)
+        self._test_and_check(pods)
 
         response = self.app.get('/v1.0/pods')
         self.assertEqual(response.status_int, 200)
 
-        return_pod_maps = response.json
+        return_pods = response.json
 
-        for ret_pod in return_pod_maps['pod_maps']:
+        for ret_pod in return_pods['pods']:
 
-            _id = ret_pod['id']
+            _id = ret_pod['pod_id']
             single_ret = self.app.get('/v1.0/pods/' + str(_id))
 
             self.assertEqual(single_ret.status_int, 200)
 
             one_pod_ret = single_ret.json
-            get_one_pod = one_pod_ret['pod_map']
+            get_one_pod = one_pod_ret['pod']
 
-            self.assertEqual(get_one_pod['id'],
-                             ret_pod['id'])
-
-            self.assertEqual(get_one_pod['az_name'],
-                             ret_pod['az_name'])
-
-            self.assertEqual(get_one_pod['dc_name'],
-                             ret_pod['dc_name'])
+            self.assertEqual(get_one_pod['pod_id'],
+                             ret_pod['pod_id'])
 
             self.assertEqual(get_one_pod['pod_name'],
                              ret_pod['pod_name'])
@@ -418,7 +412,13 @@ class TestPodController(API_FunctionalTest):
             self.assertEqual(get_one_pod['pod_az_name'],
                              ret_pod['pod_az_name'])
 
-            _id = ret_pod['id']
+            self.assertEqual(get_one_pod['dc_name'],
+                             ret_pod['dc_name'])
+
+            self.assertEqual(get_one_pod['az_name'],
+                             ret_pod['az_name'])
+
+            _id = ret_pod['pod_id']
 
             # check ag and az automaticly added
             ag_name = utils.get_ag_name(ret_pod['pod_name'])
@@ -448,7 +448,7 @@ class TestBindingController(API_FunctionalTest):
                 "pod_xxx":
                 {
                     "tenant_id": "dddddd",
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 400
             }]
@@ -473,7 +473,7 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "dddddd",
-                    "az_pod_map_id": ""
+                    "pod_id": ""
                 },
                 "expected_error": 422
             },
@@ -482,7 +482,7 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "",
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 422
             },
@@ -498,7 +498,7 @@ class TestBindingController(API_FunctionalTest):
             {
                 "pod_binding":
                 {
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 422
             }
@@ -511,14 +511,14 @@ class TestBindingController(API_FunctionalTest):
                   new=fake_is_admin)
     def test_bindings(self):
 
-        pod_maps = [
+        pods = [
             {
-                "pod_map":
+                "pod":
                 {
-                    "az_name": "AZ1",
-                    "dc_name": "dc2",
                     "pod_name": "Pod1",
-                    "pod_az_name": "az1"
+                    "pod_az_name": "az1",
+                    "dc_name": "dc2",
+                    "az_name": "AZ1"
                 },
                 "expected_error": 200
             }
@@ -530,7 +530,7 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "dddddd",
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 200
             },
@@ -539,7 +539,7 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "aaaaa",
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 200
             },
@@ -548,13 +548,13 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "dddddd",
-                    "az_pod_map_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
                 },
                 "expected_error": 409
             }
         ]
 
-        self._test_and_check_podmap(pod_maps)
+        self._test_and_check_pod(pods)
         _id = self._get_az_pod_id()
         self._test_and_check(pod_bindings, _id)
 
@@ -580,8 +580,8 @@ class TestBindingController(API_FunctionalTest):
             self.assertEqual(get_one_pod['tenant_id'],
                              ret_pod['tenant_id'])
 
-            self.assertEqual(get_one_pod['az_pod_map_id'],
-                             ret_pod['az_pod_map_id'])
+            self.assertEqual(get_one_pod['pod_id'],
+                             ret_pod['pod_id'])
 
             _id = ret_pod['id']
             single_ret = self.app.delete('/v1.0/bindings/' + str(_id))
@@ -590,9 +590,9 @@ class TestBindingController(API_FunctionalTest):
     def _get_az_pod_id(self):
         response = self.app.get('/v1.0/pods')
         self.assertEqual(response.status_int, 200)
-        return_pod_maps = response.json
-        for ret_pod in return_pod_maps['pod_maps']:
-            _id = ret_pod['id']
+        return_pods = response.json
+        for ret_pod in return_pods['pods']:
+            _id = ret_pod['pod_id']
             return _id
 
     def _test_and_check(self, pod_bindings, _id=None):
@@ -600,7 +600,7 @@ class TestBindingController(API_FunctionalTest):
         for test_pod in pod_bindings:
 
             if _id is not None:
-                test_pod['pod_binding']['az_pod_map_id'] = str(_id)
+                test_pod['pod_binding']['pod_id'] = str(_id)
 
             response = self.app.post_json(
                 '/v1.0/bindings',
@@ -610,12 +610,12 @@ class TestBindingController(API_FunctionalTest):
             self.assertEqual(response.status_int,
                              test_pod['expected_error'])
 
-    def _test_and_check_podmap(self, pod_maps):
+    def _test_and_check_pod(self, pods):
 
-        for test_pod in pod_maps:
+        for test_pod in pods:
             response = self.app.post_json(
                 '/v1.0/pods',
-                dict(pod_map=test_pod['pod_map']),
+                dict(pod=test_pod['pod']),
                 expect_errors=True)
 
             self.assertEqual(response.status_int,

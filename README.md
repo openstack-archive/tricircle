@@ -52,10 +52,10 @@ via "POD_REGION_NAME", new configuration option introduced by Tricircle,
 we use it as the bottom OpenStack.
 - 6 Create site instances for both top and bottom OpenStack
 ```
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
-     -H "X-Auth-Token: $token" -d '{"pod_map": {"pod_name":  "RegionOne"}}'
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
-     -H "X-Auth-Token: $token" -d '{"pod_map": {"pod_name":  "Pod1", "az_name": "az1"}}'
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
+
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
+
 ```
 Pay attention to "name" parameter we specify when creating site. Site name
 should exactly match the region name registered in Keystone since it is used

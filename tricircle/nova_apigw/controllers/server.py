@@ -363,7 +363,7 @@ class ServerController(rest.RestController):
         ret = []
         pods = db_api.list_pods(context)
         for pod in pods:
-            if not pod['az_id']:
+            if not pod['az_name']:
                 continue
             client = self._get_client(pod['pod_name'])
             ret.extend(client.list_servers(context))
@@ -377,36 +377,36 @@ class ServerController(rest.RestController):
                   'comparator': 'eq',
                   'value': self.project_id}], [])
             for pod_binding in pod_bindings:
-                pod_map = core.get_resource(context, models.PodMap,
-                                            pod_binding['az_pod_map_id'])
-                if pod_map['az_name'] == az:
+                pod = core.get_resource(context, models.Pod,
+                                        pod_binding['pod_id'])
+                if pod['az_name'] == az:
                     pods = core.query_resource(
                         context, models.Pod,
                         [{'key': 'pod_name',
                           'comparator': 'eq',
-                          'value': pod_map['pod_name']}], [])
-                    return pods[0], pod_map['pod_az_name']
+                          'value': pod['pod_name']}], [])
+                    return pods[0], pod['pod_az_name']
             # no proper pod found, try to schedule one
-            pod_maps = core.query_resource(
-                context, models.PodMap,
+            pods = core.query_resource(
+                context, models.Pod,
                 [{'key': 'az_name',
                   'comparator': 'eq',
                   'value': az}], [])
-            if pod_maps:
+            if pods:
                 # dump schedule, just select the first map
-                select_pod_map = pod_maps[0]
+                select_pod = pods[0]
 
                 pods = core.query_resource(
                     context, models.Pod,
                     [{'key': 'pod_name',
                       'comparator': 'eq',
-                      'value': select_pod_map['pod_name']}], [])
+                      'value': select_pod['pod_name']}], [])
                 core.create_resource(
                     context, models.PodBinding,
                     {'id': uuidutils.generate_uuid(),
                      'tenant_id': self.project_id,
-                     'az_pod_map_id': select_pod_map['id']})
-                return pods[0], select_pod_map['pod_az_name']
+                     'pod_id': select_pod['pod_id']})
+                return pods[0], select_pod['pod_az_name']
             else:
                 return None, None
 

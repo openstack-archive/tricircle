@@ -18,18 +18,22 @@ from pecan import expose
 from pecan import Response
 from pecan import rest
 
-from oslo_utils import uuidutils
-
 import oslo_db.exception as db_exc
+from oslo_log import log as logging
+from oslo_utils import uuidutils
 
 from tricircle.common import az_ag
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exc
 from tricircle.common.i18n import _
+from tricircle.common.i18n import _LE
 from tricircle.common import utils
 
+from tricircle.db import api as db_api
 from tricircle.db import core
 from tricircle.db import models
+
+LOG = logging.getLogger(__name__)
 
 
 class PodsController(rest.RestController):
@@ -45,17 +49,17 @@ class PodsController(rest.RestController):
             pecan.abort(400, _('Admin role required to create pods'))
             return
 
-        if 'pod_map' not in kw:
-            pecan.abort(400, _('Request body pod_map not found'))
+        if 'pod' not in kw:
+            pecan.abort(400, _('Request body pod not found'))
             return
 
-        pod_map = kw['pod_map']
+        pod = kw['pod']
 
         # if az_name is null, and there is already one in db
-        az_name = pod_map.get('az_name', '').strip()
-        dc_name = pod_map.get('dc_name', '').strip()
-        pod_name = pod_map.get('pod_name', '').strip()
-        pod_az_name = pod_map.get('pod_az_name', '').strip()
+        pod_name = pod.get('pod_name', '').strip()
+        pod_az_name = pod.get('pod_az_name', '').strip()
+        dc_name = pod.get('dc_name', '').strip()
+        az_name = pod.get('az_name', '').strip()
         _uuid = uuidutils.generate_uuid()
 
         if az_name == '' and pod_name == '':
@@ -65,7 +69,7 @@ class PodsController(rest.RestController):
         if az_name != '' and pod_name == '':
             return Response(_('Valid pod_name is required for pod'), 422)
 
-        if pod_map.get('az_name') is None:
+        if pod.get('az_name') is None:
             if self._get_top_region(context) != '':
                 return Response(_('Top region already exists'), 409)
 
@@ -92,29 +96,24 @@ class PodsController(rest.RestController):
                                                    az_name=az_name)
                     if aggregate is None:
                         return Response(_('Ag creation failure'), 400)
-                pod_map = core.create_resource(context, models.PodMap,
-                                               {'id': _uuid,
-                                                'az_name': az_name,
-                                                'dc_name': dc_name,
-                                                'pod_name': pod_name,
-                                                'pod_az_name': pod_az_name})
 
-                # create pod instance for internal use
-                pods = core.query_resource(context, models.Pod,
-                                           [{'key': 'pod_name',
-                                             'comparator': 'eq',
-                                             'value': pod_name}], [])
-                if not pods:
-                    core.create_resource(context, models.Pod,
-                                         {'pod_id': uuidutils.generate_uuid(),
-                                          'pod_name': pod_name,
-                                          'az_id': az_name})
-        except db_exc.DBDuplicateEntry:
-            return Response(_('Pod map already exists'), 409)
-        except Exception:
-            return Response(_('Fail to create pod map'), 500)
+                new_pod = core.create_resource(
+                    context, models.Pod,
+                    {'pod_id': _uuid,
+                     'pod_name': pod_name,
+                     'pod_az_name': pod_az_name,
+                     'dc_name': dc_name,
+                     'az_name': az_name})
+        except db_exc.DBDuplicateEntry as e1:
+            LOG.error(_LE('Record already exists: %(exception)s'),
+                      {'exception': e1})
+            return Response(_('Record already exists'), 409)
+        except Exception as e2:
+            LOG.error(_LE('Fail to create pod: %(exception)s'),
+                      {'exception': e2})
+            return Response(_('Fail to create pod'), 500)
 
-        return {'pod_map': pod_map}
+        return {'pod': new_pod}
 
     @expose(generic=True, template='json')
     def get_one(self, _id):
@@ -125,11 +124,9 @@ class PodsController(rest.RestController):
             return
 
         try:
-            with context.session.begin():
-                pod_map = core.get_resource(context, models.PodMap, _id)
-                return {'pod_map': pod_map}
+            return {'pod': db_api.get_pod(context, _id)}
         except t_exc.ResourceNotFound:
-            pecan.abort(404, _('AZ pod map not found'))
+            pecan.abort(404, _('Pod not found'))
             return
 
     @expose(generic=True, template='json')
@@ -141,13 +138,12 @@ class PodsController(rest.RestController):
             return
 
         try:
-            with context.session.begin():
-                pod_maps = core.query_resource(context, models.PodMap, [], [])
-        except Exception:
-            pecan.abort(500, _('Fail to list pod maps'))
+            return {'pods': db_api.list_pods(context)}
+        except Exception as e:
+            LOG.error(_LE('Fail to list pod: %(exception)s'),
+                      {'exception': e})
+            pecan.abort(500, _('Fail to list pod'))
             return
-
-        return {'pod_maps': pod_maps}
 
     @expose(generic=True, template='json')
     def delete(self, _id):
@@ -159,37 +155,28 @@ class PodsController(rest.RestController):
 
         try:
             with context.session.begin():
-                pod_map = core.get_resource(context, models.PodMap, _id)
-                if pod_map is not None:
-                    ag_name = utils.get_ag_name(pod_map['pod_name'])
+                pod = core.get_resource(context, models.Pod, _id)
+                if pod is not None:
+                    ag_name = utils.get_ag_name(pod['pod_name'])
                     ag = az_ag.get_ag_by_name(context, ag_name)
                     if ag is not None:
                         az_ag.delete_ag(context, ag['id'])
-                core.delete_resource(context, models.PodMap, _id)
-                pod_maps = core.query_resource(
-                    context, models.PodMap,
-                    [{'key': 'pod_name',
-                      'comparator': 'eq',
-                      'value': pod_map['pod_name']}], [])
-                # if we delete the last map for one pod, also delete the pod
-                if not pod_maps:
-                    core.delete_resources(
-                        context, models.Pod,
-                        [{'key': 'pod_name',
-                          'comparator': 'eq',
-                          'value': pod_map['pod_name']}])
+                core.delete_resource(context, models.Pod, _id)
                 pecan.response.status = 200
         except t_exc.ResourceNotFound:
-            pecan.abort(404, _('Pod map not found'))
-            return
+            return Response(_('Pod not found'), 404)
+        except Exception as e:
+            LOG.error(_LE('Fail to delete pod: %(exception)s'),
+                      {'exception': e})
+            return Response(_('Fail to delete pod'), 500)
 
     def _get_top_region(self, ctx):
         top_region_name = ''
         try:
             with ctx.session.begin():
-                pod_maps = core.query_resource(ctx,
-                                               models.PodMap, [], [])
-                for pod in pod_maps:
+                pods = core.query_resource(ctx,
+                                           models.Pod, [], [])
+                for pod in pods:
                     if pod['az_name'] == '' and pod['pod_name'] != '':
                         return pod['pod_name']
         except Exception:
@@ -217,24 +204,26 @@ class BindingsController(rest.RestController):
 
         pod_b = kw['pod_binding']
         tenant_id = pod_b.get('tenant_id', '').strip()
-        az_pod_map_id = pod_b.get('az_pod_map_id', '').strip()
+        pod_id = pod_b.get('pod_id', '').strip()
         _uuid = uuidutils.generate_uuid()
 
-        if tenant_id == '' or az_pod_map_id == '':
+        if tenant_id == '' or pod_id == '':
             return Response(
-                _('Tenant_id and az_pod_map_id can not be empty'),
+                _('Tenant_id and pod_id can not be empty'),
                 422)
 
         # the az_pod_map_id should be exist for in the pod map table
         try:
             with context.session.begin():
-                pod_map = core.get_resource(context, models.PodMap,
-                                            az_pod_map_id)
-                if pod_map.get('az_name') == '':
+                pod = core.get_resource(context, models.Pod,
+                                        pod_id)
+                if pod.get('az_name') == '':
                     return Response(_('Top region can not be bound'), 422)
         except t_exc.ResourceNotFound:
-            return Response(_('Az_pod_map_id not found in pod map'), 422)
-        except Exception:
+            return Response(_('pod_id not found in pod'), 422)
+        except Exception as e:
+            LOG.error(_LE('Fail to create pod binding: %(exception)s'),
+                      {'exception': e})
             pecan.abort(500, _('Fail to create pod binding'))
             return
 
@@ -243,15 +232,16 @@ class BindingsController(rest.RestController):
                 pod_binding = core.create_resource(context, models.PodBinding,
                                                    {'id': _uuid,
                                                     'tenant_id': tenant_id,
-                                                    'az_pod_map_id':
-                                                        az_pod_map_id})
+                                                    'pod_id': pod_id})
         except db_exc.DBDuplicateEntry:
             return Response(_('Pod binding already exists'), 409)
         except db_exc.DBConstraintError:
-            return Response(_('Az_pod_map_id not exists in pod mapping'), 422)
+            return Response(_('pod_id not exists in pod'), 422)
         except db_exc.DBReferenceError:
-            return Response(_('DB reference not exists in pod mapping'), 422)
-        except Exception:
+            return Response(_('DB reference not exists in pod'), 422)
+        except Exception as e:
+            LOG.error(_LE('Fail to create pod binding: %(exception)s'),
+                      {'exception': e})
             pecan.abort(500, _('Fail to create pod binding'))
             return
 
