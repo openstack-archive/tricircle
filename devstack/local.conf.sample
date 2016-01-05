@@ -27,6 +27,8 @@ Q_FLOATING_ALLOCATION_POOL=start=10.100.100.160,end=10.100.100.192
 
 PUBLIC_NETWORK_GATEWAY=10.100.100.3
 
+TENANT_VLAN_RANGE=2001:3000
+PHYSICAL_NETWORK=bridge
 
 Q_ENABLE_TRICIRCLE=True
 enable_plugin tricircle https://github.com/openstack/tricircle/ experiment

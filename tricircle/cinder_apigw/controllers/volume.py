@@ -54,7 +54,7 @@ class VolumeController(rest.RestController):
             pecan.abort(400, _('Availability zone not set in request'))
             return
 
-        pod = az_ag.get_pod_by_az_tenant(
+        pod, pod_az = az_ag.get_pod_by_az_tenant(
             context,
             az_name=kw['volume']['availability_zone'],
             tenant_id=self.tenant_id)

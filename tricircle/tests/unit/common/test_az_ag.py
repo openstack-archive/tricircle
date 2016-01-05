@@ -110,17 +110,17 @@ class AZAGTest(unittest.TestCase):
 
     def test_get_pod_by_az_tenant(self):
 
-        pod1 = az_ag.get_pod_by_az_tenant(self.context,
-                                          FAKE_AZ + FAKE_AZ,
-                                          FAKE_TENANT_ID)
+        pod1, _ = az_ag.get_pod_by_az_tenant(self.context,
+                                             FAKE_AZ + FAKE_AZ,
+                                             FAKE_TENANT_ID)
         self.assertEqual(pod1, None)
         pods = az_ag.list_pods_by_tenant(self.context, FAKE_TENANT_ID)
         self.assertEqual(len(pods), 0)
 
         # schedule one
-        pod2 = az_ag.get_pod_by_az_tenant(self.context,
-                                          FAKE_AZ,
-                                          FAKE_TENANT_ID)
+        pod2, _ = az_ag.get_pod_by_az_tenant(self.context,
+                                             FAKE_AZ,
+                                             FAKE_TENANT_ID)
 
         pod_bindings = core.query_resource(self.context,
                                            models.PodBinding,
@@ -139,9 +139,9 @@ class AZAGTest(unittest.TestCase):
             self.assertEqual(pod2['az_name'], FAKE_AZ)
 
         # scheduled one should always be bound
-        pod3 = az_ag.get_pod_by_az_tenant(self.context,
-                                          FAKE_AZ,
-                                          FAKE_TENANT_ID)
+        pod3, _ = az_ag.get_pod_by_az_tenant(self.context,
+                                             FAKE_AZ,
+                                             FAKE_TENANT_ID)
 
         self.assertEqual(pod2['pod_name'], pod3['pod_name'])
         self.assertEqual(pod2['pod_id'], pod3['pod_id'])
@@ -149,9 +149,9 @@ class AZAGTest(unittest.TestCase):
 
     def test_list_pods_by_tenant(self):
 
-        pod1 = az_ag.get_pod_by_az_tenant(self.context,
-                                          FAKE_AZ + FAKE_AZ,
-                                          FAKE_TENANT_ID)
+        pod1, _ = az_ag.get_pod_by_az_tenant(self.context,
+                                             FAKE_AZ + FAKE_AZ,
+                                             FAKE_TENANT_ID)
         pods = az_ag.list_pods_by_tenant(self.context, FAKE_TENANT_ID)
         self.assertEqual(pod1, None)
         self.assertEqual(len(pods), 0)
@@ -159,9 +159,9 @@ class AZAGTest(unittest.TestCase):
         # TODO(joehuang): tenant bound to multiple pods in one AZ
 
         # schedule one
-        pod2 = az_ag.get_pod_by_az_tenant(self.context,
-                                          FAKE_AZ,
-                                          FAKE_TENANT_ID)
+        pod2, _ = az_ag.get_pod_by_az_tenant(self.context,
+                                             FAKE_AZ,
+                                             FAKE_TENANT_ID)
         pods = az_ag.list_pods_by_tenant(self.context, FAKE_TENANT_ID)
         self.assertDictEqual(pods[0], pod2)
 

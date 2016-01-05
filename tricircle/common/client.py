@@ -419,6 +419,7 @@ class Client(object):
                --------------------------
                aggregate -> add_host -> aggregate, host -> none
                volume -> set_bootable -> volume, flag -> none
+               router -> add_interface -> router, body -> none
                --------------------------
         :return: None
         :raises: EndpointNotAvailable

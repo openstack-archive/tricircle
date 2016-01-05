@@ -116,19 +116,18 @@ def get_pod_by_az_tenant(context, az_name, tenant_id):
                                          'comparator': 'eq',
                                          'value': tenant_id}],
                                        [])
-    if pod_bindings:
-        for pod_b in pod_bindings:
-            pod = core.get_resource(context,
-                                    models.Pod,
-                                    pod_b['pod_id'])
-            if pod['az_name'] == az_name:
-                return pod
+    for pod_b in pod_bindings:
+        pod = core.get_resource(context,
+                                models.Pod,
+                                pod_b['pod_id'])
+        if pod['az_name'] == az_name:
+            return pod, pod['pod_az_name']
 
-    # TODO(joehuang): schedule one dynamicly in the future
+    # TODO(joehuang): schedule one dynamically in the future
     filters = [{'key': 'az_name', 'comparator': 'eq', 'value': az_name}]
     pods = db_api.list_pods(context, filters=filters)
     for pod in pods:
-        if pod['pod_name'] != '' and az_name != '':
+        if pod['pod_name'] != '':
             try:
                 with context.session.begin():
                     core.create_resource(
@@ -136,13 +135,13 @@ def get_pod_by_az_tenant(context, az_name, tenant_id):
                         {'id': uuidutils.generate_uuid(),
                          'tenant_id': tenant_id,
                          'pod_id': pod['pod_id']})
-                    return pod
+                    return pod, pod['pod_az_name']
             except Exception as e:
                 LOG.error(_LE('Fail to create pod binding: %(exception)s'),
                           {'exception': e})
-                return None
+                return None, None
 
-    return None
+    return None, None
 
 
 def list_pods_by_tenant(context, tenant_id):

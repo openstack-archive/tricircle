@@ -90,9 +90,19 @@ class ContextBase(oslo_ctx.RequestContext):
         ctx_dict = super(ContextBase, self).to_dict()
         ctx_dict.update({
             'user_name': self.user_name,
-            'tenant_name': self.tenant_name
+            'tenant_name': self.tenant_name,
+            'tenant_id': self.tenant_id,
+            'project_id': self.project_id
         })
         return ctx_dict
+
+    @property
+    def project_id(self):
+        return self.tenant
+
+    @property
+    def tenant_id(self):
+        return self.tenant
 
     @classmethod
     def from_dict(cls, ctx):

@@ -232,7 +232,6 @@ function start_new_neutron_server {
     iniset $NEUTRON_CONF.$server_index database connection `database_connection_url $Q_DB_NAME$server_index`
     iniset $NEUTRON_CONF.$server_index nova region_name $region_name
     iniset $NEUTRON_CONF.$server_index DEFAULT bind_port $q_port
-    iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins ""
 
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head
@@ -276,6 +275,9 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF client admin_tenant demo
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
             iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
+
+            iniset $NEUTRON_CONF tricircle bridge_segmentation_id `echo $TENANT_VLAN_RANGE | awk -F: '{print $2}'`
+            iniset $NEUTRON_CONF tricircle bridge_physical_network $PHYSICAL_NETWORK
         fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then

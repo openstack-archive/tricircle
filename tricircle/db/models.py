@@ -283,7 +283,7 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
                   'resource_type', 'created_at', 'updated_at']
 
     id = sql.Column('id', sql.Integer, primary_key=True)
-    top_id = sql.Column('top_id', sql.String(length=36), nullable=False)
+    top_id = sql.Column('top_id', sql.String(length=127), nullable=False)
     bottom_id = sql.Column('bottom_id', sql.String(length=36))
     pod_id = sql.Column('pod_id', sql.String(length=64),
                         sql.ForeignKey('cascaded_pods.pod_id'),

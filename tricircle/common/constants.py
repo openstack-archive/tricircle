@@ -28,6 +28,7 @@ RT_SNAPSHOT = 'snapshot'
 RT_NETWORK = 'network'
 RT_SUBNET = 'subnet'
 RT_PORT = 'port'
+RT_ROUTER = 'router'
 
 # version list
 NOVA_VERSION_V21 = 'v2.1'
@@ -37,3 +38,9 @@ NEUTRON_VERSION_V2 = 'v2'
 # supported release
 R_LIBERTY = 'liberty'
 R_MITAKA = 'mitaka'
+
+# l3 bridge networking elements
+bridge_subnet_pool_name = 'bridge_subnet_pool'
+bridge_net_name = 'bridge_net_%s'
+bridge_subnet_name = 'bridge_subnet_%s'
+bridge_port_name = 'bridge_port_%s_%s'

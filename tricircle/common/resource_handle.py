@@ -119,7 +119,7 @@ class NeutronResourceHandle(ResourceHandle):
     support_resource = {'network': LIST | CREATE | DELETE | GET,
                         'subnet': LIST | CREATE | DELETE | GET,
                         'port': LIST | CREATE | DELETE | GET,
-                        'router': LIST,
+                        'router': LIST | CREATE | ACTION,
                         'security_group': LIST,
                         'security_group_rule': LIST}
 
@@ -175,6 +175,16 @@ class NeutronResourceHandle(ResourceHandle):
         except q_exceptions.NotFound:
             LOG.debug("Delete %(resource)s %(resource_id)s which not found",
                       {'resource': resource, 'resource_id': resource_id})
+
+    def handle_action(self, cxt, resource, action, *args, **kwargs):
+        try:
+            client = self._get_client(cxt)
+            return getattr(client, '%s_%s' % (action, resource))(*args,
+                                                                 **kwargs)
+        except q_exceptions.ConnectionFailed:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable(
+                'neutron', client.httpclient.endpoint_url)
 
 
 class NovaResourceHandle(ResourceHandle):

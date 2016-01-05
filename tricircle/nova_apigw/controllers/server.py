@@ -13,18 +13,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import datetime
-import eventlet
-
 import pecan
 from pecan import expose
 from pecan import rest
 
-import oslo_db.exception as db_exc
-from oslo_utils import uuidutils
-
+from tricircle.common import az_ag
 import tricircle.common.client as t_client
+from tricircle.common import constants
 import tricircle.common.context as t_context
+import tricircle.common.lock_handle as t_lock
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
@@ -42,62 +39,15 @@ class ServerController(rest.RestController):
         return self.clients[pod_name]
 
     def _get_or_create_route(self, context, pod, _id, _type):
-        # use configuration option later
-        route_expire_threshold = 30
+        def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
+            client = self._get_client(pod_['pod_name'])
+            return client.list_resources(_type_, t_ctx, [{'key': 'name',
+                                                          'comparator': 'eq',
+                                                          'value': _id_}])
 
-        with context.session.begin():
-            routes = core.query_resource(
-                context, models.ResourceRouting,
-                [{'key': 'top_id', 'comparator': 'eq', 'value': _id},
-                 {'key': 'pod_id', 'comparator': 'eq',
-                  'value': pod['pod_id']}], [])
-            if routes:
-                route = routes[0]
-                if route['bottom_id']:
-                    return route, False
-                else:
-                    route_time = route['updated_at'] or route['created_at']
-                    current_time = datetime.datetime.utcnow()
-                    delta = current_time - route_time
-                    if delta.seconds > route_expire_threshold:
-                        # NOTE(zhiyuan) cannot directly remove the route, we
-                        # have a race that other worker is updating this route
-                        # with bottom id, we need to check if the bottom
-                        # element has been created by other worker
-                        client = self._get_client(pod['pod_name'])
-                        bottom_eles = client.list_resources(
-                            _type, context, [{'key': 'name',
-                                              'comparator': 'eq',
-                                              'value': _id}])
-                        if bottom_eles:
-                            route['bottom_id'] = bottom_eles[0]['id']
-                            core.update_resource(context,
-                                                 models.ResourceRouting,
-                                                 route['id'], route)
-                            return route, False
-                        try:
-                            core.delete_resource(context,
-                                                 models.ResourceRouting,
-                                                 route['id'])
-                        except db_exc.ResourceNotFound:
-                            pass
-        try:
-            # NOTE(zhiyuan) try/except block inside a with block will cause
-            # problem, so move them out of the block and manually handle the
-            # session context
-            context.session.begin()
-            route = core.create_resource(context, models.ResourceRouting,
-                                         {'top_id': _id,
-                                          'pod_id': pod['pod_id'],
-                                          'project_id': self.project_id,
-                                          'resource_type': _type})
-            context.session.commit()
-            return route, True
-        except db_exc.DBDuplicateEntry:
-            context.session.rollback()
-            return None, False
-        finally:
-            context.session.close()
+        return t_lock.get_or_create_route(context, None,
+                                          self.project_id, pod, _id, _type,
+                                          list_resources)
 
     def _get_create_network_body(self, network):
         body = {
@@ -163,47 +113,21 @@ class ServerController(rest.RestController):
         return body
 
     def _prepare_neutron_element(self, context, pod, ele, _type, body):
-        client = self._get_client(pod['pod_name'])
-        # use configuration option later
-        max_tries = 5
-        for _ in xrange(max_tries):
-            route, is_new = self._get_or_create_route(context,
-                                                      pod, ele['id'], _type)
-            if not route:
-                eventlet.sleep(0)
-                continue
-            if not is_new and not route['bottom_id']:
-                eventlet.sleep(0)
-                continue
-            if is_new:
-                try:
-                    bottom_ele = client.create_resources(_type, context, body)
-                except Exception:
-                    with context.session.begin():
-                        try:
-                            core.delete_resource(context,
-                                                 models.ResourceRouting,
-                                                 route['id'])
-                        except db_exc.ResourceNotFound:
-                            # NOTE(zhiyuan) this is a rare case that other
-                            # worker considers the route expires and delete it
-                            # though it was just created, maybe caused by
-                            # out-of-sync time
-                            pass
-                    raise
-                with context.session.begin():
-                    # NOTE(zhiyuan) it's safe to update route, the bottom
-                    # network has been successfully created, so other worker
-                    # will not delete this route
-                    route['bottom_id'] = bottom_ele['id']
-                    core.update_resource(context, models.ResourceRouting,
-                                         route['id'], route)
-                    break
-        if not route:
-            raise Exception('Fail to create %s routing entry' % _type)
-        if not route['bottom_id']:
-            raise Exception('Fail to bind top and bottom %s' % _type)
-        return route['bottom_id']
+        def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
+            client = self._get_client(pod_['pod_name'])
+            return client.list_resources(_type_, t_ctx, [{'key': 'name',
+                                                          'comparator': 'eq',
+                                                          'value': _id_}])
+
+        def create_resources(t_ctx, q_ctx, pod_, body_, _type_):
+            client = self._get_client(pod_['pod_name'])
+            return client.create_resources(_type_, t_ctx, body_)
+
+        _, ele_id = t_lock.get_or_create_element(
+            context, None,  # we don't need neutron context, so pass None
+            self.project_id, pod, ele, _type, body,
+            list_resources, create_resources)
+        return ele_id
 
     def _handle_network(self, context, pod, net, subnets, port=None):
         # network
@@ -259,7 +183,7 @@ class ServerController(rest.RestController):
                 t_dhcp_port = top_client.create_ports(context,
                                                       top_dhcp_port_body)
             mappings = db_api.get_bottom_mappings_by_top_id(
-                context, t_dhcp_port['id'], 'port')
+                context, t_dhcp_port['id'], constants.RT_PORT)
             pod_list = [mapping[0]['pod_id'] for mapping in mappings]
             if pod['pod_id'] in pod_list:
                 # mapping exists, skip this subnet
@@ -289,7 +213,7 @@ class ServerController(rest.RestController):
                                  'bottom_id': dhcp_port['id'],
                                  'pod_id': pod['pod_id'],
                                  'project_id': self.project_id,
-                                 'resource_type': 'port'})
+                                 'resource_type': constants.RT_PORT})
                         dhcp_port_match = True
                         break
                 if not dhcp_port_match:
@@ -303,7 +227,7 @@ class ServerController(rest.RestController):
                                           'bottom_id': b_dhcp_port['id'],
                                           'pod_id': pod['pod_id'],
                                           'project_id': self.project_id,
-                                          'resource_type': 'port'})
+                                          'resource_type': constants.RT_PORT})
                 # there is still one thing to do, there may be other dhcp ports
                 # created by bottom pod, we need to delete them
                 b_dhcp_ports = client.list_ports(context,
@@ -329,8 +253,8 @@ class ServerController(rest.RestController):
         return bottom_port_id
 
     def _handle_port(self, context, pod, port):
-        mappings = db_api.get_bottom_mappings_by_top_id(context,
-                                                        port['id'], 'port')
+        mappings = db_api.get_bottom_mappings_by_top_id(context, port['id'],
+                                                        constants.RT_PORT)
         if mappings:
             # TODO(zhiyuan) judge return or raise exception
             # NOTE(zhiyuan) user provides a port that already has mapped
@@ -369,47 +293,6 @@ class ServerController(rest.RestController):
             ret.extend(client.list_servers(context))
         return ret
 
-    def _schedule_pod(self, context, az):
-        with context.session.begin():
-            pod_bindings = core.query_resource(
-                context, models.PodBinding,
-                [{'key': 'tenant_id',
-                  'comparator': 'eq',
-                  'value': self.project_id}], [])
-            for pod_binding in pod_bindings:
-                pod = core.get_resource(context, models.Pod,
-                                        pod_binding['pod_id'])
-                if pod['az_name'] == az:
-                    pods = core.query_resource(
-                        context, models.Pod,
-                        [{'key': 'pod_name',
-                          'comparator': 'eq',
-                          'value': pod['pod_name']}], [])
-                    return pods[0], pod['pod_az_name']
-            # no proper pod found, try to schedule one
-            pods = core.query_resource(
-                context, models.Pod,
-                [{'key': 'az_name',
-                  'comparator': 'eq',
-                  'value': az}], [])
-            if pods:
-                # dump schedule, just select the first map
-                select_pod = pods[0]
-
-                pods = core.query_resource(
-                    context, models.Pod,
-                    [{'key': 'pod_name',
-                      'comparator': 'eq',
-                      'value': select_pod['pod_name']}], [])
-                core.create_resource(
-                    context, models.PodBinding,
-                    {'id': uuidutils.generate_uuid(),
-                     'tenant_id': self.project_id,
-                     'pod_id': select_pod['pod_id']})
-                return pods[0], select_pod['pod_az_name']
-            else:
-                return None, None
-
     @expose(generic=True, template='json')
     def get_one(self, _id):
         context = t_context.extract_context_from_environ()
@@ -417,7 +300,8 @@ class ServerController(rest.RestController):
         if _id == 'detail':
             return {'servers': self._get_all(context)}
 
-        mappings = db_api.get_bottom_mappings_by_top_id(context, _id, 'server')
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            context, _id, constants.RT_SERVER)
         if not mappings:
             pecan.abort(404, 'Server not found')
             return
@@ -447,8 +331,8 @@ class ServerController(rest.RestController):
             pecan.abort(400, 'Availability zone not set')
             return
 
-        pod, b_az = self._schedule_pod(context,
-                                       kw['server']['availability_zone'])
+        pod, b_az = az_ag.get_pod_by_az_tenant(
+            context, kw['server']['availability_zone'], self.project_id)
         if not pod:
             pecan.abort(400, 'No pod bound to availability zone')
             return
@@ -496,5 +380,5 @@ class ServerController(rest.RestController):
                                   'bottom_id': server['id'],
                                   'pod_id': pod['pod_id'],
                                   'project_id': self.project_id,
-                                  'resource_type': 'server'})
+                                  'resource_type': constants.RT_SERVER})
         return {'server': server}
