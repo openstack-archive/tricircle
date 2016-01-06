@@ -8,17 +8,34 @@
 ["stable/fortest"](https://github.com/openstack/tricircle/tree/stable/fortest)
 branch)
 
-Tricircle is a OpenStack project that aims to deal with OpenStack deployment
-across multiple sites. It provides users a single management view by having
-only one OpenStack instance on behalf of all the involved ones. It essentially
-serves as a communication bus between the central OpenStack instance and the
-other OpenStack instances that are called upon.
+Tricircle is an OpenStack project that aims to deal with multiple OpenStack
+deployment across multiple data centers. It provides users a single management
+view by having only one Tricircle instance on behalf of all the involved
+OpenStack instances.
+
+Tricircle presents one big region to the end user in KeyStone. And each
+OpenStack instance, which is called a pod, is a sub-region of Tricircle in
+KeyStone, and not visible to end user directly.
+
+Tricircle acts as OpenStack API gateway, can accept all OpenStack API calls
+and forward the API calls to regarding OpenStack instance(pod), and deal with
+cross pod networking automaticly.
+
+The end user can see avaialbility zone (AZ in short) and use AZ to provision
+VM, Volume, even Network through Tricircle.
+
+Similar as AWS, one AZ can includes many pods, and a tenant's resources will
+be bound to specific pods automaticly.
 
 ## Project Resources
-- Project status, bugs, and blueprints are tracked on
-[Launchpad](https://launchpad.net/tricircle)
-- Additional resources are linked from the project
-[Wiki](https://wiki.openstack.org/wiki/Tricircle) page
+License: Apache 2.0
+
+- Design documentation: [Tricircle Design Blueprint](https://docs.google.com/document/d/18kZZ1snMOCD9IQvUKI5NVDzSASpw-QKj7l2zNqMEd3g/)
+- Wiki: https://wiki.openstack.org/wiki/tricircle
+- Documentation: http://docs.openstack.org/developer/tricircle
+- Source: https://github.com/openstack/tricircle
+- Bugs: http://bugs.launchpad.net/tricircle
+- Blueprints: https://launchpad.net/tricircle
 
 ## Play with DevStack
 Now stateless design can be played with DevStack.
@@ -47,22 +64,25 @@ as following:
 +----------------------------------+-----------+--------------+----------------+
 ```
 "RegionOne" is the region you set in local.conf via REGION_NAME, whose default
-value is "RegionOne", we use it as the top OpenStack; "Pod1" is the region set
-via "POD_REGION_NAME", new configuration option introduced by Tricircle,
-we use it as the bottom OpenStack.
-- 6 Create site instances for both top and bottom OpenStack
-```
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
+value is "RegionOne", we use it as the region for top OpenStack(Tricircle);
+"Pod1" is the region set via "POD_REGION_NAME", new configuration option
+introduced by Tricircle, we use it as the bottom OpenStack.
 
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
+- 6 Create pod instances for Tricircle and bottom OpenStack
+```
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+    -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
+
+curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+    -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
 
 ```
-Pay attention to "name" parameter we specify when creating site. Site name
+Pay attention to "pod_name" parameter we specify when creating pod. Pod name
 should exactly match the region name registered in Keystone since it is used
-by Tricircle to route API request. In the above commands, we create sites named
-"RegionOne" and "Pod1" for top OpenStack and bottom OpenStack. Tricircle API
-service will automatically create a aggregate when user creates a bottom site,
-so command "nova aggregate-list" will show the following result:
+by Tricircle to route API request. In the above commands, we create pods named
+"RegionOne" and "Pod1" for top OpenStack(Tricircle) and bottom OpenStack.
+Tricircle API service will automatically create a aggregate when user creates
+a bottom pod, so command "nova aggregate-list" will show the following result:
 ```
 +----+----------+-------------------+
 | Id | Name     | Availability Zone |
@@ -75,6 +95,7 @@ so command "nova aggregate-list" will show the following result:
 nova flavor-create test 1 1024 10 1
 neutron net-create net1
 neutron subnet-create net1 10.0.0.0/24
+glance image-list
 ```
 Note that flavor mapping has not been implemented yet so the created flavor is
 just a database record and actually flavor in bottom OpenStack with the same id
