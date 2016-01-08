@@ -97,6 +97,38 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
     return mappings
 
 
+def get_bottom_mappings_by_tenant_pod(context,
+                                      tenant_id,
+                                      pod_id,
+                                      resource_type):
+    """Get resource routing for specific tenant and pod
+
+    :param context: context object
+    :param tenant_id: tenant id to look up
+    :param pod_id: pod to look up
+    :param resource_type: specific resource
+    :return: a dic {top_id : route}
+    """
+    route_filters = [{'key': 'pod_id',
+                      'comparator': 'eq',
+                      'value': pod_id},
+                     {'key': 'project_id',
+                      'comparator': 'eq',
+                      'value': tenant_id},
+                     {'key': 'resource_type',
+                      'comparator': 'eq',
+                      'value': resource_type}]
+    routings = {}
+    with context.session.begin():
+        routes = core.query_resource(
+            context, models.ResourceRouting, route_filters, [])
+        for _route in routes:
+            if not _route['bottom_id']:
+                continue
+            routings[_route['top_id']] = _route
+    return routings
+
+
 def get_next_bottom_pod(context, current_pod_id=None):
     pods = list_pods(context, sorts=[(models.Pod.pod_id, True)])
     # NOTE(zhiyuan) number of pods is small, just traverse to filter top pod
@@ -106,4 +138,31 @@ def get_next_bottom_pod(context, current_pod_id=None):
             return pod
         if pod['pod_id'] == current_pod_id and index < len(pods) - 1:
             return pods[index + 1]
+    return None
+
+
+def get_top_pod(context):
+
+    filters = [{'key': 'az_name', 'comparator': 'eq', 'value': ''}]
+    pods = list_pods(context, filters=filters)
+
+    # only one should be searched
+    for pod in pods:
+        if (pod['pod_name'] != '') and \
+                (pod['az_name'] == ''):
+            return pod
+
+    return None
+
+
+def get_pod_by_name(context, pod_name):
+
+    filters = [{'key': 'pod_name', 'comparator': 'eq', 'value': pod_name}]
+    pods = list_pods(context, filters=filters)
+
+    # only one should be searched
+    for pod in pods:
+        if pod['pod_name'] == pod_name:
+            return pod
+
     return None

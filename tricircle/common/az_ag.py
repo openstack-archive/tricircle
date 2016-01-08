@@ -13,9 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from oslo_log import log as logging
+from oslo_utils import uuidutils
 
+from tricircle.common.i18n import _LE
+
+from tricircle.db import api as db_api
 from tricircle.db import core
 from tricircle.db import models
+
+LOG = logging.getLogger(__name__)
 
 
 def create_ag_az(context, ag_name, az_name):
@@ -100,3 +107,59 @@ def get_all_ag(context, filters=None, sorts=None):
         aggregate.update(extra_fields)
 
     return aggregates
+
+
+def get_pod_by_az_tenant(context, az_name, tenant_id):
+    pod_bindings = core.query_resource(context,
+                                       models.PodBinding,
+                                       [{'key': 'tenant_id',
+                                         'comparator': 'eq',
+                                         'value': tenant_id}],
+                                       [])
+    if pod_bindings:
+        for pod_b in pod_bindings:
+            pod = core.get_resource(context,
+                                    models.Pod,
+                                    pod_b['pod_id'])
+            if pod['az_name'] == az_name:
+                return pod
+
+    # TODO(joehuang): schedule one dynamicly in the future
+    filters = [{'key': 'az_name', 'comparator': 'eq', 'value': az_name}]
+    pods = db_api.list_pods(context, filters=filters)
+    for pod in pods:
+        if pod['pod_name'] != '' and az_name != '':
+            try:
+                with context.session.begin():
+                    core.create_resource(
+                        context, models.PodBinding,
+                        {'id': uuidutils.generate_uuid(),
+                         'tenant_id': tenant_id,
+                         'pod_id': pod['pod_id']})
+                    return pod
+            except Exception as e:
+                LOG.error(_LE('Fail to create pod binding: %(exception)s'),
+                          {'exception': e})
+                return None
+
+    return None
+
+
+def list_pods_by_tenant(context, tenant_id):
+
+    pod_bindings = core.query_resource(context,
+                                       models.PodBinding,
+                                       [{'key': 'tenant_id',
+                                         'comparator': 'eq',
+                                         'value': tenant_id}],
+                                       [])
+
+    pods = []
+    if pod_bindings:
+        for pod_b in pod_bindings:
+            pod = core.get_resource(context,
+                                    models.Pod,
+                                    pod_b['pod_id'])
+            pods.append(pod)
+
+    return pods

@@ -44,19 +44,7 @@ function create_nova_apigw_accounts {
             local tricircle_nova_apigw=$(get_or_create_service "nova" \
                 "compute" "Nova Compute Service")
 
-            local endpoint_id
-            interface_list="public admin internal"
-            for interface in $interface_list; do
-                endpoint_id=$(openstack endpoint list \
-                    --service "$tricircle_nova_apigw" \
-                    --interface "$interface" \
-                    --region "$REGION_NAME" \
-                    -c ID -f value)
-                if [[ -n "$endpoint_id" ]]; then
-                    # Delete endpoint
-                    openstack endpoint delete "$endpoint_id"
-                fi
-            done
+            remove_old_endpoint_conf $tricircle_nova_apigw
 
             get_or_create_endpoint $tricircle_nova_apigw \
                 "$REGION_NAME" \
@@ -80,15 +68,39 @@ function create_cinder_apigw_accounts {
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
             local tricircle_cinder_apigw=$(get_or_create_service "cinder" \
-                "volume" "Cinder Volume Service")
+                "volumev2" "Cinder Volume Service")
+
+            remove_old_endpoint_conf $tricircle_cinder_apigw
+
             get_or_create_endpoint $tricircle_cinder_apigw \
                 "$REGION_NAME" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/"
+                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/"'$(tenant_id)s' \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/"'$(tenant_id)s' \
+                "$SERVICE_PROTOCOL://$TRICIRCLE_CINDER_APIGW_HOST:$TRICIRCLE_CINDER_APIGW_PORT/v2/"'$(tenant_id)s'
         fi
     fi
 }
+
+
+# common config-file configuration for tricircle services
+function remove_old_endpoint_conf {
+    local service=$1
+
+    local endpoint_id
+    interface_list="public admin internal"
+    for interface in $interface_list; do
+        endpoint_id=$(openstack endpoint list \
+            --service "$service" \
+            --interface "$interface" \
+            --region "$REGION_NAME" \
+            -c ID -f value)
+        if [[ -n "$endpoint_id" ]]; then
+            # Delete endpoint
+            openstack endpoint delete "$endpoint_id"
+        fi
+    done
+}
+
 
 # create_tricircle_cache_dir() - Set up cache dir for tricircle
 function create_tricircle_cache_dir {
@@ -308,6 +320,12 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             create_cinder_apigw_accounts
 
             run_process t-cgw "python $TRICIRCLE_CINDER_APIGW --config-file $TRICIRCLE_CINDER_APIGW_CONF"
+
+            get_or_create_endpoint "volumev2" \
+                "$POD_REGION_NAME" \
+                "$CINDER_SERVICE_PROTOCOL://$CINDER_SERVICE_HOST:$CINDER_SERVICE_PORT/v2/"'$(tenant_id)s' \
+                "$CINDER_SERVICE_PROTOCOL://$CINDER_SERVICE_HOST:$CINDER_SERVICE_PORT/v2/"'$(tenant_id)s' \
+                "$CINDER_SERVICE_PROTOCOL://$CINDER_SERVICE_HOST:$CINDER_SERVICE_PORT/v2/"'$(tenant_id)s'
         fi
 
         if is_service_enabled t-job; then

@@ -58,6 +58,103 @@ class APITest(unittest.TestCase):
         self.assertEqual('test_pod_uuid_1', mappings[0][0]['pod_id'])
         self.assertEqual('bottom_uuid_1', mappings[0][1])
 
+    def test_get_bottom_mappings_by_tenant_pod(self):
+        for i in xrange(3):
+            pod = {'pod_id': 'test_pod_uuid_%d' % i,
+                   'pod_name': 'test_pod_%d' % i,
+                   'az_name': 'test_az_uuid_%d' % i}
+            api.create_pod(self.context, pod)
+        routes = [
+            {
+                'route':
+                {
+                    'top_id': 'top_uuid',
+                    'pod_id': 'test_pod_uuid_0',
+                    'project_id': 'test_project_uuid_0',
+                    'resource_type': 'port'
+                },
+            },
+
+            {
+                'route':
+                {
+                    'top_id': 'top_uuid_0',
+                    'bottom_id': 'top_uuid_0',
+                    'pod_id': 'test_pod_uuid_0',
+                    'project_id': 'test_project_uuid_0',
+                    'resource_type': 'port'
+                },
+            },
+
+            {
+                'route':
+                {
+                    'top_id': 'top_uuid_1',
+                    'bottom_id': 'top_uuid_1',
+                    'pod_id': 'test_pod_uuid_0',
+                    'project_id': 'test_project_uuid_0',
+                    'resource_type': 'port'
+                },
+            },
+
+            {
+                'route':
+                {
+                    'top_id': 'top_uuid_2',
+                    'bottom_id': 'top_uuid_2',
+                    'pod_id': 'test_pod_uuid_0',
+                    'project_id': 'test_project_uuid_1',
+                    'resource_type': 'port'
+                },
+            },
+
+            {
+                'route':
+                {
+                    'top_id': 'top_uuid_3',
+                    'bottom_id': 'top_uuid_3',
+                    'pod_id': 'test_pod_uuid_1',
+                    'project_id': 'test_project_uuid_1',
+                    'resource_type': 'port'
+                },
+            }
+            ]
+
+        with self.context.session.begin():
+            for route in routes:
+                core.create_resource(
+                    self.context, models.ResourceRouting, route['route'])
+
+        routings = api.get_bottom_mappings_by_tenant_pod(
+            self.context,
+            'test_project_uuid_0',
+            'test_pod_uuid_0',
+            'port'
+        )
+        self.assertEqual(len(routings), 2)
+        self.assertEqual(routings['top_uuid_0']['top_id'], 'top_uuid_0')
+        self.assertEqual(routings['top_uuid_1']['top_id'], 'top_uuid_1')
+
+        routings = api.get_bottom_mappings_by_tenant_pod(
+            self.context,
+            'test_project_uuid_1',
+            'test_pod_uuid_0',
+            'port'
+        )
+        self.assertEqual(len(routings), 1)
+        self.assertEqual(routings['top_uuid_2']['top_id'], 'top_uuid_2')
+        self.assertEqual(routings['top_uuid_2']['bottom_id'], 'top_uuid_2')
+
+        routings = api.get_bottom_mappings_by_tenant_pod(
+            self.context,
+            'test_project_uuid_1',
+            'test_pod_uuid_1',
+            'port'
+        )
+        self.assertEqual(len(routings), 1)
+        self.assertEqual(routings['top_uuid_3']['top_id'], 'top_uuid_3')
+        self.assertEqual(routings['top_uuid_3']['bottom_id'], 'top_uuid_3')
+
     def test_get_next_bottom_pod(self):
         next_pod = api.get_next_bottom_pod(self.context)
         self.assertIsNone(next_pod)

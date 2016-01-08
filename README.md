@@ -104,3 +104,11 @@ will be used.
 ```
 nova boot --flavor 1 --image $image_id --nic net-id=$net_id --availability-zone az1 vm1
 ```
+- 9 Create, list, show and delete volume.
+```
+cinder --debug create --availability-zone=az1 1
+cinder --debug list
+cinder --debug show $volume_id
+cinder --debug delete $volume_id
+cinder --debug list
+```

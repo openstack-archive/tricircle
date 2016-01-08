@@ -26,7 +26,9 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from requests import exceptions as r_exceptions
 
+from tricircle.common import constants as cons
 from tricircle.common import exceptions
+
 
 client_opts = [
     cfg.IntOpt('cinder_timeout',
@@ -77,7 +79,7 @@ class ResourceHandle(object):
 
 
 class GlanceResourceHandle(ResourceHandle):
-    service_type = 'glance'
+    service_type = cons.ST_GLANCE
     support_resource = {'image': LIST | GET}
 
     def _get_client(self, cxt):
@@ -113,7 +115,7 @@ class GlanceResourceHandle(ResourceHandle):
 
 
 class NeutronResourceHandle(ResourceHandle):
-    service_type = 'neutron'
+    service_type = cons.ST_NEUTRON
     support_resource = {'network': LIST | CREATE | DELETE | GET,
                         'subnet': LIST | CREATE | DELETE | GET,
                         'port': LIST | CREATE | DELETE | GET,
@@ -176,7 +178,7 @@ class NeutronResourceHandle(ResourceHandle):
 
 
 class NovaResourceHandle(ResourceHandle):
-    service_type = 'nova'
+    service_type = cons.ST_NOVA
     support_resource = {'flavor': LIST,
                         'server': LIST | CREATE | GET,
                         'aggregate': LIST | CREATE | DELETE | ACTION}
@@ -257,7 +259,7 @@ class NovaResourceHandle(ResourceHandle):
 
 
 class CinderResourceHandle(ResourceHandle):
-    service_type = 'cinder'
+    service_type = cons.ST_CINDER
     support_resource = {'volume': GET | ACTION,
                         'transfer': CREATE | ACTION}
 
