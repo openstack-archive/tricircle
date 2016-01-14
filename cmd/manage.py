@@ -19,7 +19,7 @@ import sys
 from oslo_config import cfg
 
 from tricircle.db import core
-import tricircle.db.migration_helpers as migration_helpers
+from tricircle.db import migration_helpers
 
 
 def main(argv=None, config_files=None):
@@ -28,7 +28,7 @@ def main(argv=None, config_files=None):
              project='tricircle',
              default_config_files=config_files)
     migration_helpers.find_migrate_repo()
-    migration_helpers.sync_repo(1)
+    migration_helpers.sync_repo(2)
 
 
 if __name__ == '__main__':

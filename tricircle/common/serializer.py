@@ -14,10 +14,9 @@
 # limitations under the License.
 import six
 
-from neutron.api.v2.attributes import ATTR_NOT_SPECIFIED
 from oslo_messaging import Serializer
 
-import tricircle.common.context as t_context
+ATTR_NOT_SPECIFIED = object()
 
 
 class Mapping(object):
@@ -32,9 +31,9 @@ _SINGLETON_MAPPING = Mapping({
 })
 
 
-class CascadeSerializer(Serializer):
+class TricircleSerializer(Serializer):
     def __init__(self, base=None):
-        super(CascadeSerializer, self).__init__()
+        super(TricircleSerializer, self).__init__()
         self._base = base
 
     def serialize_entity(self, context, entity):
@@ -72,7 +71,13 @@ class CascadeSerializer(Serializer):
         return entity
 
     def serialize_context(self, context):
-        return context.to_dict()
+        if self._base is not None:
+            context = self._base.serialize_context(context)
+
+        return context
 
     def deserialize_context(self, context):
-        return t_context.Context.from_dict(context)
+        if self._base is not None:
+            context = self._base.deserialize_context(context)
+
+        return context

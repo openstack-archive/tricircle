@@ -1,119 +1,135 @@
-# Copyright 2015 Huawei Technologies Co., Ltd.
+#    Copyright 2015 Huawei Technologies Co., Ltd.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#         http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-# implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+#    copy and modify from Nova
 
-from inspect import stack
+__all__ = [
+    'init',
+    'cleanup',
+    'set_defaults',
+    'add_extra_exmods',
+    'clear_extra_exmods',
+    'get_allowed_exmods',
+    'RequestContextSerializer',
+    'get_client',
+    'get_server',
+    'get_notifier',
+]
 
-import neutron.common.rpc as neutron_rpc
-import neutron.common.topics as neutron_topics
-import neutron.context as neutron_context
 from oslo_config import cfg
-from oslo_log import log as logging
-import oslo_messaging
+import oslo_messaging as messaging
+from oslo_serialization import jsonutils
 
-from tricircle.common.serializer import CascadeSerializer as Serializer
+import tricircle.common.context
+import tricircle.common.exceptions
 
-TRANSPORT = oslo_messaging.get_transport(cfg.CONF)
+CONF = cfg.CONF
+TRANSPORT = None
+NOTIFIER = None
 
-LOG = logging.getLogger(__name__)
-
-
-class NetworkingRpcApi(object):
-    def __init__(self):
-        if not neutron_rpc.TRANSPORT:
-            neutron_rpc.init(cfg.CONF)
-        target = oslo_messaging.Target(topic=neutron_topics.PLUGIN,
-                                       version='1.0')
-        self.client = neutron_rpc.get_client(target)
-
-    # adapt tricircle context to neutron context
-    def _make_neutron_context(self, context):
-        return neutron_context.ContextBase(context.user, context.tenant,
-                                           auth_token=context.auth_token,
-                                           is_admin=context.is_admin,
-                                           request_id=context.request_id,
-                                           user_name=context.user_name,
-                                           tenant_name=context.tenant_name)
-
-    def update_port_up(self, context, port_id):
-        call_context = self.client.prepare()
-        return call_context.call(self._make_neutron_context(context),
-                                 'update_port_up', port_id=port_id)
-
-    def update_port_down(self, context, port_id):
-        call_context = self.client.prepare()
-        return call_context.call(self._make_neutron_context(context),
-                                 'update_port_down', port_id=port_id)
+ALLOWED_EXMODS = [
+    tricircle.common.exceptions.__name__,
+]
+EXTRA_EXMODS = []
 
 
-def create_client(target):
-    return oslo_messaging.RPCClient(
-        TRANSPORT,
-        target,
-        serializer=Serializer(),
-    )
+def init(conf):
+    global TRANSPORT, NOTIFIER
+    exmods = get_allowed_exmods()
+    TRANSPORT = messaging.get_transport(conf,
+                                        allowed_remote_exmods=exmods)
+    serializer = RequestContextSerializer(JsonPayloadSerializer())
+    NOTIFIER = messaging.Notifier(TRANSPORT, serializer=serializer)
 
 
-class AutomaticRpcWrapper(object):
-    def __init__(self, send_message_callback):
-        self._send_message = send_message_callback
+def cleanup():
+    global TRANSPORT, NOTIFIER
+    assert TRANSPORT is not None
+    assert NOTIFIER is not None
+    TRANSPORT.cleanup()
+    TRANSPORT = NOTIFIER = None
 
-    def _send_message(self, context, method, payload, cast=False):
-        """Cast the payload to the running cascading service instances."""
 
-        cctx = self._client.prepare(
-            fanout=cast,
-        )
-        LOG.debug(
-            '%(what)s at %(topic)s.%(namespace)s the message %(method)s',
-            {
-                'topic': cctx.target.topic,
-                'namespace': cctx.target.namespace,
-                'method': method,
-                'what': {True: 'Fanout notify', False: 'Method call'}[cast],
-            }
-        )
+def set_defaults(control_exchange):
+    messaging.set_transport_defaults(control_exchange)
 
-        if cast:
-            cctx.cast(context, method, payload=payload)
-        else:
-            return cctx.call(context, method, payload=payload)
 
-    def send(self, cast):
-        """Autowrap an API call with a send_message() call
+def add_extra_exmods(*args):
+    EXTRA_EXMODS.extend(args)
 
-        This function uses python tricks to implement a passthrough call from
-        the calling API to the cascade service
-        """
-        caller = stack()[1]
-        frame = caller[0]
-        method_name = caller[3]
-        context = frame.f_locals.get('context', {})
 
-        payload = {}
-        for varname in frame.f_code.co_varnames:
-            if varname in ("self", "context"):
-                continue
+def clear_extra_exmods():
+    del EXTRA_EXMODS[:]
 
-            try:
-                payload[varname] = frame.f_locals[varname]
-            except KeyError:
-                pass
 
-        LOG.info(
-            "Farwarding request to %s(%s)",
-            method_name,
-            payload,
-        )
-        return self._send_message(context, method_name, payload, cast)
+def get_allowed_exmods():
+    return ALLOWED_EXMODS + EXTRA_EXMODS
+
+
+class JsonPayloadSerializer(messaging.NoOpSerializer):
+    @staticmethod
+    def serialize_entity(context, entity):
+        return jsonutils.to_primitive(entity, convert_instances=True)
+
+
+class RequestContextSerializer(messaging.Serializer):
+
+    def __init__(self, base):
+        self._base = base
+
+    def serialize_entity(self, context, entity):
+        if not self._base:
+            return entity
+        return self._base.serialize_entity(context, entity)
+
+    def deserialize_entity(self, context, entity):
+        if not self._base:
+            return entity
+        return self._base.deserialize_entity(context, entity)
+
+    def serialize_context(self, context):
+        return context.to_dict()
+
+    def deserialize_context(self, context):
+        return tricircle.common.context.Context.from_dict(context)
+
+
+def get_transport_url(url_str=None):
+    return messaging.TransportURL.parse(CONF, url_str)
+
+
+def get_client(target, version_cap=None, serializer=None):
+    assert TRANSPORT is not None
+    serializer = RequestContextSerializer(serializer)
+    return messaging.RPCClient(TRANSPORT,
+                               target,
+                               version_cap=version_cap,
+                               serializer=serializer)
+
+
+def get_server(target, endpoints, serializer=None):
+    assert TRANSPORT is not None
+    serializer = RequestContextSerializer(serializer)
+    return messaging.get_rpc_server(TRANSPORT,
+                                    target,
+                                    endpoints,
+                                    executor='eventlet',
+                                    serializer=serializer)
+
+
+def get_notifier(service, host=None, publisher_id=None):
+    assert NOTIFIER is not None
+    if not publisher_id:
+        publisher_id = "%s.%s" % (service, host or CONF.host)
+    return NOTIFIER.prepare(publisher_id=publisher_id)

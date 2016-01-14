@@ -22,35 +22,52 @@ def upgrade(migrate_engine):
     meta = sql.MetaData()
     meta.bind = migrate_engine
 
-    cascaded_sites = sql.Table(
-        'cascaded_sites', meta,
-        sql.Column('site_id', sql.String(length=64), primary_key=True),
-        sql.Column('site_name', sql.String(length=64), unique=True,
+    cascaded_pods = sql.Table(
+        'cascaded_pods', meta,
+        sql.Column('pod_id', sql.String(length=36), primary_key=True),
+        sql.Column('pod_name', sql.String(length=255), unique=True,
                    nullable=False),
-        sql.Column('az_id', sql.String(length=64), nullable=False),
+        sql.Column('pod_az_name', sql.String(length=255), nullable=True),
+        sql.Column('dc_name', sql.String(length=255), nullable=True),
+        sql.Column('az_name', sql.String(length=255), nullable=False),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
-    cascaded_site_service_configuration = sql.Table(
-        'cascaded_site_service_configuration', meta,
+
+    cascaded_pod_service_configuration = sql.Table(
+        'cascaded_pod_service_configuration', meta,
         sql.Column('service_id', sql.String(length=64), primary_key=True),
-        sql.Column('site_id', sql.String(length=64), nullable=False),
+        sql.Column('pod_id', sql.String(length=64), nullable=False),
         sql.Column('service_type', sql.String(length=64), nullable=False),
         sql.Column('service_url', sql.String(length=512), nullable=False),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
-    cascaded_site_services = sql.Table(
-        'cascaded_site_services', meta,
-        sql.Column('site_id', sql.String(length=64), primary_key=True),
+
+    pod_binding = sql.Table(
+        'pod_binding', meta,
+        sql.Column('id', sql.String(36), primary_key=True),
+        sql.Column('tenant_id', sql.String(length=255), nullable=False),
+        sql.Column('pod_id', sql.String(length=255), nullable=False),
+        sql.Column('created_at', sql.DateTime),
+        sql.Column('updated_at', sql.DateTime),
+        migrate.UniqueConstraint(
+            'tenant_id', 'pod_id',
+            name='pod_binding0tenant_id0pod_id'),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
-    tables = [cascaded_sites, cascaded_site_service_configuration,
-              cascaded_site_services]
+    tables = [cascaded_pods, cascaded_pod_service_configuration,
+              pod_binding]
     for table in tables:
         table.create()
 
-    fkey = {'columns': [cascaded_site_service_configuration.c.site_id],
-            'references': [cascaded_sites.c.site_id]}
+    fkey = {'columns': [cascaded_pod_service_configuration.c.pod_id],
+            'references': [cascaded_pods.c.pod_id]}
+    migrate.ForeignKeyConstraint(columns=fkey['columns'],
+                                 refcolumns=fkey['references'],
+                                 name=fkey.get('name')).create()
+
+    fkey = {'columns': [pod_binding.c.pod_id],
+            'references': [cascaded_pods.c.pod_id]}
     migrate.ForeignKeyConstraint(columns=fkey['columns'],
                                  refcolumns=fkey['references'],
                                  name=fkey.get('name')).create()

@@ -13,13 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-NETWORK = 'network'
-SUBNET = 'subnet'
-PORT = 'port'
-SECURITY_GROUP = 'security_group'
-
 CREATE = 'create'
 DELETE = 'delete'
 UPDATE = 'update'
 
-CASCADING_SERVICE = 'k-cascading'
+TOPIC_XJOB = 'xjob'

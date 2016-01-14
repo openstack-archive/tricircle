@@ -13,19 +13,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import uuid
 
 import oslo_log.log as logging
 import pecan
 from pecan import request
-from pecan import rest
 
-from tricircle.common import cascading_site_api
+from tricircle.api.controllers import pod
 import tricircle.common.context as t_context
-from tricircle.common import utils
-from tricircle.db import client
-from tricircle.db import exception
-from tricircle.db import models
+
 
 LOG = logging.getLogger(__name__)
 
@@ -49,7 +44,7 @@ class RootController(object):
         if version == 'v1.0':
             return V1Controller(), remainder
 
-    @pecan.expose('json')
+    @pecan.expose(generic=True, template='json')
     def index(self):
         return {
             "versions": [
@@ -67,19 +62,28 @@ class RootController(object):
                 ]
             }
 
+    @index.when(method='POST')
+    @index.when(method='PUT')
+    @index.when(method='DELETE')
+    @index.when(method='HEAD')
+    @index.when(method='PATCH')
+    def not_supported(self):
+        pecan.abort(405)
+
 
 class V1Controller(object):
 
     def __init__(self):
 
         self.sub_controllers = {
-            "sites": SitesController()
+            "pods": pod.PodsController(),
+            "bindings": pod.BindingsController()
         }
 
         for name, ctrl in self.sub_controllers.items():
             setattr(self, name, ctrl)
 
-    @pecan.expose('json')
+    @pecan.expose(generic=True, template='json')
     def index(self):
         return {
             "version": "1.0",
@@ -92,6 +96,14 @@ class V1Controller(object):
                 for name in sorted(self.sub_controllers)
             ]
         }
+
+    @index.when(method='POST')
+    @index.when(method='PUT')
+    @index.when(method='DELETE')
+    @index.when(method='HEAD')
+    @index.when(method='PATCH')
+    def not_supported(self):
+        pecan.abort(405)
 
 
 def _extract_context_from_environ(environ):
@@ -114,83 +126,3 @@ def _extract_context_from_environ(environ):
 
 def _get_environment():
     return request.environ
-
-
-class SitesController(rest.RestController):
-    """ReST controller to handle CRUD operations of site resource"""
-
-    @expose()
-    def put(self, site_id, **kw):
-        return {'message': 'PUT'}
-
-    @expose()
-    def get_one(self, site_id):
-        context = _extract_context_from_environ(_get_environment())
-        try:
-            return {'site': models.get_site(context, site_id)}
-        except exception.ResourceNotFound:
-            pecan.abort(404, 'Site with id %s not found' % site_id)
-
-    @expose()
-    def get_all(self):
-        context = _extract_context_from_environ(_get_environment())
-        sites = models.list_sites(context, [])
-        return {'sites': sites}
-
-    @expose()
-    def post(self, **kw):
-        context = _extract_context_from_environ(_get_environment())
-        if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create sites')
-            return
-
-        site_name = kw.get('name')
-        is_top_site = kw.get('top', False)
-
-        if not site_name:
-            pecan.abort(400, 'Name of site required')
-            return
-
-        site_filters = [{'key': 'site_name', 'comparator': 'eq',
-                         'value': site_name}]
-        sites = models.list_sites(context, site_filters)
-        if sites:
-            pecan.abort(409, 'Site with name %s exists' % site_name)
-            return
-
-        ag_name = utils.get_ag_name(site_name)
-        # top site doesn't need az
-        az_name = utils.get_az_name(site_name) if not is_top_site else ''
-
-        try:
-            site_dict = {'site_id': str(uuid.uuid4()),
-                         'site_name': site_name,
-                         'az_id': az_name}
-            site = models.create_site(context, site_dict)
-        except Exception as e:
-            LOG.debug(e.message)
-            pecan.abort(500, 'Fail to create site')
-            return
-
-        # top site doesn't need aggregate
-        if is_top_site:
-            pecan.response.status = 201
-            return {'site': site}
-        else:
-            try:
-                top_client = client.Client()
-                top_client.create_aggregates(context, ag_name, az_name)
-                site_api = cascading_site_api.CascadingSiteNotifyAPI()
-                site_api.create_site(context, site_name)
-            except Exception as e:
-                LOG.debug(e.message)
-                # delete previously created site
-                models.delete_site(context, site['site_id'])
-                pecan.abort(500, 'Fail to create aggregate')
-                return
-            pecan.response.status = 201
-            return {'site': site}
-
-    @expose()
-    def delete(self, site_id):
-        return {'message': 'DELETE'}

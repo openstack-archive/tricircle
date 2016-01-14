@@ -18,13 +18,20 @@ def get_import_path(cls):
     return cls.__module__ + "." + cls.__name__
 
 
-def get_ag_name(site_name):
-    return 'ag_%s' % site_name
+def get_ag_name(pod_name):
+    return 'ag_%s' % pod_name
 
 
-def get_az_name(site_name):
-    return 'az_%s' % site_name
+def get_az_name(pod_name):
+    return 'az_%s' % pod_name
 
 
-def get_node_name(site_name):
-    return "cascade_%s" % site_name
+def get_node_name(pod_name):
+    return "cascade_%s" % pod_name
+
+
+def validate_required_fields_set(body, fields):
+    for field in fields:
+        if field not in body:
+            return False
+    return True

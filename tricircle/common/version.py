@@ -12,6 +12,4 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pbr.version
-
-version_info = pbr.version.VersionInfo('tricircle')
+version_info = "tricircle 1.0"

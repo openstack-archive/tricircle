@@ -17,8 +17,9 @@
 Tricircle base exception handling.
 """
 
-from oslo_utils import excutils
 import six
+
+from oslo_utils import excutils
 from tricircle.common.i18n import _
 
 
@@ -81,3 +82,41 @@ class InUse(TricircleException):
 class InvalidConfigurationOption(TricircleException):
     message = _("An invalid value was provided for %(opt_name)s: "
                 "%(opt_value)s")
+
+
+class EndpointNotAvailable(TricircleException):
+    message = "Endpoint %(url)s for %(service)s is not available"
+
+    def __init__(self, service, url):
+        super(EndpointNotAvailable, self).__init__(service=service, url=url)
+
+
+class EndpointNotUnique(TricircleException):
+    message = "Endpoint for %(service)s in %(pod)s not unique"
+
+    def __init__(self, pod, service):
+        super(EndpointNotUnique, self).__init__(pod=pod, service=service)
+
+
+class EndpointNotFound(TricircleException):
+    message = "Endpoint for %(service)s in %(pod)s not found"
+
+    def __init__(self, pod, service):
+        super(EndpointNotFound, self).__init__(pod=pod, service=service)
+
+
+class ResourceNotFound(TricircleException):
+    message = "Could not find %(resource_type)s: %(unique_key)s"
+
+    def __init__(self, model, unique_key):
+        resource_type = model.__name__.lower()
+        super(ResourceNotFound, self).__init__(resource_type=resource_type,
+                                               unique_key=unique_key)
+
+
+class ResourceNotSupported(TricircleException):
+    message = "%(method)s method not supported for %(resource)s"
+
+    def __init__(self, resource, method):
+        super(ResourceNotSupported, self).__init__(resource=resource,
+                                                   method=method)

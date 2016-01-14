@@ -13,12 +13,36 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from keystonemiddleware import auth_token
-from oslo_config import cfg
-from oslo_middleware import request_id
 import pecan
 
-from tricircle.common import exceptions as t_exc
+from oslo_config import cfg
+
+from tricircle.common.i18n import _
+from tricircle.common import restapp
+
+
+common_opts = [
+    cfg.StrOpt('bind_host', default='0.0.0.0',
+               help=_("The host IP to bind to")),
+    cfg.IntOpt('bind_port', default=19999,
+               help=_("The port to bind to")),
+    cfg.IntOpt('api_workers', default=1,
+               help=_("number of api workers")),
+    cfg.StrOpt('api_extensions_path', default="",
+               help=_("The path for API extensions")),
+    cfg.StrOpt('auth_strategy', default='keystone',
+               help=_("The type of authentication to use")),
+    cfg.BoolOpt('allow_bulk', default=True,
+                help=_("Allow the usage of the bulk API")),
+    cfg.BoolOpt('allow_pagination', default=False,
+                help=_("Allow the usage of the pagination")),
+    cfg.BoolOpt('allow_sorting', default=False,
+                help=_("Allow the usage of the sorting")),
+    cfg.StrOpt('pagination_max_limit', default="-1",
+               help=_("The maximum number of items returned in a single "
+                      "response, value was 'infinite' or negative integer "
+                      "means no limit")),
+]
 
 
 def setup_app(*args, **kwargs):
@@ -43,26 +67,10 @@ def setup_app(*args, **kwargs):
     app = pecan.make_app(
         pecan_config.app.root,
         debug=False,
-        wrap_app=_wrap_app,
+        wrap_app=restapp.auth_app,
         force_canonical=False,
         hooks=[],
         guess_content_type_from_ext=True
     )
-
-    return app
-
-
-def _wrap_app(app):
-    app = request_id.RequestId(app)
-
-    if cfg.CONF.auth_strategy == 'noauth':
-        pass
-    elif cfg.CONF.auth_strategy == 'keystone':
-        # NOTE(zhiyuan) pkg_resources will try to load tricircle to get module
-        # version, passing "project" as empty string to bypass it
-        app = auth_token.AuthProtocol(app, {'project': ''})
-    else:
-        raise t_exc.InvalidConfigurationOption(
-            opt_name='auth_strategy', opt_value=cfg.CONF.auth_strategy)
 
     return app

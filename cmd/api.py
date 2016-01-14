@@ -21,14 +21,13 @@ import sys
 
 from oslo_config import cfg
 from oslo_log import log as logging
-
-from werkzeug import serving
+from oslo_service import wsgi
 
 from tricircle.api import app
 from tricircle.common import config
-
 from tricircle.common.i18n import _LI
 from tricircle.common.i18n import _LW
+from tricircle.common import restapp
 
 
 CONF = cfg.CONF
@@ -36,8 +35,7 @@ LOG = logging.getLogger(__name__)
 
 
 def main():
-    config.init(sys.argv[1:])
-    config.setup_logging()
+    config.init(app.common_opts, sys.argv[1:])
     application = app.setup_app()
 
     host = CONF.bind_host
@@ -48,15 +46,16 @@ def main():
         LOG.warning(_LW("Wrong worker number, worker = %(workers)s"), workers)
         workers = 1
 
-    LOG.info(_LI("Server on http://%(host)s:%(port)s with %(workers)s"),
+    LOG.info(_LI("Admin API on http://%(host)s:%(port)s with %(workers)s"),
              {'host': host, 'port': port, 'workers': workers})
 
-    serving.run_simple(host, port,
-                       application,
-                       processes=workers)
+    service = wsgi.Server(CONF, 'Tricircle Admin_API', application, host, port)
+    restapp.serve(service, CONF, workers)
 
     LOG.info(_LI("Configuration:"))
     CONF.log_opt_values(LOG, std_logging.INFO)
+
+    restapp.wait()
 
 
 if __name__ == '__main__':

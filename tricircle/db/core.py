@@ -16,13 +16,20 @@
 
 from oslo_config import cfg
 import oslo_db.options as db_options
-from oslo_db.sqlalchemy import session as db_session
+import oslo_db.sqlalchemy.session as db_session
 from oslo_utils import strutils
 import sqlalchemy as sql
 from sqlalchemy.ext import declarative
 from sqlalchemy.inspection import inspect
 
-import tricircle.db.exception as db_exception
+from tricircle.common import exceptions
+
+
+db_opts = [
+    cfg.StrOpt('tricircle_db_connection',
+               help='db connection string for tricircle'),
+]
+cfg.CONF.register_opts(db_opts)
 
 _engine_facade = None
 ModelBase = declarative.declarative_base()
@@ -34,7 +41,7 @@ def _filter_query(model, query, filters):
     :param model:
     :param query:
     :param filters: list of filter dict with key 'key', 'comparator', 'value'
-    like {'key': 'site_id', 'comparator': 'eq', 'value': 'test_site_uuid'}
+    like {'key': 'pod_id', 'comparator': 'eq', 'value': 'test_pod_uuid'}
     :return:
     """
     filter_dict = {}
@@ -60,15 +67,15 @@ def _get_engine_facade():
     global _engine_facade
 
     if not _engine_facade:
-        _engine_facade = db_session.EngineFacade.from_config(cfg.CONF)
-
+        t_connection = cfg.CONF.tricircle_db_connection
+        _engine_facade = db_session.EngineFacade(t_connection, _conf=cfg.CONF)
     return _engine_facade
 
 
 def _get_resource(context, model, pk_value):
     res_obj = context.session.query(model).get(pk_value)
     if not res_obj:
-        raise db_exception.ResourceNotFound(model, pk_value)
+        raise exceptions.ResourceNotFound(model, pk_value)
     return res_obj
 
 
@@ -84,6 +91,14 @@ def create_resource(context, model, res_dict):
 def delete_resource(context, model, pk_value):
     res_obj = _get_resource(context, model, pk_value)
     context.session.delete(res_obj)
+
+
+def delete_resources(context, model, filters, delete_all=False):
+    # passing empty filter requires delete_all confirmation
+    assert filters or delete_all
+    query = context.session.query(model)
+    query = _filter_query(model, query, filters)
+    query.delete(synchronize_session=False)
 
 
 def get_engine():
@@ -104,10 +119,13 @@ def initialize():
         connection='sqlite:///:memory:')
 
 
-def query_resource(context, model, filters):
+def query_resource(context, model, filters, sorts):
     query = context.session.query(model)
-    objs = _filter_query(model, query, filters)
-    return [obj.to_dict() for obj in objs]
+    query = _filter_query(model, query, filters)
+    for sort_key, sort_dir in sorts:
+        sort_dir_func = sql.asc if sort_dir else sql.desc
+        query = query.order_by(sort_dir_func(sort_key))
+    return [obj.to_dict() for obj in query]
 
 
 def update_resource(context, model, pk_value, update_dict):
