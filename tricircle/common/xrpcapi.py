@@ -70,5 +70,12 @@ class XJobAPI(object):
         return version_cap
 
     def test_rpc(self, ctxt, payload):
-
         return self.client.call(ctxt, 'test_rpc', payload=payload)
+
+    def configure_extra_routes(self, ctxt, router_id):
+        # NOTE(zhiyuan) this RPC is called by plugin in Neutron server, whose
+        # control exchange is "neutron", however, we starts xjob without
+        # specifying its control exchange, so the default value "openstack" is
+        # used, thus we need to pass exchange as "openstack" here.
+        self.client.prepare(exchange='openstack').cast(
+            ctxt, 'configure_extra_routes', payload={'router': router_id})

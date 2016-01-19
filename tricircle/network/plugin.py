@@ -16,6 +16,7 @@
 from oslo_config import cfg
 import oslo_log.helpers as log_helpers
 from oslo_log import log
+from oslo_utils import uuidutils
 
 from neutron.api.v2 import attributes
 from neutron.common import exceptions
@@ -32,6 +33,8 @@ from neutron.db import portbindings_db
 from neutron.db import securitygroups_db
 from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
+from neutron.plugins.ml2.drivers import type_vlan
+import neutron.plugins.ml2.models as ml2_models
 
 from sqlalchemy import sql
 
@@ -42,18 +45,13 @@ import tricircle.common.context as t_context
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LI
 import tricircle.common.lock_handle as t_lock
+from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 
 
 tricircle_opts = [
-    # TODO(zhiyuan) change to segmentation range
-    # currently all tenants share one VLAN id for bridge networks, should
-    # allocate one isolated segmentation id for each tenant later
-    cfg.IntOpt('bridge_segmentation_id',
-               default=0,
-               help='vlan id of l3 bridge network'),
     cfg.StrOpt('bridge_physical_network',
                default='',
                help='name of l3 bridge physical network')
@@ -63,6 +61,15 @@ cfg.CONF.register_group(tricircle_opt_group)
 cfg.CONF.register_opts(tricircle_opts, group=tricircle_opt_group)
 
 LOG = log.getLogger(__name__)
+
+
+class TricircleVlanTypeDriver(type_vlan.VlanTypeDriver):
+    def __init__(self):
+        super(TricircleVlanTypeDriver, self).__init__()
+
+    # dump method
+    def get_mtu(self, physical_network):
+        return 0
 
 
 class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
@@ -93,7 +100,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         super(TricirclePlugin, self).__init__()
         LOG.info(_LI("Starting Tricircle Neutron Plugin"))
         self.clients = {}
+        self.xjob_handler = xrpcapi.XJobAPI()
         self._setup_rpc()
+        # use VlanTypeDriver to allocate VLAN for bridge network
+        self.vlan_driver = TricircleVlanTypeDriver()
+        self.vlan_driver.initialize()
 
     def _setup_rpc(self):
         self.endpoints = []
@@ -359,12 +370,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return port_list
 
     @staticmethod
-    def _get_map_filter_ids(key, value, top_bottom_map):
+    def _get_map_filter_ids(key, value, pod_id, top_bottom_map):
         if key in ('id', 'network_id', 'device_id'):
             id_list = []
             for _id in value:
+                key = '%s_%s' % (pod_id, _id)
                 if _id in top_bottom_map:
                     id_list.append(top_bottom_map[_id])
+                elif key in top_bottom_map:
+                    id_list.append(top_bottom_map[key])
                 else:
                     id_list.append(_id)
             return id_list
@@ -384,7 +398,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if filters:
             _filters = dict(filters)
             for key, value in _filters:
-                id_list = self._get_map_filter_ids(key, value, top_bottom_map)
+                id_list = self._get_map_filter_ids(
+                    key, value, current_pod['pod_id'], top_bottom_map)
                 if id_list:
                     _filters[key] = id_list
             params.update(_filters)
@@ -436,7 +451,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 for route in routes:
                     if route['bottom_id']:
                         bottom_top_map[route['bottom_id']] = route['top_id']
-                        top_bottom_map[route['top_id']] = route['bottom_id']
+                        if route['resource_type'] == t_constants.RT_PORT:
+                            key = route['top_id']
+                        else:
+                            # for non port resource, one top resource is
+                            # possible to be mapped to more than one bottom
+                            # resource
+                            key = '%s_%s' % (route['pod_id'], route['top_id'])
+                        top_bottom_map[key] = route['bottom_id']
 
         if limit:
             if marker:
@@ -481,8 +503,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 _filters = []
                 if filters:
                     for key, value in filters.iteritems():
-                        id_list = self._get_map_filter_ids(key, value,
-                                                           top_bottom_map)
+                        id_list = self._get_map_filter_ids(
+                            key, value, pod['pod_id'], top_bottom_map)
                         if id_list:
                             _filters.append({'key': key,
                                              'comparator': 'eq',
@@ -583,6 +605,26 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                 'admin_state_up': True}}
         _, net_id = self._prepare_top_element(
             t_ctx, q_ctx, project_id, pod, bridge_net_ele, 'network', net_body)
+
+        # allocate a VLAN id for bridge network
+        phy_net = cfg.CONF.tricircle.bridge_physical_network
+        with q_ctx.session.begin():
+            query = q_ctx.session.query(ml2_models.NetworkSegment)
+            query = query.filter_by(network_id=net_id)
+            if not query.first():
+                segment = self.vlan_driver.reserve_provider_segment(
+                    q_ctx.session, {'physical_network': phy_net})
+                record = ml2_models.NetworkSegment(
+                    id=uuidutils.generate_uuid(),
+                    network_id=net_id,
+                    network_type='vlan',
+                    physical_network=phy_net,
+                    segmentation_id=segment['segmentation_id'],
+                    segment_index=0,
+                    is_dynamic=False
+                )
+                q_ctx.session.add(record)
+
         subnet_body = {
             'subnet': {
                 'network_id': net_id,
@@ -675,7 +717,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         t_ctx = t_context.get_context_from_neutron_context(q_ctx)
 
         phy_net = cfg.CONF.tricircle.bridge_physical_network
-        vlan = cfg.CONF.tricircle.bridge_segmentation_id
+        with q_ctx.session.begin():
+            query = q_ctx.session.query(ml2_models.NetworkSegment)
+            query = query.filter_by(network_id=t_net['id'])
+            vlan = query.first().segmentation_id
+
         net_body = {'network': {'tenant_id': project_id,
                                 'name': t_net['id'],
                                 'provider:network_type': 'vlan',
@@ -847,4 +893,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 context, router_id, interface_info)
             raise
 
+        # TODO(zhiyuan) improve reliability
+        # this is a casting rpc, so no guarantee that this operation will
+        # success, find out a way to improve reliability, like introducing
+        # job mechanism for async operations
+        self.xjob_handler.configure_extra_routes(t_ctx, router_id)
         return return_info

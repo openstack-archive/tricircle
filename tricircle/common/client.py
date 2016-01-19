@@ -357,6 +357,34 @@ class Client(object):
         handle = self.service_handle_map[service]
         return handle.handle_create(cxt, resource, *args, **kwargs)
 
+    @_safe_operation('update')
+    def update_resources(self, resource, cxt, *args, **kwargs):
+        """Update resource in pod of top layer
+
+        Directly invoke this method to update resources, or use
+        update_(resource)s (self, cxt, *args, **kwargs). These methods are
+        automatically generated according to the supported resources of each
+        ResourceHandle class.
+
+        :param resource: resource type
+        :param cxt: context object
+        :param args, kwargs: passed according to resource type
+               --------------------------
+               resource -> args -> kwargs
+               --------------------------
+               router -> body -> none
+               --------------------------
+        :return: a dict containing resource information
+        :raises: EndpointNotAvailable
+        """
+        if cxt.is_admin and not cxt.auth_token:
+            cxt.auth_token = self._get_admin_token()
+            cxt.tenant = self._get_admin_project_id()
+
+        service = self.resource_service_map[resource]
+        handle = self.service_handle_map[service]
+        return handle.handle_update(cxt, resource, *args, **kwargs)
+
     @_safe_operation('delete')
     def delete_resources(self, resource, cxt, resource_id):
         """Delete resource in pod of top layer

@@ -2,9 +2,15 @@
 # Sample DevStack local.conf.
 #
 # This sample file is intended to be used for your typical Tricircle DevStack
-# environment that's running all of OpenStack on a single host.
+# multi-node environment. As this file configures, DevStack will setup one
+# bottom region running original Nova, Cinder and Neutron.
 #
-# No changes to this sample configuration are required for this to work.
+# This file works with local.conf.node_1.sample to help you build a two-node
+# three-region Tricircle environment. Keystone and Glance in top region are
+# shared by services in all the regions.
+#
+# Some options needs to be change to adapt to your environment, see README.md
+# for detail.
 #
 
 [[local|localrc]]
@@ -18,7 +24,6 @@ LOGFILE=/opt/stack/logs/stack.sh.log
 VERBOSE=True
 LOG_COLOR=True
 SCREEN_LOGDIR=/opt/stack/logs
-HOST_IP=127.0.0.1
 FIXED_RANGE=10.0.0.0/24
 NETWORK_GATEWAY=10.0.0.1
 FIXED_NETWORK_SIZE=256
@@ -29,30 +34,33 @@ PUBLIC_NETWORK_GATEWAY=10.100.100.3
 
 Q_USE_SECGROUP=False
 LIBVIRT_FIREWALL_DRIVER=nova.virt.firewall.NoopFirewallDriver
+NEUTRON_CREATE_INITIAL_NETWORKS=False
 
-Q_ENABLE_TRICIRCLE=True
-enable_plugin tricircle https://github.com/openstack/tricircle/
+HOST_IP=10.250.201.25
+REGION_NAME=Pod2
+SERVICE_HOST=$HOST_IP
+KEYSTONE_SERVICE_HOST=10.250.201.24
+KEYSTONE_AUTH_HOST=10.250.201.24
+GLANCE_SERVICE_HOST=10.250.201.24
 
-# Tricircle Services
-enable_service t-api
-enable_service t-ngw
-enable_service t-cgw
-enable_service t-job
+TENANT_VLAN_RANGE=2001:3000
+OVS_PHYSICAL_BRIDGE=br-bridge
+PHYSICAL_NETWORK=bridge
 
 # Use Neutron instead of nova-network
 disable_service n-net
 enable_service q-svc
-enable_service q-svc1
 enable_service q-dhcp
 enable_service q-agt
+enable_service q-l3
 
-disable_service n-obj
-disable_service n-cauth
-disable_service n-novnc
-disable_service q-l3
 enable_service c-api
 enable_service c-vol
 enable_service c-sch
+
+disable_service n-obj
+disable_service g-api
+disable_service g-reg
 disable_service c-bak
 disable_service tempest
 disable_service horizon

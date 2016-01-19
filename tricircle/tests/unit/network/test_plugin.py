@@ -28,6 +28,7 @@ from neutron.extensions import availability_zone as az_ext
 from neutron.ipam import subnet_alloc
 import neutronclient.common.exceptions as q_exceptions
 
+from oslo_config import cfg
 from oslo_utils import uuidutils
 
 from tricircle.common import constants
@@ -46,6 +47,8 @@ TOP_ROUTERPORT = []
 TOP_SUBNETPOOLS = []
 TOP_SUBNETPOOLPREFIXES = []
 TOP_IPALLOCATIONS = []
+TOP_VLANALLOCATIONS = []
+TOP_SEGMENTS = []
 BOTTOM1_NETS = []
 BOTTOM1_SUBNETS = []
 BOTTOM1_PORTS = []
@@ -56,6 +59,7 @@ BOTTOM2_PORTS = []
 BOTTOM2_ROUTERS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_ROUTERS, TOP_ROUTERPORT,
             TOP_SUBNETPOOLS, TOP_SUBNETPOOLPREFIXES, TOP_IPALLOCATIONS,
+            TOP_VLANALLOCATIONS, TOP_SEGMENTS,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_ROUTERS,
             BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_ROUTERS]
 RES_MAP = {'networks': TOP_NETS,
@@ -65,7 +69,9 @@ RES_MAP = {'networks': TOP_NETS,
            'routerports': TOP_ROUTERPORT,
            'ipallocations': TOP_IPALLOCATIONS,
            'subnetpools': TOP_SUBNETPOOLS,
-           'subnetpoolprefixes': TOP_SUBNETPOOLPREFIXES}
+           'subnetpoolprefixes': TOP_SUBNETPOOLPREFIXES,
+           'ml2_vlan_allocations': TOP_VLANALLOCATIONS,
+           'ml2_network_segments': TOP_SEGMENTS}
 
 
 class DotDict(dict):
@@ -103,10 +109,15 @@ class FakeNeutronClient(object):
             for i, port in enumerate(sorted_list):
                 if port['id'] == params['marker']:
                     return {'ports': sorted_list[i + 1:]}
-        if 'filters' in params and params['filters'].get('id'):
+        if 'filters' in params:
             return_list = []
             for port in port_list:
-                if port['id'] in params['filters']['id']:
+                is_selected = True
+                for key, value in params['filters'].iteritems():
+                    if key not in port or port[key] not in value:
+                        is_selected = False
+                        break
+                if is_selected:
                     return_list.append(port)
             return {'ports': return_list}
         return {'ports': port_list}
@@ -339,7 +350,16 @@ class FakeQuery(object):
         return self.records[0]
 
     def first(self):
-        return self.one()
+        if len(self.records) == 0:
+            return None
+        else:
+            return self.records[0]
+
+    def update(self, values):
+        for record in self.records:
+            for key, value in values.iteritems():
+                record[key] = value
+        return len(self.records)
 
     def all(self):
         return self.records
@@ -422,9 +442,23 @@ class FakeSession(object):
         pass
 
 
+class FakeRPCAPI(object):
+    def configure_extra_routes(self, context, router_id):
+        pass
+
+
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.set_ipam_backend()
+        self.xjob_handler = FakeRPCAPI()
+        self.vlan_driver = plugin.TricircleVlanTypeDriver()
+
+        phynet = 'bridge'
+        cfg.CONF.set_override('bridge_physical_network', phynet,
+                              group='tricircle')
+        TOP_VLANALLOCATIONS.append(
+            DotDict({'physical_network': phynet,
+                     'vlan_id': 2000, 'allocated': False}))
 
     def _get_client(self, pod_name):
         return FakeClient(pod_name)
@@ -584,6 +618,33 @@ class PluginTest(unittest.TestCase):
         self.assertEqual([{'id': 'top_id_0', 'name': 'top'}], ports1)
         self.assertEqual([{'id': 'top_id_1', 'name': 'bottom'}], ports2)
         self.assertEqual([], ports3)
+
+        TOP_ROUTERS.append({'id': 'router_id'})
+        b_routers_list = [BOTTOM1_ROUTERS, BOTTOM2_ROUTERS]
+        b_ports_list = [BOTTOM1_PORTS, BOTTOM2_PORTS]
+        for i in xrange(1, 3):
+            router_id = 'router_%d_id' % i
+            b_routers_list[i - 1].append({'id': router_id})
+            route = {
+                'top_id': 'router_id',
+                'pod_id': 'pod_id_%d' % i,
+                'bottom_id': router_id,
+                'resource_type': 'router'}
+            with self.context.session.begin():
+                core.create_resource(self.context,
+                                     models.ResourceRouting, route)
+            # find port and add device_id
+            for port in b_ports_list[i - 1]:
+                port_id = 'bottom_id_%d' % i
+                if port['id'] == port_id:
+                    port['device_id'] = router_id
+        ports = fake_plugin.get_ports(neutron_context,
+                                      filters={'device_id': ['router_id']})
+        expected = [{'id': 'top_id_1', 'name': 'bottom',
+                     'device_id': 'router_id'},
+                    {'id': 'top_id_2', 'name': 'bottom',
+                     'device_id': 'router_id'}]
+        self.assertItemsEqual(expected, ports)
 
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'delete_port')
@@ -762,9 +823,10 @@ class PluginTest(unittest.TestCase):
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
+    @patch.object(FakeRPCAPI, 'configure_extra_routes')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_add_interface(self, mock_context, mock_action):
+    def test_add_interface(self, mock_context, mock_action, mock_rpc):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -792,6 +854,14 @@ class PluginTest(unittest.TestCase):
 
         self.assertEqual(b_net_id, map_net_id)
         self.assertEqual(b_subnet_id, map_subnet_id)
+        mock_rpc.assert_called_once_with(t_ctx, t_router_id)
+        for b_net in BOTTOM1_NETS:
+            if 'provider:segmentation_id' in b_net:
+                self.assertEqual(TOP_VLANALLOCATIONS[0]['vlan_id'],
+                                 b_net['provider:segmentation_id'])
+        self.assertEqual(True, TOP_VLANALLOCATIONS[0]['allocated'])
+        self.assertEqual(TOP_VLANALLOCATIONS[0]['vlan_id'],
+                         TOP_SEGMENTS[0]['segmentation_id'])
 
         bridge_port_name = constants.bridge_port_name % (tenant_id,
                                                          b_router_id)
@@ -853,6 +923,7 @@ class PluginTest(unittest.TestCase):
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
+    @patch.object(FakeRPCAPI, 'configure_extra_routes', new=mock.Mock)
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_exception(self, mock_context, mock_action):
@@ -912,6 +983,7 @@ class PluginTest(unittest.TestCase):
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
+    @patch.object(FakeRPCAPI, 'configure_extra_routes', new=mock.Mock)
     @patch.object(FakeClient, 'delete_ports')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')

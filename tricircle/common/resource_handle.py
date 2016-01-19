@@ -47,9 +47,9 @@ client_opts = [
 cfg.CONF.register_opts(client_opts, group='client')
 
 
-LIST, CREATE, DELETE, GET, ACTION = 1, 2, 4, 8, 16
-operation_index_map = {'list': LIST, 'create': CREATE,
-                       'delete': DELETE, 'get': GET, 'action': ACTION}
+LIST, CREATE, DELETE, GET, ACTION, UPDATE = 1, 2, 4, 8, 16, 32
+operation_index_map = {'list': LIST, 'create': CREATE, 'delete': DELETE,
+                       'get': GET, 'action': ACTION, 'update': UPDATE}
 
 LOG = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class NeutronResourceHandle(ResourceHandle):
     support_resource = {'network': LIST | CREATE | DELETE | GET,
                         'subnet': LIST | CREATE | DELETE | GET,
                         'port': LIST | CREATE | DELETE | GET,
-                        'router': LIST | CREATE | ACTION,
+                        'router': LIST | CREATE | ACTION | UPDATE,
                         'security_group': LIST,
                         'security_group_rule': LIST}
 
@@ -146,6 +146,16 @@ class NeutronResourceHandle(ResourceHandle):
         try:
             client = self._get_client(cxt)
             return getattr(client, 'create_%s' % resource)(
+                *args, **kwargs)[resource]
+        except q_exceptions.ConnectionFailed:
+            self.endpoint_url = None
+            raise exceptions.EndpointNotAvailable(
+                'neutron', client.httpclient.endpoint_url)
+
+    def handle_update(self, cxt, resource, *args, **kwargs):
+        try:
+            client = self._get_client(cxt)
+            return getattr(client, 'update_%s' % resource)(
                 *args, **kwargs)[resource]
         except q_exceptions.ConnectionFailed:
             self.endpoint_url = None

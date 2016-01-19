@@ -276,7 +276,6 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
             iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
 
-            iniset $NEUTRON_CONF tricircle bridge_segmentation_id `echo $TENANT_VLAN_RANGE | awk -F: '{print $2}'`
             iniset $NEUTRON_CONF tricircle bridge_physical_network $PHYSICAL_NETWORK
         fi
 
