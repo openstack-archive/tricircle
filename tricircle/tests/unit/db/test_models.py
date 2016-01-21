@@ -14,6 +14,7 @@
 #    under the License.
 
 
+import datetime
 import inspect
 import unittest
 
@@ -47,6 +48,8 @@ def _get_field_value(column):
         return 1.0
     elif isinstance(column.type, sql.Boolean):
         return True
+    elif isinstance(column.type, sql.DateTime):
+        return datetime.datetime.utcnow()
     else:
         return None
 
@@ -222,8 +225,9 @@ class ModelsTest(unittest.TestCase):
                 with self.context.session.begin():
                     core.create_resource(
                         self.context, model_class, create_dict)
-        except Exception:
-            self.fail('test_resources raised Exception unexpectedly')
+        except Exception as e:
+            msg = str(e)
+            self.fail('test_resources raised Exception unexpectedly %s' % msg)
 
     def test_resource_routing_unique_key(self):
         pod = {'pod_id': 'test_pod1_uuid',

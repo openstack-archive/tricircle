@@ -14,13 +14,17 @@
 #    under the License.
 
 
+import threading
+
+import sqlalchemy as sql
+from sqlalchemy.ext import declarative
+from sqlalchemy.inspection import inspect
+
+
 from oslo_config import cfg
 import oslo_db.options as db_options
 import oslo_db.sqlalchemy.session as db_session
 from oslo_utils import strutils
-import sqlalchemy as sql
-from sqlalchemy.ext import declarative
-from sqlalchemy.inspection import inspect
 
 from tricircle.common import exceptions
 
@@ -31,6 +35,7 @@ db_opts = [
 ]
 cfg.CONF.register_opts(db_opts)
 
+_LOCK = threading.Lock()
 _engine_facade = None
 ModelBase = declarative.declarative_base()
 
@@ -64,12 +69,15 @@ def _filter_query(model, query, filters):
 
 
 def _get_engine_facade():
-    global _engine_facade
+    global _LOCK
+    with _LOCK:
+        global _engine_facade
 
-    if not _engine_facade:
-        t_connection = cfg.CONF.tricircle_db_connection
-        _engine_facade = db_session.EngineFacade(t_connection, _conf=cfg.CONF)
-    return _engine_facade
+        if not _engine_facade:
+            t_connection = cfg.CONF.tricircle_db_connection
+            _engine_facade = db_session.EngineFacade(t_connection,
+                                                     _conf=cfg.CONF)
+        return _engine_facade
 
 
 def _get_resource(context, model, pk_value):

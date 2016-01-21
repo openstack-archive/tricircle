@@ -56,7 +56,9 @@ class BadRequest(TricircleException):
 
 
 class NotFound(TricircleException):
-    pass
+    message = _("Resource could not be found.")
+    code = 404
+    safe = True
 
 
 class Conflict(TricircleException):
@@ -120,3 +122,45 @@ class ResourceNotSupported(TricircleException):
     def __init__(self, resource, method):
         super(ResourceNotSupported, self).__init__(resource=resource,
                                                    method=method)
+
+
+class Invalid(TricircleException):
+    message = _("Unacceptable parameters.")
+    code = 400
+
+
+class InvalidReservationExpiration(Invalid):
+    message = _("Invalid reservation expiration %(expire)s.")
+
+
+class InvalidQuotaValue(Invalid):
+    message = _("Change would make usage less than 0 for the following "
+                "resources: %(unders)s")
+
+
+class QuotaNotFound(NotFound):
+    message = _("Quota could not be found")
+
+
+class QuotaResourceUnknown(QuotaNotFound):
+    message = _("Unknown quota resources %(unknown)s.")
+
+
+class ProjectQuotaNotFound(QuotaNotFound):
+    message = _("Quota for project %(project_id)s could not be found.")
+
+
+class QuotaClassNotFound(QuotaNotFound):
+    message = _("Quota class %(class_name)s could not be found.")
+
+
+class QuotaUsageNotFound(QuotaNotFound):
+    message = _("Quota usage for project %(project_id)s could not be found.")
+
+
+class ReservationNotFound(QuotaNotFound):
+    message = _("Quota reservation %(uuid)s could not be found.")
+
+
+class OverQuota(TricircleException):
+    message = _("Quota exceeded for resources: %(overs)s")

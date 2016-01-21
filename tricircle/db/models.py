@@ -13,11 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-from oslo_db.sqlalchemy import models
 import sqlalchemy as sql
 from sqlalchemy.dialects import mysql
+from sqlalchemy.orm import relationship
 from sqlalchemy import schema
+
+from oslo_db.sqlalchemy import models
+from oslo_utils import timeutils
 
 from tricircle.db import core
 
@@ -143,7 +145,26 @@ class KeyPair(core.ModelBase, core.DictBase, models.TimestampMixin):
                       nullable=False, server_default='ssh')
 
 
-class Quota(core.ModelBase, core.DictBase, models.TimestampMixin):
+# Quota part are ported from Cinder for hierarchy multi-tenancy quota control
+class QuotasBase(models.ModelBase, core.DictBase,
+                 models.TimestampMixin, models.SoftDeleteMixin):
+    """QuotasBase.
+
+    provide base class for quota series tables. For it inherits from
+    models.ModelBase, this is different from other tables
+    """
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+
+    metadata = None
+
+    def delete(self, session):
+        """Delete this object."""
+        self.deleted = True
+        self.deleted_at = timeutils.utcnow()
+        self.save(session=session)
+
+
+class Quotas(core.ModelBase, QuotasBase):
     """Represents a single quota override for a project.
 
     If there is no row for a given project id and resource, then the
@@ -154,16 +175,96 @@ class Quota(core.ModelBase, core.DictBase, models.TimestampMixin):
     """
     __tablename__ = 'quotas'
     __table_args__ = (
-        schema.UniqueConstraint('project_id', 'resource',
-                                name='uniq_quotas0project_id0resource'),
-    )
-    attributes = ['id', 'project_id', 'resource', 'hard_limit',
-                  'created_at', 'updated_at']
+        schema.UniqueConstraint(
+            'project_id', 'resource', 'deleted',
+            name='uniq_quotas0project_id0resource0deleted'),)
+    attributes = ['id', 'project_id', 'resource',
+                  'hard_limit', 'allocated',
+                  'created_at', 'updated_at', 'deleted_at', 'deleted']
 
     id = sql.Column(sql.Integer, primary_key=True)
-    project_id = sql.Column(sql.String(255))
+    project_id = sql.Column(sql.String(255), index=True)
     resource = sql.Column(sql.String(255), nullable=False)
     hard_limit = sql.Column(sql.Integer)
+    allocated = sql.Column(sql.Integer, default=0)
+
+
+class QuotaClasses(core.ModelBase, QuotasBase):
+    """Quota_classes.
+
+    make default quota as a update-able quota.Mainly for the command
+    quota-class-show and quota-class-update
+    """
+    __tablename__ = 'quota_classes'
+    __table_args__ = (
+        schema.UniqueConstraint(
+            'class_name', 'resource', 'deleted',
+            name='uniq_quota_classes0class_name0resource0deleted'),
+    )
+    attributes = ['id', 'class_name', 'resource', 'hard_limit',
+                  'created_at', 'updated_at', 'deleted_at', 'deleted']
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    class_name = sql.Column(sql.String(255), index=True)
+    resource = sql.Column(sql.String(255), nullable=False)
+    hard_limit = sql.Column(sql.Integer)
+
+
+class QuotaUsages(core.ModelBase, QuotasBase):
+    """Quota_uages.
+
+    store quota usages for project resource
+    """
+    __tablename__ = 'quota_usages'
+    __table_args__ = ()
+    attributes = ['id', 'project_id', 'user_id', 'resource',
+                  'in_use', 'reserved', 'until_refresh',
+                  'created_at', 'updated_at', 'deleted_at', 'deleted']
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    project_id = sql.Column(sql.String(255), index=True)
+    user_id = sql.Column(sql.String(255), index=True)
+    resource = sql.Column(sql.String(255), nullable=False)
+
+    in_use = sql.Column(sql.Integer)
+    reserved = sql.Column(sql.Integer, default=0)
+
+    until_refresh = sql.Column(sql.Integer, default=0)
+
+    @property
+    def total(self):
+        return self.in_use + self.reserved
+
+
+class Reservation(core.ModelBase, QuotasBase):
+    """Reservation.
+
+    Represents a resource reservation for quotas
+    """
+    __tablename__ = 'reservations'
+    __table_args__ = ()
+    attributes = ['id', 'uuid', 'usage_id', 'project_id', 'resource',
+                  'delta', 'expire',
+                  'created_at', 'updated_at', 'deleted_at', 'deleted']
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    uuid = sql.Column(sql.String(36), nullable=False)
+
+    usage_id = sql.Column(sql.Integer,
+                          sql.ForeignKey('quota_usages.id'),
+                          nullable=False)
+
+    project_id = sql.Column(sql.String(255), index=True)
+    resource = sql.Column(sql.String(255))
+
+    delta = sql.Column(sql.Integer)
+    expire = sql.Column(sql.DateTime, nullable=False)
+
+    usage = relationship(
+        "QuotaUsages",
+        foreign_keys=usage_id,
+        primaryjoin='and_(Reservation.usage_id == QuotaUsages.id,'
+                    'QuotaUsages.deleted == 0)')
 
 
 class VolumeTypes(core.ModelBase, core.DictBase, models.TimestampMixin):

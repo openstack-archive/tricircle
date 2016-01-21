@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
+
 from pecan import request
 
 import oslo_context.context as oslo_ctx
@@ -119,3 +121,13 @@ class Context(ContextBase):
         if not self._session:
             self._session = core.get_session()
         return self._session
+
+    def elevated(self, read_deleted=None, overwrite=False):
+        """Return a version of this context with admin flag set."""
+        ctx = copy.copy(self)
+        ctx.is_admin = True
+
+        if read_deleted is not None:
+            ctx.read_deleted = read_deleted
+
+        return ctx
