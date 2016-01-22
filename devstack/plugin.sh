@@ -270,13 +270,15 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF DEFAULT core_plugin "$Q_PLUGIN_CLASS"
             iniset $NEUTRON_CONF DEFAULT service_plugins ""
             iniset $NEUTRON_CONF DEFAULT tricircle_db_connection `database_connection_url tricircle`
+            iniset $NEUTRON_CONF DEFAULT notify_nova_on_port_data_changes False
+            iniset $NEUTRON_CONF DEFAULT notify_nova_on_port_status_changes False
             iniset $NEUTRON_CONF client admin_username admin
             iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
             iniset $NEUTRON_CONF client admin_tenant demo
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
             iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
 
-            iniset $NEUTRON_CONF tricircle bridge_physical_network $PHYSICAL_NETWORK
+            iniset $NEUTRON_CONF tricircle bridge_physical_network `echo $OVS_BRIDGE_MAPPINGS | awk -F: '{print $1}'`
         fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then

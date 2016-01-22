@@ -345,6 +345,7 @@ class Client(object):
                network -> body -> none
                subnet -> body -> none
                port -> body -> none
+               floatingip -> body -> none
                --------------------------
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
@@ -448,6 +449,7 @@ class Client(object):
                aggregate -> add_host -> aggregate, host -> none
                volume -> set_bootable -> volume, flag -> none
                router -> add_interface -> router, body -> none
+               router -> add_gateway -> router, body -> none
                --------------------------
         :return: None
         :raises: EndpointNotAvailable

@@ -13,8 +13,16 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from neutron.common import config
+from oslo_config import cfg
 from oslotest import base
 
 
 class TestCase(base.BaseTestCase):
     """Test case base class for all unit tests."""
+    def setUp(self):
+        # neutron has a configuration option "bind_port" which conflicts with
+        # tricircle configuration option, so unregister this option before
+        # running tricircle tests
+        cfg.CONF.unregister_opts(config.core_opts)
+        super(TestCase, self).setUp()

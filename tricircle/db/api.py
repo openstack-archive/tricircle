@@ -96,6 +96,7 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
 
     :param context: context object
     :param top_id: resource id on top
+    :param resource_type: resource type
     :return: a list of tuple (pod dict, bottom_id)
     """
     route_filters = [{'key': 'top_id', 'comparator': 'eq', 'value': top_id},
@@ -112,6 +113,22 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
             pod = core.get_resource(context, models.Pod, route['pod_id'])
             mappings.append((pod, route['bottom_id']))
     return mappings
+
+
+def get_bottom_id_by_top_id_pod_name(context, top_id, pod_name, resource_type):
+    """Get resource bottom id by top id and bottom pod name
+
+    :param context: context object
+    :param top_id: resource id on top
+    :param pod_name: name of bottom pod
+    :param resource_type: resource type
+    :return:
+    """
+    mappings = get_bottom_mappings_by_top_id(context, top_id, resource_type)
+    for pod, bottom_id in mappings:
+        if pod['pod_name'] == pod_name:
+            return bottom_id
+    return None
 
 
 def get_bottom_mappings_by_tenant_pod(context,

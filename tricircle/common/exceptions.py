@@ -164,3 +164,17 @@ class ReservationNotFound(QuotaNotFound):
 
 class OverQuota(TricircleException):
     message = _("Quota exceeded for resources: %(overs)s")
+
+
+class ExternalNetPodNotSpecify(TricircleException):
+    message = "Pod for external network not specified"
+
+    def __init__(self):
+        super(ExternalNetPodNotSpecify, self).__init__()
+
+
+class PodNotFound(NotFound):
+    message = "Pod %(pod_name)s could not be found."
+
+    def __init__(self, pod_name):
+        super(PodNotFound, self).__init__(pod_name=pod_name)

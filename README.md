@@ -156,7 +156,29 @@ the network.
 To play cross-pod L3 networking, two nodes are needed. One to run Tricircle
 and one bottom pod, the other one to run another bottom pod. Both nodes have
 two network interfaces, for management and provider VLAN network. For VLAN
-network, the physical network infrastructure should support VLAN tagging.
+network, the physical network infrastructure should support VLAN tagging. If
+you would like to try north-south networking, too, you should prepare one more
+network interface in the second node for external network. In this guide, the
+external network is also vlan type, so the local.conf sample is based on vlan
+type external network setup.
+
+> DevStack supports multiple regions sharing the same Keystone, but one recent
+> merged [patch](https://github.com/openstack-dev/devstack/commit/923be5f791c78fa9f21b2e217a6b61328c493a38#diff-4f76c30de6fd72bd49643dbcf1007a61)
+> introduces a bug to DevStack so you may have problem deploying Tricircle if
+> you use the newest DevStack code. One quick fix is:
+```
+> diff --git a/stack.sh b/stack.sh
+> index c21ff77..0f8251e 100755
+> --- a/stack.sh
+> +++ b/stack.sh
+> @@ -1024,7 +1024,7 @@ export OS_USER_DOMAIN_ID=default
+>  export OS_PASSWORD=$ADMIN_PASSWORD
+>  export OS_PROJECT_NAME=admin
+>  export OS_PROJECT_DOMAIN_ID=default
+> -export OS_REGION_NAME=$REGION_NAME
+> +export OS_REGION_NAME=RegionOne
+```
+> RegionOne is the region name of top OpenStack(Tricircle).
 
 ### Setup
 
@@ -168,10 +190,18 @@ In node1,
 local.conf, change password in the file if needed.
 - 4 Change the following options according to your environment:
 ```
-HOST_IP=10.250.201.24 - change to your management interface ip
-TENANT_VLAN_RANGE=2001:3000 - change to VLAN range your physical network supports
-PHYSICAL_NETWORK=bridge - change to whatever you like
-OVS_PHYSICAL_BRIDGE=br-bridge - change to whatever you like
+HOST_IP=10.250.201.24
+    - change to your management interface ip.
+Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000)
+    - the format is (network_vlan_ranges=<physical network name>:<min vlan>:<max vlan>),
+      you can change physical network name, but remember to adapt your change to the
+      commands showed in this guide; also, change min vlan and max vlan to adapt the
+      vlan range your physical network supports.
+OVS_BRIDGE_MAPPINGS=bridge:br-bridge
+    - the format is <physical network name>:<ovs bridge name>, you can change these names,
+      but remember to adapt your change to the commands showed in this guide.
+Q_USE_PROVIDERNET_FOR_PUBLIC=True
+    - use this option if you would like to try L3 north-south networking.
 ```
 Tricircle doesn't support security group currently so we use these two options
 to disable security group functionality.
@@ -197,14 +227,32 @@ In node2,
 local.conf, change password in the file if needed.
 - 4 Change the following options according to your environment:
 ```
-HOST_IP=10.250.201.25 - change to your management interface ip
-KEYSTONE_SERVICE_HOST=10.250.201.24 - change to management interface ip of node1
-KEYSTONE_AUTH_HOST=10.250.201.24 - change to management interface ip of node1
-GLANCE_SERVICE_HOST=10.250.201.24 - change to management interface ip of node1
-TENANT_VLAN_RANGE=2001:3000 - change to VLAN range your physical network supports
-PHYSICAL_NETWORK=bridge - change to whatever you like
-OVS_PHYSICAL_BRIDGE=br-bridge - change to whatever you like
+HOST_IP=10.250.201.25
+    - change to your management interface ip.
+KEYSTONE_SERVICE_HOST=10.250.201.24
+    - change to management interface ip of node1.
+KEYSTONE_AUTH_HOST=10.250.201.24
+    - change to management interface ip of node1.
+GLANCE_SERVICE_HOST=10.250.201.24
+    - change to management interface ip of node1.
+Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
+    - the format is (network_vlan_ranges=<physical network name>:<min vlan>:<max vlan>),
+      you can change physical network name, but remember to adapt your change to the
+      commands showed in this guide; also, change min vlan and max vlan to adapt the
+      vlan range your physical network supports.
+OVS_BRIDGE_MAPPINGS=bridge:br-bridge,externn:br-ext
+    - the format is <physical network name>:<ovs bridge name>, you can change these names,
+      but remember to adapt your change to the commands showed in this guide.
+Q_USE_PROVIDERNET_FOR_PUBLIC=True
+    - use this option if you would like to try L3 north-south networking.
 ```
+In this guide, we define two physical networks in node2, one is "bridge" for
+bridge network, the other one is "extern" for external network. If you do not
+want to try L3 north-south networking, you can simply remove the "extern" part.
+The external network type we use in the guide is vlan, if you want to use other
+network type like flat, please refer to
+[DevStack document](http://docs.openstack.org/developer/devstack/).
+
 - 5 Create OVS bridge and attach the VLAN network interface to it
 ```
 sudo ovs-vsctl add-br br-bridge
@@ -259,10 +307,10 @@ curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json
 - 3 Create network with AZ scheduler hints specified
 ```
 curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-    -H "X-Auth-Token: b5dc59ebfdb74dbfa2a6351682d10a6e" \
+    -H "X-Auth-Token: $token" \
     -d '{"network": {"name": "net1", "admin_state_up": true, "availability_zone_hints": ["az1"]}}'
 curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-    -H "X-Auth-Token: b5dc59ebfdb74dbfa2a6351682d10a6e" \
+    -H "X-Auth-Token: $token" \
     -d '{"network": {"name": "net2", "admin_state_up": true, "availability_zone_hints": ["az2"]}}'
 ```
 Here we create two networks separately bound to Pod1 and Pod2
@@ -296,3 +344,52 @@ nova --os-region-name Pod2 get-vnc-console vm2 novnc
 Login one virtual machine via VNC and you should find it can "ping" the other
 virtual machine. Security group functionality is disabled in bottom OpenStack
 so no need to configure security group rule.
+
+### North-South Networking
+
+Before running DevStack in node2, you need to create another ovs bridge for
+external network and then attach port.
+```
+sudo ovs-vsctl add-br br-ext
+sudo ovs-vsctl add-port br-ext eth2
+```
+
+Below listed the operations related to north-south networking:
+- 1 Create external network
+```
+curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
+     -H "X-Auth-Token: $token" \
+     -d '{"network": {"name": "ext-net", "admin_state_up": true, "router:external": true, "provider:network_type": "vlan", "provider:physical_network": "extern", "availability_zone_hints": ["Pod2"]}}'
+```
+Pay attention that when creating external network, we still need to pass
+"availability_zone_hints" parameter, but the value we pass is the name of pod,
+not the name of availability zone.
+> Currently external network needs to be created before attaching subnet to the
+> router, because plugin needs to utilize external network information to setup
+> bridge network when handling interface adding operation. This limitation will
+> be removed later.
+
+- 2 Create external subnet
+```
+neutron subnet-create --name ext-subnet --disable-dhcp ext-net 163.3.124.0/24
+```
+- 3 Set router external gateway
+```
+neutron router-gateway-set router ext-net
+```
+Now virtual machine in the subnet attached to the router should be able to
+"ping" machines in the external network. In our test, we use hypervisor tool
+to directly start a virtual machine in the external network to check the
+network connectivity.
+- 4 Create floating ip
+```
+neutron floatingip-create ext-net
+```
+- 5 Associate floating ip
+```
+neutron floatingip-list
+neutron port-list
+neutron floatingip-associate $floatingip_id $port_id
+```
+Now you should be able to access virtual machine with floating ip bound from
+the external network.

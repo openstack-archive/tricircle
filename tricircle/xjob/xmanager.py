@@ -143,13 +143,19 @@ class XManager(PeriodicTasks):
             b_inferfaces = bottom_client.list_ports(
                 ctx, filters=[{'key': 'device_id',
                                'comparator': 'eq',
-                               'value': b_router_ids[i]}])
+                               'value': b_router_ids[i]},
+                              {'key': 'device_owner',
+                               'comparator': 'eq',
+                               'value': 'network:router_interface'}])
             cidrs = []
             for b_inferface in b_inferfaces:
                 ip = b_inferface['fixed_ips'][0]['ip_address']
-                bridge_cidr = '100.0.0.0/8'
-                if netaddr.IPAddress(ip) in netaddr.IPNetwork(bridge_cidr):
+                ew_bridge_cidr = '100.0.0.0/9'
+                ns_bridge_cidr = '100.128.0.0/9'
+                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ew_bridge_cidr):
                     router_bridge_ip_map[b_router_ids[i]] = ip
+                    continue
+                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ns_bridge_cidr):
                     continue
                 b_subnet = bottom_client.get_subnets(
                     ctx, b_inferface['fixed_ips'][0]['subnet_id'])
@@ -157,6 +163,8 @@ class XManager(PeriodicTasks):
             router_cidr_map[b_router_ids[i]] = cidrs
 
         for i, b_router_id in enumerate(b_router_ids):
+            if b_router_id not in router_bridge_ip_map:
+                continue
             bottom_client = self._get_client(pod_name=b_pods[i]['pod_name'])
             extra_routes = []
             for router_id, cidrs in router_cidr_map.iteritems():

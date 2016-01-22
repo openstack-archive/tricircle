@@ -253,17 +253,14 @@ class ServerController(rest.RestController):
         return bottom_port_id
 
     def _handle_port(self, context, pod, port):
-        mappings = db_api.get_bottom_mappings_by_top_id(context, port['id'],
-                                                        constants.RT_PORT)
-        if mappings:
-            # TODO(zhiyuan) judge return or raise exception
-            # NOTE(zhiyuan) user provides a port that already has mapped
-            # bottom port, return bottom id or raise an exception?
-            return mappings[0][1]
         top_client = self._get_client()
-        # NOTE(zhiyuan) at this moment, bottom port has not been created,
-        # neutron plugin directly retrieves information from top, so the
-        # network id and subnet id in this port dict are safe to use
+        # NOTE(zhiyuan) at this moment, it is possible that the bottom port has
+        # been created. if user creates a port and associate it with a floating
+        # ip before booting a vm, tricircle plugin will create the bottom port
+        # first in order to setup floating ip in bottom pod. but it is still
+        # safe for us to use network id and subnet id in the returned port dict
+        # since tricircle plugin will do id mapping and guarantee ids in the
+        # dict are top id.
         net = top_client.get_networks(context, port['network_id'])
         subnets = []
         for fixed_ip in port['fixed_ips']:
@@ -283,6 +280,20 @@ class ServerController(rest.RestController):
                 body[field] = origin[field]
         return body
 
+    @staticmethod
+    def _remove_fip_info(servers):
+        for server in servers:
+            if 'addresses' not in server:
+                continue
+            for addresses in server['addresses'].values():
+                remove_index = -1
+                for i, address in enumerate(addresses):
+                    if address.get('OS-EXT-IPS:type') == 'floating':
+                        remove_index = i
+                        break
+                if remove_index >= 0:
+                    del addresses[remove_index]
+
     def _get_all(self, context):
         ret = []
         pods = db_api.list_pods(context)
@@ -290,7 +301,9 @@ class ServerController(rest.RestController):
             if not pod['az_name']:
                 continue
             client = self._get_client(pod['pod_name'])
-            ret.extend(client.list_servers(context))
+            servers = client.list_servers(context)
+            self._remove_fip_info(servers)
+            ret.extend(servers)
         return ret
 
     @expose(generic=True, template='json')

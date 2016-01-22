@@ -123,12 +123,14 @@ class XManagerTest(unittest.TestCase):
             port = {
                 'network_id': network['id'],
                 'device_id': router['id'],
+                'device_owner': 'network:router_interface',
                 'fixed_ips': [{'subnet_id': subnet['id'],
                                'ip_address': subnet['gateway_ip']}]
             }
             bridge_port = {
                 'network_id': bridge_network['id'],
                 'device_id': router['id'],
+                'device_owner': 'network:router_interface',
                 'fixed_ips': [{'subnet_id': bridge_subnet['id'],
                                'ip_address': bridge_subnet['gateway_ip']}]
             }
@@ -153,6 +155,7 @@ class XManagerTest(unittest.TestCase):
                                'gateway_ip': '10.0.3.1'})
         BOTTOM1_PORT.append({'network_id': 'network_3_id',
                              'device_id': 'router_1_id',
+                             'device_owner': 'network:router_interface',
                              'fixed_ips': [{'subnet_id': 'subnet_3_id',
                                             'ip_address': '10.0.3.1'}]})
 
