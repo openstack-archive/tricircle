@@ -381,7 +381,12 @@ class FakeQuery(object):
         keys = []
         values = []
         for e in criteria:
-            if not isinstance(e.right, elements.Null):
+            if not hasattr(e, 'right') and isinstance(e, elements.False_):
+                # filter is a single False value, set key to a 'INVALID_FIELD'
+                # then no records will be returned
+                keys.append('INVALID_FIELD')
+                values.append(False)
+            elif not isinstance(e.right, elements.Null):
                 _filter.append(e)
             else:
                 if e.left.name == 'network_id' and (

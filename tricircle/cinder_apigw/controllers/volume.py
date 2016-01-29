@@ -132,9 +132,18 @@ class VolumeController(rest.RestController):
                              'project_id': self.tenant_id,
                              'resource_type': cons.RT_VOLUME})
                 except Exception as e:
-                    LOG.error(_LE('Fail to create volume: %(exception)s'),
-                              {'exception': e})
-                    return Response(_('Failed to create volume'), 500)
+                    LOG.exception(_LE('Failed to create volume '
+                                      'resource routing'
+                                      'top_id: %(top_id)s ,'
+                                      'bottom_id: %(bottom_id)s ,'
+                                      'pod_id: %(pod_id)s ,'
+                                      '%(exception)s '),
+                                  {'top_id': b_vol_ret['id'],
+                                   'bottom_id': b_vol_ret['id'],
+                                   'pod_id': pod['pod_id'],
+                                   'exception': e})
+                    return Response(_('Failed to create volume '
+                                      'resource routing'), 500)
 
                 ret_vol = self._convert_object(b_release, t_release,
                                                b_vol_ret,

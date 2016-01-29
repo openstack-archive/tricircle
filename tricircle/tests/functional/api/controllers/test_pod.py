@@ -12,15 +12,14 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
 from mock import patch
-
 import pecan
 from pecan.configuration import set_config
 from pecan.testing import load_test_app
 
 from oslo_config import cfg
 from oslo_config import fixture as fixture_config
+import oslo_db.exception as db_exc
 
 from tricircle.api import app
 from tricircle.common import az_ag
@@ -106,6 +105,52 @@ class TestPodController(API_FunctionalTest):
 
             self.assertEqual(response.status_int,
                              test_pod['expected_error'])
+
+    def fake_create_ag_az(context, ag_name, az_name):
+        raise db_exc.DBDuplicateEntry
+
+    @patch.object(context, 'is_admin_context',
+                  new=fake_is_admin)
+    @patch.object(az_ag, 'create_ag_az',
+                  new=fake_create_ag_az)
+    def test_post_dup_db_exception(self):
+        pods = [
+            {
+                "pod":
+                {
+                    "pod_name": "Pod1",
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
+                    "az_name": "AZ1"
+                },
+                "expected_error": 409
+            },
+            ]
+
+        self._test_and_check(pods)
+
+    def fake_create_ag_az_exp(context, ag_name, az_name):
+        raise Exception
+
+    @patch.object(context, 'is_admin_context',
+                  new=fake_is_admin)
+    @patch.object(core, 'create_resource',
+                  new=fake_create_ag_az_exp)
+    def test_post_exception(self):
+        pods = [
+            {
+                "pod":
+                {
+                    "pod_name": "Pod1",
+                    "pod_az_name": "az1",
+                    "dc_name": "dc1",
+                    "az_name": "AZ1"
+                },
+                "expected_error": 500
+            },
+            ]
+
+        self._test_and_check(pods)
 
     @patch.object(context, 'is_admin_context',
                   new=fake_is_admin)

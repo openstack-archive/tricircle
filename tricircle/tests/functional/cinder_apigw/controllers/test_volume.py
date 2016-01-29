@@ -219,7 +219,6 @@ class TestVolumeController(CinderVolumeFunctionalTest):
     def test_post_error_case(self):
 
         volumes = [
-            # no 'volume' parameter
             {
                 "volume_xxx":
                 {
@@ -256,6 +255,32 @@ class TestVolumeController(CinderVolumeFunctionalTest):
                 "expected_error": 500
             },
 
+            ]
+
+        self._test_and_check(volumes, 'my_tenant_id')
+
+    def fake_create_resource(context, ag_name, az_name):
+        raise Exception
+
+    @patch.object(hclient, 'forward_req',
+                  new=fake_volumes_forward_req)
+    @patch.object(core, 'create_resource',
+                  new=fake_create_resource)
+    def test_post_exception(self):
+        volumes = [
+            # no 'volume' parameter
+            {
+                "volume":
+                {
+                    "name": 'vol_1',
+                    "availability_zone": FAKE_AZ,
+                    "attach_status": "detached",
+                    "volume_type": '',
+                    "project_id": 'my_tenant_id',
+                    "metadata": {}
+                },
+                "expected_error": 500
+            }
             ]
 
         self._test_and_check(volumes, 'my_tenant_id')
