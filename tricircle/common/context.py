@@ -71,7 +71,8 @@ def get_context_from_neutron_context(context):
 class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
                  is_admin=False, request_id=None, overwrite=True,
-                 user_name=None, tenant_name=None, **kwargs):
+                 user_name=None, tenant_name=None, quota_class=None,
+                 **kwargs):
         super(ContextBase, self).__init__(
             auth_token=auth_token,
             user=user_id or kwargs.get('user', None),
@@ -87,6 +88,7 @@ class ContextBase(oslo_ctx.RequestContext):
             overwrite=overwrite)
         self.user_name = user_name
         self.tenant_name = tenant_name
+        self.quota_class = quota_class
 
     def to_dict(self):
         ctx_dict = super(ContextBase, self).to_dict()
@@ -94,21 +96,38 @@ class ContextBase(oslo_ctx.RequestContext):
             'user_name': self.user_name,
             'tenant_name': self.tenant_name,
             'tenant_id': self.tenant_id,
-            'project_id': self.project_id
+            'project_id': self.project_id,
+            'quota_class': self.quota_class
         })
         return ctx_dict
+
+    @classmethod
+    def from_dict(cls, values):
+        return cls(**values)
 
     @property
     def project_id(self):
         return self.tenant
 
+    @project_id.setter
+    def project_id(self, value):
+        self.tenant = value
+
     @property
     def tenant_id(self):
         return self.tenant
 
-    @classmethod
-    def from_dict(cls, ctx):
-        return cls(**ctx)
+    @tenant_id.setter
+    def tenant_id(self, value):
+        self.tenant = value
+
+    @property
+    def user_id(self):
+        return self.user
+
+    @user_id.setter
+    def user_id(self, value):
+        self.user = value
 
 
 class Context(ContextBase):

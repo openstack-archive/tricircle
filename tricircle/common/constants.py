@@ -51,3 +51,5 @@ ns_bridge_subnet_name = 'ns_bridge_subnet_%s'  # project_id
 # for external gateway port: project_id b_router_id None
 # for floating ip port: project_id None b_internal_port_id
 ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
+
+MAX_INT = 0x7FFFFFFF

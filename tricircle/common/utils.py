@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import six
+
+from tricircle.common.i18n import _
+
 
 def get_import_path(cls):
     return cls.__module__ + "." + cls.__name__
@@ -35,3 +39,45 @@ def validate_required_fields_set(body, fields):
         if field not in body:
             return False
     return True
+
+
+TRUE_STRINGS = ('1', 't', 'true', 'on', 'y', 'yes')
+FALSE_STRINGS = ('0', 'f', 'false', 'off', 'n', 'no')
+
+
+def is_valid_boolstr(val):
+    """Check if the provided string is a valid bool string or not."""
+    val = str(val).lower()
+    return (val in TRUE_STRINGS) or (val in FALSE_STRINGS)
+
+
+def bool_from_string(subject, strict=False, default=False):
+    """Interpret a string as a boolean.
+
+    A case-insensitive match is performed such that strings matching 't',
+    'true', 'on', 'y', 'yes', or '1' are considered True and, when
+    `strict=False`, anything else returns the value specified by 'default'.
+    Useful for JSON-decoded stuff and config file parsing.
+    If `strict=True`, unrecognized values, including None, will raise a
+    ValueError which is useful when parsing values passed in from an API call.
+    Strings yielding False are 'f', 'false', 'off', 'n', 'no', or '0'.
+    """
+
+    if not isinstance(subject, six.string_types):
+        subject = six.text_type(subject)
+
+    lowered = subject.strip().lower()
+
+    if lowered in TRUE_STRINGS:
+        return True
+    elif lowered in FALSE_STRINGS:
+        return False
+    elif strict:
+        acceptable = ', '.join(
+            "'%s'" % s for s in sorted(TRUE_STRINGS + FALSE_STRINGS))
+        msg = _("Unrecognized value '%(val)s', acceptable values are:"
+                " %(acceptable)s") % {'val': subject,
+                                      'acceptable': acceptable}
+        raise ValueError(msg)
+    else:
+        return default

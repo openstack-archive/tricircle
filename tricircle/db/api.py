@@ -626,9 +626,23 @@ def quota_reserve(context, resources, quotas, deltas, expire,
                     timeutils.utcnow()).seconds >= max_age):
                 refresh = True
 
-        if refresh:
-            # refresh from the bottom pod
-            pass
+            if refresh:
+                # no actural usage refresh here
+
+                # refresh from the bottom pod
+                usages[resource].until_refresh = until_refresh or None
+
+                # Because more than one resource may be refreshed
+                # by the call to the sync routine, and we don't
+                # want to double-sync, we make sure all refreshed
+                # resources are dropped from the work set.
+                work.discard(resource)
+
+                # NOTE(Vek): We make the assumption that the sync
+                #            routine actually refreshes the
+                #            resources that it is the sync routine
+                #            for.  We don't check, because this is
+                #            a best-effort mechanism.
 
         # Check for deltas that would go negative
         unders = [r for r, delta in deltas.items()

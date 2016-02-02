@@ -178,3 +178,19 @@ class PodNotFound(NotFound):
 
     def __init__(self, pod_name):
         super(PodNotFound, self).__init__(pod_name=pod_name)
+
+
+class ChildQuotaNotZero(TricircleException):
+    message = _("Child projects having non-zero quota")
+
+
+# parameter validation error
+class ValidationError(TricircleException):
+    message = _("%(msg)s")
+    code = 400
+
+
+# parameter validation error
+class HTTPForbiddenError(TricircleException):
+    message = _("%(msg)s")
+    code = 403
