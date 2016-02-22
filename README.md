@@ -37,6 +37,8 @@ License: Apache 2.0
 ## Play with DevStack
 Now stateless design can be played with DevStack.
 
+
+
 - 1 Git clone DevStack.
 - 2 Git clone Tricircle, or just download devstack/local.conf.sample.
 - 3 Copy devstack/local.conf.sample to DevStack folder and rename it to
@@ -106,6 +108,35 @@ cinder --debug list
 cinder --debug show $volume_id
 cinder --debug delete $volume_id
 cinder --debug list
+```
+
+###Quick Verify
+
+A sample of adminrc.sh and an automatic verify install scripts can be found in devstack/ directory
+
+####adminrc.sh
+
+Create client environment scripts for the admin user as the following:
+
+```
+export OS_PROJECT_DOMAIN_ID=default
+export OS_USER_DOMAIN_ID=default
+export OS_PROJECT_NAME=admin
+export OS_TENANT_NAME=admin
+export OS_USERNAME=admin
+export OS_PASSWORD=password #change password as you set in your own environment
+export OS_AUTH_URL=http://127.0.0.1:5000
+export OS_IDENTITY_API_VERSION=3
+#It's very important to set region name to the top openstack, because tricircle has different API urls.
+export OS_REGION_NAME=RegionOne  
+
+```
+####verify_install.sh
+
+This script is to verify the installation of Tricircle automatic,what you need to do is just :
+```
+chmod +x verify_install.sh
+./verify_install.sh
 ```
 
 ## Cross-pod L3 networking with DevStack
