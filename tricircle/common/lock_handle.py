@@ -22,6 +22,13 @@ from tricircle.db import core
 from tricircle.db import models
 
 
+ALL_DONE = 0  # both route and bottom resource exist
+RES_DONE = 1  # only bottom resource exists
+NONE_DONE = 2  # neither router nor bottom resources exists
+# The case only router exists is not considered, there may be some manual
+# operations on bottom pod which results to this problem.
+
+
 def get_or_create_route(t_ctx, q_ctx,
                         project_id, pod, _id, _type, list_ele_method):
     # use configuration option later
@@ -36,7 +43,7 @@ def get_or_create_route(t_ctx, q_ctx,
         if routes:
             route = routes[0]
             if route['bottom_id']:
-                return route, False
+                return route, ALL_DONE
             else:
                 route_time = route['updated_at'] or route['created_at']
                 current_time = datetime.datetime.utcnow()
@@ -52,7 +59,7 @@ def get_or_create_route(t_ctx, q_ctx,
                         core.update_resource(t_ctx,
                                              models.ResourceRouting,
                                              route['id'], route)
-                        return route, False
+                        return route, RES_DONE
                     try:
                         core.delete_resource(t_ctx,
                                              models.ResourceRouting,
@@ -70,10 +77,10 @@ def get_or_create_route(t_ctx, q_ctx,
                                       'project_id': project_id,
                                       'resource_type': _type})
         t_ctx.session.commit()
-        return route, True
+        return route, NONE_DONE
     except db_exc.DBDuplicateEntry:
         t_ctx.session.rollback()
-        return None, False
+        return None, NONE_DONE
     finally:
         t_ctx.session.close()
 
@@ -84,17 +91,15 @@ def get_or_create_element(t_ctx, q_ctx,
     # use configuration option later
     max_tries = 5
     for _ in xrange(max_tries):
-        route, is_new = get_or_create_route(
+        route, status = get_or_create_route(
             t_ctx, q_ctx, project_id, pod, ele['id'], _type, list_ele_method)
         if not route:
             eventlet.sleep(0)
             continue
-        if not is_new and not route['bottom_id']:
-            eventlet.sleep(0)
-            continue
-        if not is_new and route['bottom_id']:
+        if status == RES_DONE or status == ALL_DONE:
+            # in these cases, bottom_id must exist
             break
-        if is_new:
+        if status == NONE_DONE:
             try:
                 ele = create_ele_method(t_ctx, q_ctx, pod, body, _type)
             except Exception:
@@ -121,4 +126,13 @@ def get_or_create_element(t_ctx, q_ctx,
         raise Exception('Fail to create %s routing entry' % _type)
     if not route['bottom_id']:
         raise Exception('Fail to bind top and bottom %s' % _type)
-    return is_new, route['bottom_id']
+    # NOTE(zhiyuan) Status being ALL_DONE means that the routing entry is
+    # complete when we retrieve the resource, so we return False to indicate
+    # that we can directly use this resource safely. Status being RES_DONE and
+    # NONE_DONE means that the routing entry is not complete when we retrieve
+    # the resource but we manage to fill the entry finally, so we return True
+    # to indicate that we may leave some work to do.
+    if status == ALL_DONE:
+        return False, route['bottom_id']
+    else:
+        return True, route['bottom_id']

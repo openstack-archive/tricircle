@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+
+
 # service type
 ST_NOVA = 'nova'
 # only support cinder v2
@@ -29,6 +32,7 @@ RT_NETWORK = 'network'
 RT_SUBNET = 'subnet'
 RT_PORT = 'port'
 RT_ROUTER = 'router'
+RT_SG = 'security_group'
 
 # version list
 NOVA_VERSION_V21 = 'v2.1'
@@ -53,3 +57,4 @@ ns_bridge_subnet_name = 'ns_bridge_subnet_%s'  # project_id
 ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
 
 MAX_INT = 0x7FFFFFFF
+expire_time = datetime.datetime(2000, 1, 1)

@@ -13,9 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import netaddr
 import pecan
 from pecan import expose
 from pecan import rest
+
+import neutronclient.common.exceptions as q_exceptions
 
 from tricircle.common import az_ag
 import tricircle.common.client as t_client
@@ -74,7 +77,8 @@ class ServerController(rest.RestController):
         }
         return body
 
-    def _get_create_port_body(self, port, subnet_map, bottom_net_id):
+    def _get_create_port_body(self, port, subnet_map, bottom_net_id,
+                              security_group_ids=None):
         bottom_fixed_ips = []
         for ip in port['fixed_ips']:
             bottom_ip = {'subnet_id': subnet_map[ip['subnet_id']],
@@ -90,6 +94,8 @@ class ServerController(rest.RestController):
                 'fixed_ips': bottom_fixed_ips
             }
         }
+        if security_group_ids:
+            body['port']['security_groups'] = security_group_ids
         return body
 
     def _get_create_dhcp_port_body(self, port, bottom_subnet_id,
@@ -123,28 +129,30 @@ class ServerController(rest.RestController):
             client = self._get_client(pod_['pod_name'])
             return client.create_resources(_type_, t_ctx, body_)
 
-        _, ele_id = t_lock.get_or_create_element(
+        return t_lock.get_or_create_element(
             context, None,  # we don't need neutron context, so pass None
             self.project_id, pod, ele, _type, body,
             list_resources, create_resources)
-        return ele_id
 
-    def _handle_network(self, context, pod, net, subnets, port=None):
+    def _handle_network(self, context, pod, net, subnets, port=None,
+                        top_sg_ids=None, bottom_sg_ids=None):
         # network
         net_body = self._get_create_network_body(net)
-        bottom_net_id = self._prepare_neutron_element(context, pod, net,
-                                                      'network', net_body)
+        _, bottom_net_id = self._prepare_neutron_element(context, pod, net,
+                                                         'network', net_body)
 
         # subnet
         subnet_map = {}
         for subnet in subnets:
             subnet_body = self._get_create_subnet_body(subnet, bottom_net_id)
-            bottom_subnet_id = self._prepare_neutron_element(
+            _, bottom_subnet_id = self._prepare_neutron_element(
                 context, pod, subnet, 'subnet', subnet_body)
             subnet_map[subnet['id']] = bottom_subnet_id
         top_client = self._get_client()
         top_port_body = {'port': {'network_id': net['id'],
                                   'admin_state_up': True}}
+        if top_sg_ids:
+            top_port_body['port']['security_groups'] = top_sg_ids
 
         # dhcp port
         client = self._get_client(pod['pod_name'])
@@ -247,10 +255,14 @@ class ServerController(rest.RestController):
         # port
         if not port:
             port = top_client.create_ports(context, top_port_body)
-        port_body = self._get_create_port_body(port, subnet_map, bottom_net_id)
-        bottom_port_id = self._prepare_neutron_element(context, pod, port,
-                                                       'port', port_body)
-        return bottom_port_id
+            port_body = self._get_create_port_body(
+                port, subnet_map, bottom_net_id, bottom_sg_ids)
+        else:
+            port_body = self._get_create_port_body(port, subnet_map,
+                                                   bottom_net_id)
+        _, bottom_port_id = self._prepare_neutron_element(context, pod, port,
+                                                          'port', port_body)
+        return port['id'], bottom_port_id
 
     def _handle_port(self, context, pod, port):
         top_client = self._get_client()
@@ -266,7 +278,162 @@ class ServerController(rest.RestController):
         for fixed_ip in port['fixed_ips']:
             subnets.append(top_client.get_subnets(context,
                                                   fixed_ip['subnet_id']))
-        return self._handle_network(context, pod, net, subnets, port)
+        return self._handle_network(context, pod, net, subnets, port=port)
+
+    @staticmethod
+    def _safe_create_security_group_rule(context, client, body):
+        try:
+            client.create_security_group_rules(context, body)
+        except q_exceptions.Conflict:
+            return
+
+    @staticmethod
+    def _safe_delete_security_group_rule(context, client, _id):
+        try:
+            client.delete_security_group_rules(context, _id)
+        except q_exceptions.NotFound:
+            return
+
+    def _handle_security_group(self, context, pod, top_sg_map,
+                               security_groups):
+        t_sg_ids = []
+        b_sg_ids = []
+        is_news = []
+        for sg_name in security_groups:
+            t_sg = top_sg_map[sg_name]
+            sg_body = {
+                'security_group': {
+                    'name': t_sg['id'],
+                    'description': t_sg['description']}}
+            is_new, b_sg_id = self._prepare_neutron_element(
+                context, pod, t_sg, constants.RT_SG, sg_body)
+            t_sg_ids.append(t_sg['id'])
+            is_news.append(is_new)
+            b_sg_ids.append(b_sg_id)
+
+        return t_sg_ids, b_sg_ids, is_news
+
+    @staticmethod
+    def _construct_bottom_rule(rule, sg_id, ip=None):
+        ip = ip or rule['remote_ip_prefix']
+        # if ip is passed, this is a extended rule for remote group
+        return {'remote_group_id': None,
+                'direction': rule['direction'],
+                'remote_ip_prefix': ip,
+                'protocol': rule.get('protocol'),
+                'ethertype': rule['ethertype'],
+                'port_range_max': rule.get('port_range_max'),
+                'port_range_min': rule.get('port_range_min'),
+                'security_group_id': sg_id}
+
+    @staticmethod
+    def _compare_rule(rule1, rule2):
+        for key in ('direction', 'remote_ip_prefix', 'protocol', 'ethertype',
+                    'port_range_max', 'port_range_min'):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
+    def _handle_sg_rule_for_default_group(self, context, pod, default_sg,
+                                          project_id):
+        top_client = self._get_client()
+        new_b_rules = []
+        for t_rule in default_sg['security_group_rules']:
+            if not t_rule['remote_group_id']:
+                # leave sg_id empty here
+                new_b_rules.append(
+                    self._construct_bottom_rule(t_rule, ''))
+                continue
+            if t_rule['ethertype'] != 'IPv4':
+                continue
+            subnets = top_client.list_subnets(
+                context, [{'key': 'tenant_id', 'comparator': 'eq',
+                           'value': project_id}])
+            bridge_ip_net = netaddr.IPNetwork('100.0.0.0/8')
+            for subnet in subnets:
+                ip_net = netaddr.IPNetwork(subnet['cidr'])
+                if ip_net in bridge_ip_net:
+                    continue
+                # leave sg_id empty here
+                new_b_rules.append(
+                    self._construct_bottom_rule(t_rule, '',
+                                                subnet['cidr']))
+
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            context, default_sg['id'], constants.RT_SG)
+        for pod, b_sg_id in mappings:
+            client = self._get_client(pod['pod_name'])
+            b_sg = client.get_security_groups(context, b_sg_id)
+            add_rules = []
+            del_rules = []
+            match_index = set()
+            for b_rule in b_sg['security_group_rules']:
+                match = False
+                for i, rule in enumerate(new_b_rules):
+                    if self._compare_rule(b_rule, rule):
+                        match = True
+                        match_index.add(i)
+                        break
+                if not match:
+                    del_rules.append(b_rule)
+            for i, rule in enumerate(new_b_rules):
+                if i not in match_index:
+                    add_rules.append(rule)
+
+            for del_rule in del_rules:
+                self._safe_delete_security_group_rule(
+                    context, client, del_rule['id'])
+            if add_rules:
+                rule_body = {'security_group_rules': []}
+                for add_rule in add_rules:
+                    add_rule['security_group_id'] = b_sg_id
+                    rule_body['security_group_rules'].append(add_rule)
+                self._safe_create_security_group_rule(context,
+                                                      client, rule_body)
+
+    def _handle_sg_rule_for_new_group(self, context, pod, top_sgs,
+                                      bottom_sg_ids):
+        client = self._get_client(pod['pod_name'])
+        for i, t_sg in enumerate(top_sgs):
+            b_sg_id = bottom_sg_ids[i]
+            new_b_rules = []
+            for t_rule in t_sg['security_group_rules']:
+                if t_rule['remote_group_id']:
+                    # we do not handle remote group rule for non-default
+                    # security group, actually tricircle plugin in neutron
+                    # will reject such rule
+                    # default security group is not passed with top_sgs so
+                    # t_rule will not belong to default security group
+                    continue
+                new_b_rules.append(
+                    self._construct_bottom_rule(t_rule, b_sg_id))
+            try:
+                b_sg = client.get_security_groups(context, b_sg_id)
+                for b_rule in b_sg['security_group_rules']:
+                    self._safe_delete_security_group_rule(
+                        context, client, b_rule['id'])
+                if new_b_rules:
+                    rule_body = {'security_group_rules': new_b_rules}
+                    self._safe_create_security_group_rule(context, client,
+                                                          rule_body)
+            except Exception:
+                # if we fails when operating bottom security group rule, we
+                # update the security group mapping to set bottom_id to None
+                # and expire the mapping, so next time the security group rule
+                # operations can be redone
+                with context.session.begin():
+                    routes = core.query_resource(
+                        context, models.ResourceRouting,
+                        [{'key': 'top_id', 'comparator': 'eq',
+                          'value': t_sg['id']},
+                         {'key': 'bottom_id', 'comparator': 'eq',
+                          'value': b_sg_id}], [])
+                    update_dict = {'bottom_id': None,
+                                   'created_at': constants.expire_time,
+                                   'updated_at': constants.expire_time}
+                    core.update_resource(context, models.ResourceRouting,
+                                         routes[0]['id'], update_dict)
+                raise
 
     @staticmethod
     def _get_create_server_body(origin, bottom_az):
@@ -367,6 +534,28 @@ class ServerController(rest.RestController):
         server_body = self._get_create_server_body(kw['server'], b_az)
 
         top_client = self._get_client()
+
+        sg_filters = [{'key': 'tenant_id', 'comparator': 'eq',
+                       'value': self.project_id}]
+        top_sgs = top_client.list_security_groups(context, sg_filters)
+        top_sg_map = dict((sg['name'], sg) for sg in top_sgs)
+
+        if 'security_groups' not in kw['server']:
+            security_groups = ['default']
+        else:
+            security_groups = []
+            for sg in kw['server']['security_groups']:
+                if 'name' not in sg:
+                    pecan.abort(404, 'Security group name not specify')
+                    return
+                if sg['name'] not in top_sg_map:
+                    pecan.abort(404,
+                                'Security group %s not found' % sg['name'])
+                    return
+                security_groups.append(sg['name'])
+        t_sg_ids, b_sg_ids, is_news = self._handle_security_group(
+            context, pod, top_sg_map, security_groups)
+
         if 'networks' in kw['server']:
             server_body['networks'] = []
             for net_info in kw['server']['networks']:
@@ -390,24 +579,50 @@ class ServerController(rest.RestController):
                     if not subnets:
                         pecan.abort(400, 'Network not contain subnets')
                         return
-                    bottom_port_id = self._handle_network(context, pod,
-                                                          network, subnets)
+                    t_port_id, b_port_id = self._handle_network(
+                        context, pod, network, subnets,
+                        top_sg_ids=t_sg_ids, bottom_sg_ids=b_sg_ids)
                 elif 'port' in net_info:
                     port = top_client.get_ports(context, net_info['port'])
                     if not port:
                         pecan.abort(400, 'Port not found')
                         return
-                    bottom_port_id = self._handle_port(context, pod, port)
-                server_body['networks'].append({'port': bottom_port_id})
+                    t_port_id, b_port_id = self._handle_port(
+                        context, pod, port)
+                server_body['networks'].append({'port': b_port_id})
+
+        # only for security group first created in a pod, we invoke
+        # _handle_sg_rule_for_new_group to initialize rules in that group, this
+        # method removes all the rules in the new group then add new rules
+        top_sg_id_map = dict((sg['id'], sg) for sg in top_sgs)
+        new_top_sgs = []
+        new_bottom_sg_ids = []
+        default_sg = None
+        for t_id, b_id, is_new in zip(t_sg_ids, b_sg_ids, is_news):
+            sg_name = top_sg_id_map[t_id]['name']
+            if sg_name == 'default':
+                default_sg = top_sg_id_map[t_id]
+                continue
+            if not is_new:
+                continue
+            new_top_sgs.append(top_sg_id_map[t_id])
+            new_bottom_sg_ids.append(b_id)
+        self._handle_sg_rule_for_new_group(context, pod, new_top_sgs,
+                                           new_bottom_sg_ids)
+        if default_sg:
+            self._handle_sg_rule_for_default_group(
+                context, pod, default_sg, self.project_id)
 
         client = self._get_client(pod['pod_name'])
         nics = [
             {'port-id': _port['port']} for _port in server_body['networks']]
+
         server = client.create_servers(context,
                                        name=server_body['name'],
                                        image=server_body['imageRef'],
                                        flavor=server_body['flavorRef'],
-                                       nics=nics)
+                                       nics=nics,
+                                       security_groups=b_sg_ids)
         with context.session.begin():
             core.create_resource(context, models.ResourceRouting,
                                  {'top_id': server['id'],

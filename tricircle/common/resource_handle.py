@@ -120,8 +120,8 @@ class NeutronResourceHandle(ResourceHandle):
                         'subnet': LIST | CREATE | DELETE | GET,
                         'port': LIST | CREATE | DELETE | GET,
                         'router': LIST | CREATE | ACTION | UPDATE,
-                        'security_group': LIST,
-                        'security_group_rule': LIST,
+                        'security_group': LIST | CREATE | GET,
+                        'security_group_rule': LIST | CREATE | DELETE,
                         'floatingip': LIST | CREATE}
 
     def _get_client(self, cxt):
@@ -146,8 +146,12 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_create(self, cxt, resource, *args, **kwargs):
         try:
             client = self._get_client(cxt)
-            return getattr(client, 'create_%s' % resource)(
-                *args, **kwargs)[resource]
+            ret = getattr(client, 'create_%s' % resource)(
+                *args, **kwargs)
+            if resource in ret:
+                return ret[resource]
+            else:
+                return ret['%ss' % resource]
         except q_exceptions.ConnectionFailed:
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
