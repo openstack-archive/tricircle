@@ -28,6 +28,7 @@ from tricircle.common import xrpcapi
 from tricircle.nova_apigw.controllers import aggregate
 from tricircle.nova_apigw.controllers import flavor
 from tricircle.nova_apigw.controllers import image
+from tricircle.nova_apigw.controllers import quota_sets
 from tricircle.nova_apigw.controllers import server
 
 
@@ -89,6 +90,8 @@ class V21Controller(object):
             'os-aggregates': aggregate.AggregateController,
             'servers': server.ServerController,
             'images': image.ImageController,
+            'os-quota-sets': quota_sets.QuotaSetsController,
+            'limits': quota_sets.LimitsController,
         }
 
     def _get_resource_controller(self, project_id, remainder):

@@ -280,6 +280,11 @@ class Client(object):
         """
         self._update_endpoint_from_keystone(cxt, False)
 
+    def get_keystone_client_by_context(self, ctx):
+        client_session = self._get_keystone_session()
+        return keystone_client.Client(auth_url=cfg.CONF.client.identity_url,
+                                      session=client_session)
+
     @_safe_operation('client')
     def get_native_client(self, resource, cxt):
         """Get native python client instance

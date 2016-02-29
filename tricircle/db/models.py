@@ -174,10 +174,7 @@ class Quotas(core.ModelBase, QuotasBase):
     Null, then the resource is unlimited.
     """
     __tablename__ = 'quotas'
-    __table_args__ = (
-        schema.UniqueConstraint(
-            'project_id', 'resource', 'deleted',
-            name='uniq_quotas0project_id0resource0deleted'),)
+    __table_args__ = ()
     attributes = ['id', 'project_id', 'resource',
                   'hard_limit', 'allocated',
                   'created_at', 'updated_at', 'deleted_at', 'deleted']
@@ -196,11 +193,7 @@ class QuotaClasses(core.ModelBase, QuotasBase):
     quota-class-show and quota-class-update
     """
     __tablename__ = 'quota_classes'
-    __table_args__ = (
-        schema.UniqueConstraint(
-            'class_name', 'resource', 'deleted',
-            name='uniq_quota_classes0class_name0resource0deleted'),
-    )
+    __table_args__ = ()
     attributes = ['id', 'class_name', 'resource', 'hard_limit',
                   'created_at', 'updated_at', 'deleted_at', 'deleted']
 

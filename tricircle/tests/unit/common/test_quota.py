@@ -664,7 +664,7 @@ class DbQuotaDriverTestCase(QuotaTestBase, base.TestCase):
         self.default_quota = dict(
             instances=10, cores=20, ram=51200,
             floating_ips=10, fixed_ips=-1, metadata_items=128,
-            injected_files=5, injected_file_path_length=255,
+            injected_files=5, injected_file_path_bytes=255,
             injected_file_content_bytes=10240,
             security_groups=10, security_group_rules=20, key_pairs=100,
             server_groups=10, server_group_members=10,
@@ -686,7 +686,7 @@ class DbQuotaDriverTestCase(QuotaTestBase, base.TestCase):
             quota_metadata_items=self.default_quota['metadata_items'],
             quota_injected_files=self.default_quota['injected_files'],
             quota_injected_file_path_length=self.default_quota[
-                'injected_file_path_length'],
+                'injected_file_path_bytes'],
             quota_injected_file_content_bytes=self.default_quota[
                 'injected_file_content_bytes'],
             quota_security_groups=self.default_quota['security_groups'],
@@ -1669,16 +1669,16 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
         """Sets an environment used for nested quotas tests.
 
         Create a project hierarchy such as follows:
-        +-----------+
-        |           |
-        |     A     |
-        |    / \    |
-        |   B   C   |
-        |  /        |
-        | D         |
-        | |         |
-        | E         |
-        +-----------+
+        +-----------++-----------++-----------+
+        |           ||           ||           |
+        |     A     ||     F     ||     G     |
+        |    / \    ||           ||           |
+        |   B   C   ||           ||           |
+        |  /        ||           ||           |
+        | D         ||           ||           |
+        | |         ||           ||           |
+        | E         ||           ||           |
+        +-----------++-----------++-----------+
         """
         self.A = self.FakeProject(id=uuidutils.generate_uuid(),
                                   parent_id=None)
@@ -1690,6 +1690,10 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
                                   parent_id=self.B.id)
         self.E = self.FakeProject(id=uuidutils.generate_uuid(),
                                   parent_id=self.D.id)
+        self.F = self.FakeProject(id=uuidutils.generate_uuid(),
+                                  parent_id=None)
+        self.G = self.FakeProject(id=uuidutils.generate_uuid(),
+                                  parent_id=None)
 
         # update projects subtrees
         self.D.subtree = {self.E.id: self.E.subtree}
@@ -1699,7 +1703,8 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
         # project_by_id attribute is used to recover a project based on its id
         self.project_by_id = {self.A.id: self.A, self.B.id: self.B,
                               self.C.id: self.C, self.D.id: self.D,
-                              self.E.id: self.E}
+                              self.E.id: self.E, self.F.id: self.F,
+                              self.G.id: self.G, }
 
     def _create_default_class(self):
         for k, v in self.default_quota.items():
@@ -1988,6 +1993,46 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
         self.assertRaises(exceptions.HTTPForbiddenError, qso.update,
                           self.ctx, **updated)
 
+    def test_update_subproject_not_in_hierarchy2(self):
+        qso = quota.QuotaSetOperation(self.F.id)
+        qso._get_project = mock.Mock()
+        qso._get_project.side_effect = self._get_project
+        self.ctx.project_id = self.A.id
+
+        updated = _make_body(tenant_id=None, root=True,
+                             **self.test_class_quota)
+        expected = _make_body(tenant_id=None, root=True,
+                              **self.test_class_expected_result)
+
+        # Update the quota of F is not allowed
+        self.assertRaises(exceptions.HTTPForbiddenError, qso.update,
+                          self.ctx, **updated)
+
+        self.ctx.project_id = self.B.id
+        self.assertRaises(exceptions.HTTPForbiddenError, qso.update,
+                          self.ctx, **updated)
+
+        # only admin is allowed yet
+        self.ctx.is_admin = False
+        self.ctx.project_id = self.G.id
+        self.assertRaises(exceptions.AdminRequired, qso.update,
+                          self.ctx, **updated)
+
+        self.ctx.is_admin = True
+        self.ctx.project_id = self.G.id
+        result = qso.update(self.ctx, **updated)
+        self.assertDictMatch(expected, result)
+
+        self.ctx.is_admin = True
+        self.ctx.project_id = self.F.id
+        result = qso.update(self.ctx, **updated)
+        self.assertDictMatch(expected, result)
+
+        self.ctx.is_admin = False
+        self.ctx.project_id = self.F.id
+        self.assertRaises(exceptions.AdminRequired, qso.update,
+                          self.ctx, **updated)
+
     def test_update_subproject_with_not_root_context_project(self):
         qso = quota.QuotaSetOperation(self.A.id)
         qso._get_project = mock.Mock()
@@ -2162,6 +2207,53 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
 
         result_show_after = qso.show_detail_quota(self.ctx)
         self.assertDictMatch(result_show, result_show_after)
+
+    def test_delete_subproject_not_in_hierarchy2(self):
+        qso = quota.QuotaSetOperation(self.F.id)
+        qso._get_project = mock.Mock()
+        qso._get_project.side_effect = self._get_project
+        self.ctx.project_id = self.A.id
+
+        # delete the quota of F is not allowed
+        self.assertRaises(exceptions.HTTPForbiddenError, qso.delete,
+                          self.ctx)
+
+        self.ctx.project_id = self.B.id
+        self.assertRaises(exceptions.HTTPForbiddenError, qso.delete,
+                          self.ctx)
+
+        # only admin is allowed yet
+        self.ctx.project_id = self.G.id
+        self.ctx.is_admin = False
+        self.assertRaises(exceptions.AdminRequired, qso.delete,
+                          self.ctx)
+
+        self.ctx.project_id = self.G.id
+        self.ctx.is_admin = True
+        result_show = qso.show_detail_quota(self.ctx)
+        updated = _make_body(tenant_id=None, root=True,
+                             **self.test_class_quota)
+        expected = _make_body(tenant_id=None, root=True,
+                              **self.test_class_expected_result)
+        self.ctx.is_admin = True
+        self.ctx.project_id = self.G.id
+        result = qso.update(self.ctx, **updated)
+        self.assertDictMatch(expected, result)
+
+        qso.delete(self.ctx)
+        result_show_after = qso.show_detail_quota(self.ctx)
+        self.assertDictMatch(result_show, result_show_after)
+
+        self.ctx.project_id = self.F.id
+        self.ctx.is_admin = True
+        qso.delete(self.ctx)
+        result_show_after = qso.show_detail_quota(self.ctx)
+        self.assertDictMatch(result_show, result_show_after)
+
+        self.ctx.project_id = self.F.id
+        self.ctx.is_admin = False
+        self.assertRaises(exceptions.AdminRequired, qso.delete,
+                          self.ctx)
 
     def test_subproject_delete(self):
         qso = quota.QuotaSetOperation(self.A.id)

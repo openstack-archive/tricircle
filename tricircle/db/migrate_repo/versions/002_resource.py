@@ -126,9 +126,6 @@ def upgrade(migrate_engine):
         sql.Column('updated_at', sql.DateTime),
         sql.Column('deleted_at', sql.DateTime),
         sql.Column('deleted', sql.Integer),
-        migrate.UniqueConstraint(
-            'project_id', 'resource', 'deleted',
-            name='uniq_quotas0project_id0resource0deleted'),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
@@ -142,9 +139,6 @@ def upgrade(migrate_engine):
         sql.Column('updated_at', sql.DateTime),
         sql.Column('deleted_at', sql.DateTime),
         sql.Column('deleted', sql.Integer),
-        migrate.UniqueConstraint(
-            'class_name', 'resource', 'deleted',
-            name='uniq_quota_classes0class_name0resource0deleted'),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 

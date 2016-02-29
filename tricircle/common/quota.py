@@ -1024,7 +1024,7 @@ class AllQuotaEngine(QuotaEngine):
             ('injected_files', 'quota_injected_files'),
             ('injected_file_content_bytes',
              'quota_injected_file_content_bytes'),
-            ('injected_file_path_length',
+            ('injected_file_path_bytes',
              'quota_injected_file_path_length'),
         ]
 
@@ -1344,12 +1344,12 @@ class QuotaSetOperation(object):
         target_project = self._get_project(context, target_project_id)
         parent_id = target_project.parent_id
 
+        context_project = self._get_project(context,
+                                            context.project_id,
+                                            subtree_as_ids=True)
         if parent_id:
             # Get the children of the project which the token is scoped to
             # in order to know if the target_project is in its hierarchy.
-            context_project = self._get_project(context,
-                                                context.project_id,
-                                                subtree_as_ids=True)
             self._authorize_update_or_delete(context_project,
                                              target_project.id,
                                              parent_id)
@@ -1357,13 +1357,23 @@ class QuotaSetOperation(object):
                 context, parent_id)
 
         else:
-            if context.project_id != target_project_id:
+
+            # if the target project has no parent and descendant, then
+            # the operation is allowed only if the context project also
+            # has no parent and descendant, that means only flat mode
+            # (current mode without hierarchy) is allowed
+
+            if not target_project.subtree and \
+                    not context_project.parent_id and \
+                    not context_project.subtree:
+                pass
+            elif context.project_id != target_project_id:
                 param_msg = _("context.project_id = %(ctx_project_id)s, "
                               "target_project_id = %(target_project_id)s ") % {
                     "ctx_project_id": context.project_id,
                     "target_project_id": target_project.id}
 
-                msg = _("context project is not a root project %s") % param_msg
+                msg = _("Can not update quota for %s") % param_msg
                 LOG.error(msg=msg)
                 raise t_exceptions.HTTPForbiddenError
 
@@ -1450,19 +1460,53 @@ class QuotaSetOperation(object):
         if not context.is_admin:
             raise t_exceptions.AdminRequired
 
-        target_tenant_id = self.target_tenant_id
+        target_project_id = self.target_tenant_id
 
         # Get the parent_id of the target project to verify whether we are
         # dealing with hierarchical namespace or non-hierarchical namespace.
-        target_project = self._get_project(context, target_tenant_id)
+        target_project = self._get_project(context, target_project_id)
         parent_id = target_project.parent_id
+
+        # Get the children of the project which the token is scoped to in
+        # order to know if the target_project is in its hierarchy.
+        context_project = self._get_project(context,
+                                            context.project_id,
+                                            subtree_as_ids=True)
+
+        if parent_id:
+            self._authorize_update_or_delete(context_project,
+                                             target_project.id,
+                                             parent_id)
+            parent_project_quotas = QUOTAS.get_project_quotas(
+                context, parent_id, parent_project_id=parent_id)
+
+        else:
+
+            # if the target project has no parent and descendant, then
+            # the operation is allowed only if the context project also
+            # has no parent and descendant, that means only flat mode
+            # (current mode without hierarchy) is allowed
+
+            if not target_project.subtree and \
+                    not context_project.parent_id and \
+                    not context_project.subtree:
+                pass
+            elif context.project_id != target_project_id:
+                param_msg = _("context.project_id = %(ctx_project_id)s, "
+                              "target_project_id = %(target_project_id)s ") % {
+                    "ctx_project_id": context.project_id,
+                    "target_project_id": target_project.id}
+
+                msg = _("Can not delete quota for %s") % param_msg
+                LOG.error(msg=msg)
+                raise t_exceptions.HTTPForbiddenError
 
         try:
             project_quotas = QUOTAS.get_project_quotas(
                 context, target_project.id, usages=True,
                 parent_project_id=parent_id, defaults=False)
         except t_exceptions.NotAuthorized:
-            msg = _("Not authorized to delete %s") % target_tenant_id
+            msg = _("Not authorized to delete %s") % target_project_id
             LOG.exception(msg)
             raise
 
@@ -1474,33 +1518,22 @@ class QuotaSetOperation(object):
                 if project_quotas[key]['allocated'] != 0:
                     msg = _("About to delete child projects having "
                             "non-zero quota. This should not be performed"
-                            " %s") % target_tenant_id
+                            " %s") % target_project_id
                     LOG.exception(msg)
                     raise t_exceptions.ChildQuotaNotZero
 
+        # Delete child quota first and later update parent's quota.
+        try:
+            # TODO(joehuang) support destroy quota by user
+            db_api.quota_destroy_by_project(context, target_project.id)
+        except t_exceptions.AdminRequired:
+            msg = _('Admin or tenant itself or parent tenant'
+                    ' required to delete quota'
+                    ' %s') % target_project.id
+            LOG.exception(msg)
+            raise
+
         if parent_id:
-            # Get the children of the project which the token is scoped to in
-            # order to know if the target_project is in its hierarchy.
-            context_project = self._get_project(context,
-                                                context.project_id,
-                                                subtree_as_ids=True)
-            self._authorize_update_or_delete(context_project,
-                                             target_project.id,
-                                             parent_id)
-            parent_project_quotas = QUOTAS.get_project_quotas(
-                context, parent_id, parent_project_id=parent_id)
-
-            # Delete child quota first and later update parent's quota.
-            try:
-                # TODO(joehuang) support destroy quota by user
-                db_api.quota_destroy_by_project(context, target_project.id)
-            except t_exceptions.AdminRequired:
-                msg = _('Admin or tenant itself or parent tenant'
-                        ' required to delete quota'
-                        ' %s') % target_project.id
-                LOG.exception(msg)
-                raise
-
             # Update the allocated of the parent
             for key, value in project_quotas.items():
                 project_hard_limit = project_quotas[key]['limit']
@@ -1508,16 +1541,6 @@ class QuotaSetOperation(object):
                 parent_allocated -= project_hard_limit
                 db_api.quota_allocated_update(context, parent_id, key,
                                               parent_allocated)
-        else:
-            try:
-                # TODO(joehuang) support destroy quota by user
-                db_api.quota_destroy_by_project(context, target_project.id)
-            except t_exceptions.AdminRequired:
-                msg = _('Admin or tenant itself or parent tenant'
-                        ' required to delete quota'
-                        ' %s') % target_project.id
-                LOG.exception(msg)
-                raise
 
     def show_default_quota(self, context):
         try:
