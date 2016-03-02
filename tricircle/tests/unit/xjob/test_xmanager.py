@@ -13,15 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import mock
 from mock import patch
 import unittest
 
+from oslo_config import cfg
+from oslo_utils import uuidutils
+
+from tricircle.common import constants
 from tricircle.common import context
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 from tricircle.xjob import xmanager
+from tricircle.xjob import xservice
 
 
 BOTTOM1_NETWORK = []
@@ -32,7 +38,8 @@ BOTTOM1_PORT = []
 BOTTOM2_PORT = []
 BOTTOM1_ROUTER = []
 BOTTOM2_ROUTER = []
-RES_LIST = [BOTTOM1_SUBNET, BOTTOM2_SUBNET, BOTTOM1_PORT, BOTTOM2_PORT]
+RES_LIST = [BOTTOM1_NETWORK, BOTTOM2_NETWORK, BOTTOM1_SUBNET, BOTTOM2_SUBNET,
+            BOTTOM1_PORT, BOTTOM2_PORT, BOTTOM1_ROUTER, BOTTOM2_ROUTER]
 RES_MAP = {'pod_1': {'network': BOTTOM1_NETWORK,
                      'subnet': BOTTOM1_SUBNET,
                      'port': BOTTOM1_PORT,
@@ -93,6 +100,10 @@ class XManagerTest(unittest.TestCase):
         core.ModelBase.metadata.create_all(core.get_engine())
         # enforce foreign key constraint for sqlite
         core.get_engine().execute('pragma foreign_keys=on')
+        for opt in xservice.common_opts:
+            if opt.name in ('worker_handle_timeout', 'job_run_expire',
+                            'worker_sleep_time'):
+                cfg.CONF.register_opt(opt)
         self.context = context.Context()
         self.xmanager = FakeXManager()
 
@@ -160,7 +171,7 @@ class XManagerTest(unittest.TestCase):
                                             'ip_address': '10.0.3.1'}]})
 
         self.xmanager.configure_extra_routes(self.context,
-                                             {'router': top_router_id})
+                                             payload={'router': top_router_id})
         calls = [mock.call(self.context, 'router_1_id',
                            {'router': {
                                'routes': [{'nexthop': '100.0.1.2',
@@ -172,3 +183,91 @@ class XManagerTest(unittest.TestCase):
                                           {'nexthop': '100.0.1.1',
                                            'destination': '10.0.3.0/24'}]}})]
         mock_update.assert_has_calls(calls)
+
+    def test_job_handle(self):
+        @xmanager._job_handle('fake_resource')
+        def fake_handle(self, ctx, payload):
+            pass
+
+        fake_id = 'fake_id'
+        payload = {'fake_resource': fake_id}
+        fake_handle(None, self.context, payload=payload)
+
+        jobs = core.query_resource(self.context, models.Job, [], [])
+        expected_status = [constants.JS_New, constants.JS_Success]
+        job_status = [job['status'] for job in jobs]
+        self.assertItemsEqual(expected_status, job_status)
+
+        self.assertEqual(fake_id, jobs[0]['resource_id'])
+        self.assertEqual(fake_id, jobs[1]['resource_id'])
+        self.assertEqual('fake_resource', jobs[0]['type'])
+        self.assertEqual('fake_resource', jobs[1]['type'])
+
+    def test_job_handle_exception(self):
+        @xmanager._job_handle('fake_resource')
+        def fake_handle(self, ctx, payload):
+            raise Exception()
+
+        fake_id = 'fake_id'
+        payload = {'fake_resource': fake_id}
+        fake_handle(None, self.context, payload=payload)
+
+        jobs = core.query_resource(self.context, models.Job, [], [])
+        expected_status = [constants.JS_New, constants.JS_Fail]
+        job_status = [job['status'] for job in jobs]
+        self.assertItemsEqual(expected_status, job_status)
+
+        self.assertEqual(fake_id, jobs[0]['resource_id'])
+        self.assertEqual(fake_id, jobs[1]['resource_id'])
+        self.assertEqual('fake_resource', jobs[0]['type'])
+        self.assertEqual('fake_resource', jobs[1]['type'])
+
+    def test_job_run_expire(self):
+        @xmanager._job_handle('fake_resource')
+        def fake_handle(self, ctx, payload):
+            pass
+
+        fake_id = uuidutils.generate_uuid()
+        payload = {'fake_resource': fake_id}
+        expired_job = {
+            'id': uuidutils.generate_uuid(),
+            'type': 'fake_resource',
+            'timestamp': datetime.datetime.now() - datetime.timedelta(0, 120),
+            'status': constants.JS_Running,
+            'resource_id': fake_id,
+            'extra_id': constants.SP_EXTRA_ID
+        }
+        core.create_resource(self.context, models.Job, expired_job)
+        fake_handle(None, self.context, payload=payload)
+
+        jobs = core.query_resource(self.context, models.Job, [], [])
+        expected_status = ['New', 'Fail', 'Success']
+        job_status = [job['status'] for job in jobs]
+        self.assertItemsEqual(expected_status, job_status)
+
+        for i in xrange(3):
+            self.assertEqual(fake_id, jobs[i]['resource_id'])
+            self.assertEqual('fake_resource', jobs[i]['type'])
+
+    @patch.object(db_api, 'get_running_job')
+    @patch.object(db_api, 'register_job')
+    def test_worker_handle_timeout(self, mock_register, mock_get):
+        @xmanager._job_handle('fake_resource')
+        def fake_handle(self, ctx, payload):
+            pass
+
+        cfg.CONF.set_override('worker_handle_timeout', 1)
+        mock_register.return_value = None
+        mock_get.return_value = None
+
+        fake_id = uuidutils.generate_uuid()
+        payload = {'fake_resource': fake_id}
+        fake_handle(None, self.context, payload=payload)
+
+        # nothing to assert, what we test is that fake_handle can exit when
+        # timeout
+
+    def tearDown(self):
+        core.ModelBase.metadata.drop_all(core.get_engine())
+        for res in RES_LIST:
+            del res[:]

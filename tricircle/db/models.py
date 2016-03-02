@@ -385,3 +385,23 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
     project_id = sql.Column('project_id', sql.String(length=36))
     resource_type = sql.Column('resource_type', sql.String(length=64),
                                nullable=False)
+
+
+class Job(core.ModelBase, core.DictBase):
+    __tablename__ = 'job'
+    __table_args__ = (
+        schema.UniqueConstraint(
+            'type', 'status', 'resource_id', 'extra_id',
+            name='job0type0status0resource_id0extra_id'),
+    )
+
+    attributes = ['id', 'type', 'timestamp', 'status', 'resource_id',
+                  'extra_id']
+
+    id = sql.Column('id', sql.String(length=36), primary_key=True)
+    type = sql.Column('type', sql.String(length=36))
+    timestamp = sql.Column('timestamp', sql.TIMESTAMP,
+                           server_default=sql.text('CURRENT_TIMESTAMP'))
+    status = sql.Column('status', sql.String(length=36))
+    resource_id = sql.Column('resource_id', sql.String(length=36))
+    extra_id = sql.Column('extra_id', sql.String(length=36))

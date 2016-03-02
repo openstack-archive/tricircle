@@ -47,7 +47,15 @@ common_opts = [
     cfg.StrOpt('host', default='tricircle.xhost',
                help=_("The host name for RPC server")),
     cfg.IntOpt('workers', default=1,
-               help=_("number of workers")),
+               help=_("Number of workers")),
+    cfg.IntOpt('worker_handle_timeout', default=1800,
+               help=_("Timeout for worker's one turn of processing, in"
+                      " seconds")),
+    cfg.IntOpt('job_run_expire', default=60,
+               help=_("Running job is considered expires after this time, in"
+                      " seconds")),
+    cfg.FloatOpt('worker_sleep_time', default=0.1,
+                 help=_("Seconds a worker sleeps after one run in a loop"))
 ]
 
 service_opts = [
