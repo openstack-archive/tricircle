@@ -21,8 +21,10 @@ from oslotest import base
 class TestCase(base.BaseTestCase):
     """Test case base class for all unit tests."""
     def setUp(self):
-        # neutron has a configuration option "bind_port" which conflicts with
-        # tricircle configuration option, so unregister this option before
-        # running tricircle tests
-        cfg.CONF.unregister_opts(config.core_opts)
+        # neutron has configuration options "api_extensions_path" and
+        # "bind_port" which conflicts with tricircle configuration option,
+        # so unregister this option before running tricircle tests
+        for opt in config.core_opts:
+            if opt.name == 'api_extensions_path' or opt.name == 'bind_port':
+                cfg.CONF.unregister_opt(opt)
         super(TestCase, self).setUp()

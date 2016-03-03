@@ -43,6 +43,7 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 from tricircle.network import plugin
+from tricircle.tests.unit.network import test_security_groups
 
 
 TOP_NETS = []
@@ -57,19 +58,26 @@ TOP_VLANALLOCATIONS = []
 TOP_SEGMENTS = []
 TOP_EXTNETS = []
 TOP_FLOATINGIPS = []
+TOP_SGS = []
+TOP_SG_RULES = []
 BOTTOM1_NETS = []
 BOTTOM1_SUBNETS = []
 BOTTOM1_PORTS = []
 BOTTOM1_ROUTERS = []
+BOTTOM1_SGS = []
 BOTTOM2_NETS = []
 BOTTOM2_SUBNETS = []
 BOTTOM2_PORTS = []
 BOTTOM2_ROUTERS = []
+BOTTOM2_SGS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_ROUTERS, TOP_ROUTERPORT,
             TOP_SUBNETPOOLS, TOP_SUBNETPOOLPREFIXES, TOP_IPALLOCATIONS,
             TOP_VLANALLOCATIONS, TOP_SEGMENTS, TOP_EXTNETS, TOP_FLOATINGIPS,
+            TOP_SGS, TOP_SG_RULES,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_ROUTERS,
-            BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_ROUTERS]
+            BOTTOM1_SGS,
+            BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_ROUTERS,
+            BOTTOM2_SGS]
 RES_MAP = {'networks': TOP_NETS,
            'subnets': TOP_SUBNETS,
            'ports': TOP_PORTS,
@@ -81,7 +89,9 @@ RES_MAP = {'networks': TOP_NETS,
            'ml2_vlan_allocations': TOP_VLANALLOCATIONS,
            'ml2_network_segments': TOP_SEGMENTS,
            'externalnetworks': TOP_EXTNETS,
-           'floatingips': TOP_FLOATINGIPS}
+           'floatingips': TOP_FLOATINGIPS,
+           'securitygroups': TOP_SGS,
+           'securitygrouprules': TOP_SG_RULES}
 
 
 class DotDict(dict):
@@ -96,14 +106,8 @@ class DotDict(dict):
 
 class FakeNeutronClient(object):
 
-    _res_map = {'pod_1': {'network': BOTTOM1_NETS,
-                          'subnet': BOTTOM1_SUBNETS,
-                          'port': BOTTOM1_PORTS,
-                          'router': BOTTOM1_ROUTERS},
-                'pod_2': {'network': BOTTOM2_NETS,
-                          'subnet': BOTTOM2_SUBNETS,
-                          'port': BOTTOM2_PORTS,
-                          'router': BOTTOM2_ROUTERS}}
+    _res_map = {'pod_1': {'port': BOTTOM1_PORTS},
+                'pod_2': {'port': BOTTOM2_PORTS}}
 
     def __init__(self, pod_name):
         self.pod_name = pod_name
@@ -148,11 +152,13 @@ class FakeClient(object):
     _res_map = {'pod_1': {'network': BOTTOM1_NETS,
                           'subnet': BOTTOM1_SUBNETS,
                           'port': BOTTOM1_PORTS,
-                          'router': BOTTOM1_ROUTERS},
+                          'router': BOTTOM1_ROUTERS,
+                          'security_group': BOTTOM1_SGS},
                 'pod_2': {'network': BOTTOM2_NETS,
                           'subnet': BOTTOM2_SUBNETS,
                           'port': BOTTOM2_PORTS,
-                          'router': BOTTOM2_ROUTERS}}
+                          'router': BOTTOM2_ROUTERS,
+                          'security_group': BOTTOM2_SGS}}
 
     def __init__(self, pod_name):
         self.pod_name = pod_name
@@ -243,6 +249,41 @@ class FakeClient(object):
     def create_floatingips(self, ctx, body):
         # only for mock purpose
         pass
+
+    def create_security_group_rules(self, ctx, body):
+        sg_id = body['security_group_rule']['security_group_id']
+        res_list = self._res_map[self.pod_name]['security_group']
+        for sg in res_list:
+            if sg['id'] == sg_id:
+                target_sg = sg
+        new_rule = copy.copy(body['security_group_rule'])
+        match_found = False
+        for rule in target_sg['security_group_rules']:
+            old_rule = copy.copy(rule)
+            if new_rule == old_rule:
+                match_found = True
+                break
+        if match_found:
+            raise q_exceptions.Conflict()
+        target_sg['security_group_rules'].append(body['security_group_rule'])
+
+    def delete_security_group_rules(self, ctx, rule_id):
+        res_list = self._res_map[self.pod_name]['security_group']
+        for sg in res_list:
+            for rule in sg['security_group_rules']:
+                if rule['id'] == rule_id:
+                    sg['security_group_rules'].remove(rule)
+                    return
+
+    def get_security_groups(self, ctx, sg_id):
+        res_list = self._res_map[self.pod_name]['security_group']
+        for sg in res_list:
+            if sg['id'] == sg_id:
+                # need to do a deep copy because we will traverse the security
+                # group's 'security_group_rules' field and make change to the
+                # group
+                ret_sg = copy.deepcopy(sg)
+                return ret_sg
 
 
 class FakeNeutronContext(object):
@@ -470,6 +511,9 @@ class FakeSession(object):
                     'ports', 'id', 'fixed_ips')
         link_models(model_obj, model_dict,
                     'subnets', 'network_id', 'networks', 'id', 'subnets')
+        link_models(model_obj, model_dict,
+                    'securitygrouprules', 'security_group_id',
+                    'securitygroups', 'id', 'security_group_rules')
 
         if model_obj.__tablename__ == 'routerports':
             for port in TOP_PORTS:
@@ -566,6 +610,9 @@ class FakePlugin(plugin.TricirclePlugin):
                 return ret
         return port
 
+    def _make_security_group_dict(self, security_group, fields=None):
+        return security_group
+
 
 def fake_get_context_from_neutron_context(q_context):
     return context.get_db_context()
@@ -608,7 +655,8 @@ def _allocate_specific_ip(context, subnet_id, ip_address):
     pass
 
 
-class PluginTest(unittest.TestCase):
+class PluginTest(unittest.TestCase,
+                 test_security_groups.TricircleSecurityGroupTestMixin):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
@@ -1688,6 +1736,88 @@ class PluginTest(unittest.TestCase):
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_security_group_rule(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_create_security_group_rule(fake_plugin, q_ctx, t_ctx,
+                                              'pod_id_1', TOP_SGS, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_security_group_rule(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_delete_security_group_rule(fake_plugin, q_ctx, t_ctx,
+                                              'pod_id_1', TOP_SGS,
+                                              TOP_SG_RULES, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_handle_remote_group_invalid_input(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_handle_remote_group_invalid_input(fake_plugin, q_ctx, t_ctx,
+                                                     'pod_id_1', TOP_SGS,
+                                                     TOP_SG_RULES, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_handle_default_sg_invalid_input(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_handle_default_sg_invalid_input(fake_plugin, q_ctx, t_ctx,
+                                                   'pod_id_1', TOP_SGS,
+                                                   TOP_SG_RULES, BOTTOM1_SGS)
+
+    @patch.object(FakeClient, 'create_security_group_rules')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_security_group_rule_exception(self, mock_context,
+                                                  mock_create):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        mock_create.side_effect = q_exceptions.ConnectionFailed
+
+        self._test_create_security_group_rule_exception(
+            fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, BOTTOM1_SGS)
+
+    @patch.object(FakeClient, 'delete_security_group_rules')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_security_group_rule_exception(self, mock_context,
+                                                  mock_delete):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        mock_delete.side_effect = q_exceptions.ConnectionFailed
+
+        self._test_delete_security_group_rule_exception(
+            fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, TOP_SG_RULES,
+            BOTTOM1_SGS)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

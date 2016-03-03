@@ -31,7 +31,6 @@ from neutron.db import l3_agentschedulers_db  # noqa
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.db import securitygroups_db
 from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
@@ -54,6 +53,7 @@ from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.network import security_groups
 
 
 tricircle_opts = [
@@ -78,7 +78,7 @@ class TricircleVlanTypeDriver(type_vlan.VlanTypeDriver):
 
 
 class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
-                      securitygroups_db.SecurityGroupDbMixin,
+                      security_groups.TricircleSecurityGroupMixin,
                       external_net_db.External_net_db_mixin,
                       portbindings_db.PortBindingMixin,
                       extradhcpopt_db.ExtraDhcpOptMixin,
@@ -122,7 +122,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     @log_helpers.log_method_call
     def start_rpc_listeners(self):
-        pass
+        return []
         # NOTE(zhiyuan) use later
         # self.topic = topics.PLUGIN
         # self.conn = n_rpc.create_connection(new=True)
