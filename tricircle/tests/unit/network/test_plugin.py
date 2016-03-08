@@ -1305,6 +1305,9 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network(self, mock_context):
+        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
+        cfg.CONF.set_override('core_plugin', plugin_path)
+
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
