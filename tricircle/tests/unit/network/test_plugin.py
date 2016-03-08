@@ -27,6 +27,7 @@ from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
 from neutron.db import ipam_non_pluggable_backend
 from neutron.db import l3_db
+from neutron.db import models_v2
 from neutron.extensions import availability_zone as az_ext
 from neutron.ipam import subnet_alloc
 import neutronclient.common.exceptions as q_exceptions
@@ -545,8 +546,14 @@ class FakePlugin(plugin.TricirclePlugin):
         return subnet
 
     def _make_port_dict(self, port, fields=None, process_extensions=True):
-        if port['fixed_ips']:
-            return port
+        if port.get('fixed_ips'):
+            if isinstance(port['fixed_ips'][0], dict):
+                return port
+            else:
+                for i, fixed_ip in enumerate(port['fixed_ips']):
+                    port['fixed_ips'][i] = {
+                        'subnet_id': fixed_ip['subnet_id'],
+                        'ip_address': fixed_ip['ip_address']}
         for allocation in TOP_IPALLOCATIONS:
             if allocation['port_id'] == port['id']:
                 ret = {}
@@ -635,7 +642,11 @@ class PluginTest(unittest.TestCase):
             core.create_resource(self.context, models.ResourceRouting, route2)
 
     def _basic_port_setup(self):
-        TOP_PORTS.extend([{'id': 'top_id_0', 'name': 'top'},
+        TOP_PORTS.extend([{'id': 'top_id_0', 'name': 'top',
+                           'fixed_ips': [models_v2.IPAllocation(
+                               port_id='top_id_0', ip_address='10.0.0.1',
+                               subnet_id='top_subnet_id',
+                               network_id='top_net_id')]},
                           {'id': 'top_id_1', 'name': 'top'},
                           {'id': 'top_id_2', 'name': 'top'},
                           {'id': 'top_id_3', 'name': 'top'}])
@@ -682,7 +693,9 @@ class PluginTest(unittest.TestCase):
         ports4 = fake_plugin.get_ports(neutron_context, limit=1,
                                        marker=ports3[-1]['id'])
         ports = []
-        expected_ports = [{'id': 'top_id_0', 'name': 'top'},
+        expected_ports = [{'id': 'top_id_0', 'name': 'top',
+                           'fixed_ips': [{'subnet_id': 'top_subnet_id',
+                                          'ip_address': '10.0.0.1'}]},
                           {'id': 'top_id_1', 'name': 'bottom'},
                           {'id': 'top_id_2', 'name': 'bottom'},
                           {'id': 'top_id_3', 'name': 'top'}]
@@ -709,7 +722,9 @@ class PluginTest(unittest.TestCase):
                                        filters={'id': ['top_id_1']})
         ports3 = fake_plugin.get_ports(neutron_context,
                                        filters={'id': ['top_id_4']})
-        self.assertEqual([{'id': 'top_id_0', 'name': 'top'}], ports1)
+        self.assertEqual([{'id': 'top_id_0', 'name': 'top',
+                           'fixed_ips': [{'subnet_id': 'top_subnet_id',
+                                          'ip_address': '10.0.0.1'}]}], ports1)
         self.assertEqual([{'id': 'top_id_1', 'name': 'bottom'}], ports2)
         self.assertEqual([], ports3)
 

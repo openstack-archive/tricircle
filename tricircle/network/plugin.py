@@ -405,10 +405,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         for port in query:
             total += 1
             if port['id'] not in top_bottom_map:
-                ret.append(port)
+                ret.append(self._make_port_dict(port))
             if len(ret) == number:
                 return ret
-        # NOTE(zhiyuan) we have traverse all the ports
+        # NOTE(zhiyuan) we have traversed all the ports
         if total < search_step:
             return ret
         else:
@@ -430,7 +430,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             query = self._apply_ports_filters(query, models_v2.Port, filters)
             for port in query:
                 if port['id'] not in top_bottom_map:
-                    ret.append(port)
+                    ret.append(self._make_port_dict(port))
             return ret
 
     @staticmethod
