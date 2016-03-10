@@ -45,7 +45,7 @@ KEYSTONE_AUTH_HOST=10.250.201.24
 GLANCE_SERVICE_HOST=10.250.201.24
 
 Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
-OVS_BRIDGE_MAPPINGS=bridge:br-bridge,externn:br-ext
+OVS_BRIDGE_MAPPINGS=bridge:br-bridge,extern:br-ext
 
 # Use Neutron instead of nova-network
 disable_service n-net

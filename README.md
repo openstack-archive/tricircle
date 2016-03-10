@@ -240,7 +240,7 @@ Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001
       you can change physical network name, but remember to adapt your change to the
       commands showed in this guide; also, change min vlan and max vlan to adapt the
       vlan range your physical network supports.
-OVS_BRIDGE_MAPPINGS=bridge:br-bridge,externn:br-ext
+OVS_BRIDGE_MAPPINGS=bridge:br-bridge,extern:br-ext
     - the format is <physical network name>:<ovs bridge name>, you can change these names,
       but remember to adapt your change to the commands showed in this guide.
 Q_USE_PROVIDERNET_FOR_PUBLIC=True
