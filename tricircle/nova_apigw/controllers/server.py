@@ -294,6 +294,20 @@ class ServerController(rest.RestController):
                 if remove_index >= 0:
                     del addresses[remove_index]
 
+    @staticmethod
+    def _check_network_server_the_same_az(network, server_az):
+        az_hints = 'availability_zone_hints'
+        # if neutron az not assigned, server az is used
+        if not network.get(az_hints):
+            return True
+        # temporally not support cross-pod network
+        if len(network[az_hints]) > 1:
+            return False
+        if network[az_hints][0] == server_az:
+            return True
+        else:
+            return False
+
     def _get_all(self, context):
         ret = []
         pods = db_api.list_pods(context)
@@ -362,6 +376,13 @@ class ServerController(rest.RestController):
                     if not network:
                         pecan.abort(400, 'Network not found')
                         return
+
+                    if not self._check_network_server_the_same_az(
+                            network, kw['server']['availability_zone']):
+                        pecan.abort(400, 'Network and server not in the same '
+                                         'availability zone')
+                        return
+
                     subnets = top_client.list_subnets(
                         context, [{'key': 'network_id',
                                    'comparator': 'eq',

@@ -14,7 +14,9 @@
 #    under the License.
 
 import datetime
+import mock
 from mock import patch
+import pecan
 import unittest
 
 from oslo_utils import uuidutils
@@ -432,6 +434,57 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(server_dict['id'], routes[0]['bottom_id'])
             self.assertEqual(b_pod['pod_id'], routes[0]['pod_id'])
             self.assertEqual(self.project_id, routes[0]['project_id'])
+
+    @patch.object(pecan, 'abort')
+    @patch.object(FakeClient, 'create_servers')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_post_with_network_az(self, mock_ctx, mock_create, mock_abort):
+        t_pod, b_pod = self._prepare_pod()
+        top_net_id = 'top_net_id'
+        top_subnet_id = 'top_subnet_id'
+        t_net = {'id': top_net_id}
+        t_subnet = {'id': top_subnet_id,
+                    'network_id': top_net_id,
+                    'ip_version': 4,
+                    'cidr': '10.0.0.0/24',
+                    'gateway_ip': '10.0.0.1',
+                    'allocation_pools': {'start': '10.0.0.2',
+                                         'end': '10.0.0.254'},
+                    'enable_dhcp': True}
+        TOP_NETS.append(t_net)
+        TOP_SUBNETS.append(t_subnet)
+
+        server_name = 'test_server'
+        image_id = 'image_id'
+        flavor_id = 1
+        body = {
+            'server': {
+                'name': server_name,
+                'imageRef': image_id,
+                'flavorRef': flavor_id,
+                'availability_zone': b_pod['az_name'],
+                'networks': [{'uuid': top_net_id}]
+            }
+        }
+        mock_create.return_value = {'id': 'bottom_server_id'}
+        mock_ctx.return_value = self.context
+
+        # update top net for test purpose, correct az
+        TOP_NETS[0]['availability_zone_hints'] = ['b_az']
+        self.controller.post(**body)
+
+        # update top net for test purpose, wrong az
+        TOP_NETS[0]['availability_zone_hints'] = ['fake_az']
+        self.controller.post(**body)
+
+        # update top net for test purpose, correct az and wrong az
+        TOP_NETS[0]['availability_zone_hints'] = ['b_az', 'fake_az']
+        self.controller.post(**body)
+
+        msg = 'Network and server not in the same availability zone'
+        # abort two times
+        calls = [mock.call(400, msg), mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
