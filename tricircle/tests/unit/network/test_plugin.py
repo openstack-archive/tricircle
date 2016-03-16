@@ -476,6 +476,9 @@ class FakeSession(object):
         def __exit__(self, type, value, traceback):
             pass
 
+    def __init__(self):
+        self.info = {}
+
     @property
     def is_active(self):
         return True

@@ -30,6 +30,7 @@ from tricircle.nova_apigw.controllers import flavor
 from tricircle.nova_apigw.controllers import image
 from tricircle.nova_apigw.controllers import quota_sets
 from tricircle.nova_apigw.controllers import server
+from tricircle.nova_apigw.controllers import volume
 
 
 LOG = logging.getLogger(__name__)
@@ -93,6 +94,9 @@ class V21Controller(object):
             'os-quota-sets': quota_sets.QuotaSetsController,
             'limits': quota_sets.LimitsController,
         }
+        self.server_sub_controller = {
+            'os-volume_attachments': volume.VolumeController
+        }
 
     def _get_resource_controller(self, project_id, remainder):
         if not remainder:
@@ -102,6 +106,14 @@ class V21Controller(object):
         if resource not in self.resource_controller:
             pecan.abort(404)
             return
+        if resource == 'servers' and len(remainder) >= 3:
+            server_id = remainder[1]
+            sub_resource = remainder[2]
+            if sub_resource not in self.server_sub_controller:
+                pecan.abort(404)
+                return
+            return self.server_sub_controller[sub_resource](
+                project_id, server_id), remainder[3:]
         return self.resource_controller[resource](project_id), remainder[1:]
 
     @pecan.expose()

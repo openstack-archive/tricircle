@@ -206,7 +206,8 @@ class NovaResourceHandle(ResourceHandle):
     service_type = cons.ST_NOVA
     support_resource = {'flavor': LIST,
                         'server': LIST | CREATE | GET,
-                        'aggregate': LIST | CREATE | DELETE | ACTION}
+                        'aggregate': LIST | CREATE | DELETE | ACTION,
+                        'server_volume': ACTION}
 
     def _get_client(self, cxt):
         cli = n_client.Client('2',
@@ -217,8 +218,15 @@ class NovaResourceHandle(ResourceHandle):
             self.endpoint_url.replace('$(tenant_id)s', cxt.tenant))
         return cli
 
+    def _adapt_resource(self, resource):
+        if resource == 'server_volume':
+            return 'volume'
+        else:
+            return resource
+
     def handle_list(self, cxt, resource, filters):
         try:
+            resource = self._adapt_resource(resource)
             client = self._get_client(cxt)
             collection = '%ss' % resource
             # only server list supports filter
@@ -236,6 +244,7 @@ class NovaResourceHandle(ResourceHandle):
 
     def handle_create(self, cxt, resource, *args, **kwargs):
         try:
+            resource = self._adapt_resource(resource)
             client = self._get_client(cxt)
             collection = '%ss' % resource
             return getattr(client, collection).create(
@@ -247,6 +256,7 @@ class NovaResourceHandle(ResourceHandle):
 
     def handle_get(self, cxt, resource, resource_id):
         try:
+            resource = self._adapt_resource(resource)
             client = self._get_client(cxt)
             collection = '%ss' % resource
             return getattr(client, collection).get(resource_id).to_dict()
@@ -260,6 +270,7 @@ class NovaResourceHandle(ResourceHandle):
 
     def handle_delete(self, cxt, resource, resource_id):
         try:
+            resource = self._adapt_resource(resource)
             client = self._get_client(cxt)
             collection = '%ss' % resource
             return getattr(client, collection).delete(resource_id)
@@ -273,10 +284,11 @@ class NovaResourceHandle(ResourceHandle):
 
     def handle_action(self, cxt, resource, action, *args, **kwargs):
         try:
+            resource = self._adapt_resource(resource)
             client = self._get_client(cxt)
             collection = '%ss' % resource
             resource_manager = getattr(client, collection)
-            getattr(resource_manager, action)(*args, **kwargs)
+            return getattr(resource_manager, action)(*args, **kwargs)
         except r_exceptions.ConnectTimeout:
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable('nova',

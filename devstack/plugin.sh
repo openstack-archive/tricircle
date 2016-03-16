@@ -301,6 +301,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             # move them to bottom region
             iniset $NOVA_CONF neutron region_name $POD_REGION_NAME
             iniset $NOVA_CONF neutron url "$Q_PROTOCOL://$SERVICE_HOST:$TRICIRCLE_NEUTRON_PORT"
+            iniset $NOVA_CONF cinder os_region_name $POD_REGION_NAME
 
             get_or_create_endpoint "compute" \
                 "$POD_REGION_NAME" \
