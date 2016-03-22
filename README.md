@@ -107,6 +107,51 @@ cinder --debug show $volume_id
 cinder --debug delete $volume_id
 cinder --debug list
 ```
+### Quick Verify
+
+A sample of admin-openrc.sh and an installation verification script can be found
+in devstack/ directory.
+
+#### admin-openrc.sh
+
+Create client environment variables for the admin user as the following:
+
+```
+export OS_PROJECT_DOMAIN_ID=default
+export OS_USER_DOMAIN_ID=default
+export OS_PROJECT_NAME=admin
+export OS_TENANT_NAME=admin
+export OS_USERNAME=admin
+export OS_PASSWORD=password #change password as you set in your own environment
+export OS_AUTH_URL=http://127.0.0.1:5000
+export OS_IDENTITY_API_VERSION=3  #It's very important to set region name of top openstack,
+                                  #because tricircle has different API urls.
+export OS_IMAGE_API_VERSION=2
+export OS_REGION_NAME=RegionOne
+
+```
+The command to use the admin-openrc.sh is:
+
+```
+source tricircle/devstack/admin-openrc.sh
+```
+
+#### verify_top_install.sh
+
+This script is to quickly verify the installation of Tricircle in Top OpenStack
+as the step 5-9 above and save the output to logs.
+Before verifying the installation, you should modify the script to your own
+environment.
+
+- 1 The default post URL is 127.0.0.1, change it if needed,
+- 2 The default create net1 is 10.0.0.0/24, change it if needed.
+
+Then you do the following steps in Top OpenStack to verify:
+
+```
+cd tricircle/devstack/
+./verify_top_install.sh 2>&1 | tee logs
+```
 
 ## Cross-pod L3 networking with DevStack
 Now stateless design supports cross-pod l3 networking.
@@ -393,3 +438,31 @@ neutron floatingip-associate $floatingip_id $port_id
 ```
 Now you should be able to access virtual machine with floating ip bound from
 the external network.
+
+### Quick verify
+
+A sample of admin-openrc.sh and an installation verification script can be found
+in devstack/ directory.
+
+And a demo blog with virtualbox can be found in [this](http://shipengfei92.cn/play_tricircle_with_virtualbox).
+
+#### verify_cross_pod_install.sh
+
+This script is to quickly verify the installation of Tricircle in Cross Pod
+OpenStack as the contents above and save the output to logs.
+Before verifying the installation, some parameters should be modified to your own
+environment.
+
+- 1 The default URL is 127.0.0.1, change it if needed,
+- 2 This script create a external network 10.50.11.0/26 according to the work environment,
+change it if needed.
+- 3 This script create 2 subnets 10.0.1.0/24 and 10.0.2.0/24, Change these if needed.
+- 4 The default created floating-ip is attached to the VM with port 10.0.2.3 created by
+the subnets, modify it according to your environment.
+
+Then do the following steps in Node1 OpenStack to verify network functions:
+
+```
+cd tricircle/devstack/
+./verify_cross_pod_install.sh 2>&1 | tee logs
+```
