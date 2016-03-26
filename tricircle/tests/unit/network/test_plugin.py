@@ -30,6 +30,7 @@ from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.extensions import availability_zone as az_ext
 from neutron.ipam import subnet_alloc
+from neutron import manager
 import neutronclient.common.exceptions as q_exceptions
 
 from oslo_config import cfg
@@ -87,7 +88,7 @@ RES_MAP = {'networks': TOP_NETS,
            'subnetpools': TOP_SUBNETPOOLS,
            'subnetpoolprefixes': TOP_SUBNETPOOLPREFIXES,
            'ml2_vlan_allocations': TOP_VLANALLOCATIONS,
-           'ml2_network_segments': TOP_SEGMENTS,
+           'networksegments': TOP_SEGMENTS,
            'externalnetworks': TOP_EXTNETS,
            'floatingips': TOP_FLOATINGIPS,
            'securitygroups': TOP_SGS,
@@ -665,6 +666,9 @@ class PluginTest(unittest.TestCase,
         core.ModelBase.metadata.create_all(core.get_engine())
         cfg.CONF.register_opts(q_config.core_opts)
         self.context = context.Context()
+        self.save_method = manager.NeutronManager._get_default_service_plugins
+        manager.NeutronManager._get_default_service_plugins = mock.Mock()
+        manager.NeutronManager._get_default_service_plugins.return_value = []
 
     def _basic_pod_route_setup(self):
         pod1 = {'pod_id': 'pod_id_1',
@@ -1827,3 +1831,4 @@ class PluginTest(unittest.TestCase,
         for res in RES_LIST:
             del res[:]
         cfg.CONF.unregister_opts(q_config.core_opts)
+        manager.NeutronManager._get_default_service_plugins = self.save_method
