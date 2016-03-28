@@ -19,8 +19,11 @@ Tricircle base exception handling.
 
 import six
 
-from oslo_utils import excutils
+from oslo_log import log as logging
 from tricircle.common.i18n import _
+from tricircle.common.i18n import _LE
+
+LOG = logging.getLogger(__name__)
 
 
 class TricircleException(Exception):
@@ -31,24 +34,62 @@ class TricircleException(Exception):
     with the keyword arguments provided to the constructor.
     """
     message = _("An unknown exception occurred.")
+    code = 500
+    headers = {}
+    safe = False
 
-    def __init__(self, **kwargs):
-        try:
-            super(TricircleException, self).__init__(self.message % kwargs)
-            self.msg = self.message % kwargs
-        except Exception:
-            with excutils.save_and_reraise_exception() as ctxt:
-                if not self.use_fatal_exceptions():
-                    ctxt.reraise = False
-                    # at least get the core message out if something happened
-                    super(TricircleException, self).__init__(self.message)
+    def __init__(self, message=None, **kwargs):
 
-    if six.PY2:
-        def __unicode__(self):
-            return unicode(self.msg)
+        self.kwargs = kwargs
+        self.kwargs['message'] = message
 
-    def use_fatal_exceptions(self):
-        return False
+        if 'code' not in self.kwargs:
+            self.kwargs['code'] = self.code
+
+        for k, v in self.kwargs.items():
+            if isinstance(v, Exception):
+                self.kwargs[k] = six.text_type(v)
+
+        if self._should_format():
+            try:
+                message = self.message % kwargs
+            except Exception:
+
+                # kwargs doesn't match a variable in the message
+                # log the issue and the kwargs
+                exc_info = _('Exception class %s in string '
+                             'format operation') % type(self).__name__
+                for name, value in kwargs.items():
+                    exc_info = exc_info + _(' ; ') + \
+                        name + _(' : ') + six.text_type(value)
+
+                exc_info = self.message + _(' ; ') + exc_info
+                LOG.exception(exc_info)
+
+                # no rerasie
+                # exc_info = sys.exc_info()
+                # if CONF.fatal_exception_format_errors:
+                #    six.reraise(*exc_info)
+
+                # at least get the core message out if something happened
+                message = self.message
+
+        elif isinstance(message, Exception):
+            message = six.text_type(message)
+
+        self.msg = message
+        super(TricircleException, self).__init__(message)
+
+    def _should_format(self):
+
+        if self.kwargs['message'] is None and '%(message)' in self.message:
+            LOG.error(_LE('\%(message)s in message '
+                          'but init parameter is None'))
+
+        return self.kwargs['message'] is None or '%(message)' in self.message
+
+    def __unicode__(self):
+        return six.text_type(self.msg)
 
 
 class BadRequest(TricircleException):
@@ -74,7 +115,7 @@ class ServiceUnavailable(TricircleException):
 
 
 class AdminRequired(NotAuthorized):
-    message = _("User does not have admin privileges: %(reason)s")
+    message = _("User does not have admin privileges")
 
 
 class InUse(TricircleException):
@@ -129,6 +170,22 @@ class Invalid(TricircleException):
     code = 400
 
 
+class InvalidInput(Invalid):
+    message = _("Invalid input received: %(reason)s")
+
+
+class InvalidMetadata(Invalid):
+    message = _("Invalid metadata: %(reason)s")
+
+
+class InvalidMetadataSize(Invalid):
+    message = _("Invalid metadata size: %(reason)s")
+
+
+class MetadataLimitExceeded(TricircleException):
+    message = _("Maximum number of metadata items exceeds %(allowed)d")
+
+
 class InvalidReservationExpiration(Invalid):
     message = _("Invalid reservation expiration %(expire)s.")
 
@@ -164,6 +221,23 @@ class ReservationNotFound(QuotaNotFound):
 
 class OverQuota(TricircleException):
     message = _("Quota exceeded for resources: %(overs)s")
+
+
+class TooManyInstances(TricircleException):
+    message = _("Quota exceeded for %(overs)s: Requested %(req)s,"
+                " but already used %(used)s of %(allowed)s %(overs)s")
+
+
+class OnsetFileLimitExceeded(TricircleException):
+    message = _("Personality file limit exceeded")
+
+
+class OnsetFilePathLimitExceeded(OnsetFileLimitExceeded):
+    message = _("Personality file path too long")
+
+
+class OnsetFileContentLimitExceeded(OnsetFileLimitExceeded):
+    message = _("Personality file content too long")
 
 
 class ExternalNetPodNotSpecify(TricircleException):

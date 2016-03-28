@@ -2123,11 +2123,11 @@ class QuotaSetsOperationTest(DbQuotaDriverTestCase, base.TestCase):
                           self.ctx, **body)
 
         body = {'fake_quota_set': {'gigabytes': 100}}
-        self.assertRaises(exceptions.InvalidQuotaValue, qso.update,
+        self.assertRaises(exceptions.InvalidInput, qso.update,
                           self.ctx, **body)
 
         body = {}
-        self.assertRaises(exceptions.InvalidQuotaValue, qso.update,
+        self.assertRaises(exceptions.InvalidInput, qso.update,
                           self.ctx, **body)
 
         new_quota = qso.show_detail_quota(self.ctx)

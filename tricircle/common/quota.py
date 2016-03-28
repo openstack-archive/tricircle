@@ -1310,7 +1310,7 @@ class QuotaSetOperation(object):
 
         quota_set = kw.get('quota_set')
         if not quota_set:
-            raise t_exceptions.InvalidQuotaValue
+            raise t_exceptions.InvalidInput(reason=_('no quota_set'))
 
         # TODO(joehuang): process is_force flag here
 
@@ -1320,7 +1320,7 @@ class QuotaSetOperation(object):
         if not utils.is_valid_boolstr(skip_flag):
             msg = _("Invalid value '%s' for skip_validation.") % skip_flag
             LOG.error(msg=msg)
-            raise t_exceptions.ValidationError
+            raise t_exceptions.ValidationError(msg=msg)
 
         skip_flag = utils.bool_from_string(skip_flag)
 
@@ -1337,7 +1337,7 @@ class QuotaSetOperation(object):
         if len(bad_keys) > 0:
             msg = _("Bad key(s) in quota set: %s") % ",".join(bad_keys)
             LOG.error(msg=msg)
-            raise t_exceptions.ValidationError
+            raise t_exceptions.ValidationError(msg=msg)
 
         # Get the parent_id of the target project to verify whether we are
         # dealing with hierarchical namespace or non-hierarchical namespace.
@@ -1375,7 +1375,7 @@ class QuotaSetOperation(object):
 
                 msg = _("Can not update quota for %s") % param_msg
                 LOG.error(msg=msg)
-                raise t_exceptions.HTTPForbiddenError
+                raise t_exceptions.HTTPForbiddenError(msg=msg)
 
         # NOTE(ankit): Pass #2 - In this loop for body['quota_set'].keys(),
         # we validate the quota limits to ensure that we can bail out if
@@ -1499,7 +1499,7 @@ class QuotaSetOperation(object):
 
                 msg = _("Can not delete quota for %s") % param_msg
                 LOG.error(msg=msg)
-                raise t_exceptions.HTTPForbiddenError
+                raise t_exceptions.HTTPForbiddenError(msg=msg)
 
         try:
             project_quotas = QUOTAS.get_project_quotas(
