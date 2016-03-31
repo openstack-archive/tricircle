@@ -58,3 +58,11 @@ ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
 
 MAX_INT = 0x7FFFFFFF
 expire_time = datetime.datetime(2000, 1, 1)
+
+# job status
+JS_New = 'New'
+JS_Running = 'Running'
+JS_Success = 'Success'
+JS_Fail = 'Fail'
+
+SP_EXTRA_ID = '00000000-0000-0000-0000-000000000000'

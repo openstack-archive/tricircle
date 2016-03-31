@@ -21,7 +21,9 @@ from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_log import log as logging
 from oslo_utils import timeutils
+from oslo_utils import uuidutils
 
+from tricircle.common import constants
 from tricircle.common.context import is_admin_context as _is_admin_context
 from tricircle.common import exceptions
 from tricircle.common.i18n import _
@@ -200,6 +202,72 @@ def get_pod_by_name(context, pod_name):
             return pod
 
     return None
+
+
+def new_job(context, _type, resource_id):
+    with context.session.begin():
+        job_dict = {'id': uuidutils.generate_uuid(),
+                    'type': _type,
+                    'status': constants.JS_New,
+                    'resource_id': resource_id,
+                    'extra_id': uuidutils.generate_uuid()}
+        job = core.create_resource(context, models.Job, job_dict)
+        return job
+
+
+def register_job(context, _type, resource_id):
+    try:
+        context.session.begin()
+        job_dict = {'id': uuidutils.generate_uuid(),
+                    'type': _type,
+                    'status': constants.JS_Running,
+                    'resource_id': resource_id,
+                    'extra_id': constants.SP_EXTRA_ID}
+        job = core.create_resource(context, models.Job, job_dict)
+        context.session.commit()
+        return job
+    except db_exc.DBDuplicateEntry:
+        context.session.rollback()
+        return None
+    except db_exc.DBDeadlock:
+        context.session.rollback()
+        return None
+    finally:
+        context.session.close()
+
+
+def get_latest_timestamp(context, status, _type, resource_id):
+    jobs = core.query_resource(
+        context, models.Job,
+        [{'key': 'status', 'comparator': 'eq', 'value': status},
+         {'key': 'type', 'comparator': 'eq', 'value': _type},
+         {'key': 'resource_id', 'comparator': 'eq', 'value': resource_id}],
+        [('timestamp', False)])
+    if jobs:
+        return jobs[0]['timestamp']
+    else:
+        return None
+
+
+def get_running_job(context, _type, resource_id):
+    jobs = core.query_resource(
+        context, models.Job,
+        [{'key': 'resource_id', 'comparator': 'eq', 'value': resource_id},
+         {'key': 'status', 'comparator': 'eq', 'value': constants.JS_Running},
+         {'key': 'type', 'comparator': 'eq', 'value': _type}], [])
+    if jobs:
+        return jobs[0]
+    else:
+        return None
+
+
+def finish_job(context, job_id, successful, timestamp):
+    status = constants.JS_Success if successful else constants.JS_Fail
+    with context.session.begin():
+        job_dict = {'status': status,
+                    'timestamp': timestamp,
+                    'extra_id': uuidutils.generate_uuid()}
+        core.update_resource(context, models.Job, job_id, job_dict)
 
 
 _DEFAULT_QUOTA_NAME = 'default'

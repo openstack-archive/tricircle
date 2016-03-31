@@ -217,10 +217,25 @@ def upgrade(migrate_engine):
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
+    job = sql.Table(
+        'job', meta,
+        sql.Column('id', sql.String(length=36), primary_key=True),
+        sql.Column('type', sql.String(length=36)),
+        sql.Column('timestamp', sql.TIMESTAMP,
+                   server_default=sql.text('CURRENT_TIMESTAMP')),
+        sql.Column('status', sql.String(length=36)),
+        sql.Column('resource_id', sql.String(length=36)),
+        sql.Column('extra_id', sql.String(length=36)),
+        migrate.UniqueConstraint(
+            'type', 'status', 'resource_id', 'extra_id',
+            name='job0type0status0resource_id0extra_id'),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8')
+
     tables = [aggregates, aggregate_metadata, instance_types,
               instance_type_projects, instance_type_extra_specs, key_pairs,
               quotas, quota_classes, quota_usages, reservations,
-              volume_types,
+              volume_types, job,
               quality_of_service_specs, cascaded_pods_resource_routing]
     for table in tables:
         table.create()

@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+import eventlet
 import netaddr
+import six
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -23,12 +26,86 @@ from oslo_service import periodic_task
 from tricircle.common import client
 from tricircle.common import constants
 from tricircle.common.i18n import _
+from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
+from tricircle.common.i18n import _LW
 import tricircle.db.api as db_api
 
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+
+
+def _job_handle(job_type):
+    def handle_func(func):
+        @six.wraps(func)
+        def handle_args(*args, **kwargs):
+            ctx = args[1]
+            payload = kwargs['payload']
+
+            resource_id = payload[job_type]
+            db_api.new_job(ctx, job_type, resource_id)
+            start_time = datetime.datetime.now()
+
+            while True:
+                current_time = datetime.datetime.now()
+                delta = current_time - start_time
+                if delta.seconds >= CONF.worker_handle_timeout:
+                    # quit when this handle is running for a long time
+                    break
+                time_new = db_api.get_latest_timestamp(ctx, constants.JS_New,
+                                                       job_type, resource_id)
+                time_success = db_api.get_latest_timestamp(
+                    ctx, constants.JS_Success, job_type, resource_id)
+                if time_success and time_success >= time_new:
+                    break
+                job = db_api.register_job(ctx, job_type, resource_id)
+                if not job:
+                    # fail to obtain the lock, let other worker handle the job
+                    running_job = db_api.get_running_job(ctx, job_type,
+                                                         resource_id)
+                    if not running_job:
+                        # there are two reasons that running_job is None. one
+                        # is that the running job has just been finished, the
+                        # other is that all workers fail to register the job
+                        # due to deadlock exception. so we sleep and try again
+                        eventlet.sleep(CONF.worker_sleep_time)
+                        continue
+                    job_time = running_job['timestamp']
+                    current_time = datetime.datetime.now()
+                    delta = current_time - job_time
+                    if delta.seconds > CONF.job_run_expire:
+                        # previous running job expires, we set its status to
+                        # fail and try again to obtain the lock
+                        db_api.finish_job(ctx, running_job['id'], False,
+                                          time_new)
+                        LOG.warning(_LW('Job %(job)s of type %(job_type)s for '
+                                        'resource %(resource)s expires, set '
+                                        'its state to Fail'),
+                                    {'job': running_job['id'],
+                                     'job_type': job_type,
+                                     'resource': resource_id})
+                        eventlet.sleep(CONF.worker_sleep_time)
+                        continue
+                    else:
+                        # previous running job is still valid, we just leave
+                        # the job to the worker who holds the lock
+                        break
+                # successfully obtain the lock, start to execute handler
+                try:
+                    func(*args, **kwargs)
+                except Exception:
+                    db_api.finish_job(ctx, job['id'], False, time_new)
+                    LOG.error(_LE('Job %(job)s of type %(job_type)s for '
+                                  'resource %(resource)s fails'),
+                              {'job': job['id'],
+                               'job_type': job_type,
+                               'resource': resource_id})
+                    break
+                db_api.finish_job(ctx, job['id'], True, time_new)
+                eventlet.sleep(CONF.worker_sleep_time)
+        return handle_args
+    return handle_func
 
 
 class PeriodicTasks(periodic_task.PeriodicTasks):
@@ -128,6 +205,7 @@ class XManager(PeriodicTasks):
 
         return info_text
 
+    @_job_handle('router')
     def configure_extra_routes(self, ctx, payload):
         # TODO(zhiyuan) performance and reliability issue
         # better have a job tracking mechanism
