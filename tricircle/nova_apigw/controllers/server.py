@@ -17,6 +17,9 @@ import netaddr
 import pecan
 from pecan import expose
 from pecan import rest
+import six
+
+import oslo_log.log as logging
 
 import neutronclient.common.exceptions as q_exceptions
 
@@ -24,10 +27,20 @@ from tricircle.common import az_ag
 import tricircle.common.client as t_client
 from tricircle.common import constants
 import tricircle.common.context as t_context
+import tricircle.common.exceptions as t_exceptions
+from tricircle.common.i18n import _
+from tricircle.common.i18n import _LE
 import tricircle.common.lock_handle as t_lock
+from tricircle.common.quota import QUOTAS
+from tricircle.common import utils
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+
+LOG = logging.getLogger(__name__)
+
+MAX_METADATA_KEY_LENGTH = 255
+MAX_METADATA_VALUE_LENGTH = 255
 
 
 class ServerController(rest.RestController):
@@ -40,6 +53,167 @@ class ServerController(rest.RestController):
         if pod_name not in self.clients:
             self.clients[pod_name] = t_client.Client(pod_name)
         return self.clients[pod_name]
+
+    def _get_all(self, context):
+        ret = []
+        pods = db_api.list_pods(context)
+        for pod in pods:
+            if not pod['az_name']:
+                continue
+            client = self._get_client(pod['pod_name'])
+            servers = client.list_servers(context)
+            self._remove_fip_info(servers)
+            ret.extend(servers)
+        return ret
+
+    @expose(generic=True, template='json')
+    def get_one(self, _id):
+        context = t_context.extract_context_from_environ()
+
+        if _id == 'detail':
+            return {'servers': self._get_all(context)}
+
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            context, _id, constants.RT_SERVER)
+        if not mappings:
+            pecan.abort(404, 'Server not found')
+            return
+        pod, bottom_id = mappings[0]
+        client = self._get_client(pod['pod_name'])
+        server = client.get_servers(context, bottom_id)
+        if not server:
+            pecan.abort(404, 'Server not found')
+            return
+        else:
+            return {'server': server}
+
+    @expose(generic=True, template='json')
+    def get_all(self):
+        context = t_context.extract_context_from_environ()
+        return {'servers': self._get_all(context)}
+
+    @expose(generic=True, template='json')
+    def post(self, **kw):
+        context = t_context.extract_context_from_environ()
+
+        if 'server' not in kw:
+            pecan.abort(400, 'Request body not found')
+            return
+
+        if 'availability_zone' not in kw['server']:
+            pecan.abort(400, 'Availability zone not set')
+            return
+
+        pod, b_az = az_ag.get_pod_by_az_tenant(
+            context, kw['server']['availability_zone'], self.project_id)
+        if not pod:
+            pecan.abort(400, 'No pod bound to availability zone')
+            return
+
+        t_server_dict = kw['server']
+        self._process_metadata_quota(context, t_server_dict)
+        self._process_injected_file_quota(context, t_server_dict)
+
+        server_body = self._get_create_server_body(kw['server'], b_az)
+
+        top_client = self._get_client()
+
+        sg_filters = [{'key': 'tenant_id', 'comparator': 'eq',
+                       'value': self.project_id}]
+        top_sgs = top_client.list_security_groups(context, sg_filters)
+        top_sg_map = dict((sg['name'], sg) for sg in top_sgs)
+
+        if 'security_groups' not in kw['server']:
+            security_groups = ['default']
+        else:
+            security_groups = []
+            for sg in kw['server']['security_groups']:
+                if 'name' not in sg:
+                    pecan.abort(404, 'Security group name not specified')
+                    return
+                if sg['name'] not in top_sg_map:
+                    pecan.abort(404,
+                                'Security group %s not found' % sg['name'])
+                    return
+                security_groups.append(sg['name'])
+        t_sg_ids, b_sg_ids, is_news = self._handle_security_group(
+            context, pod, top_sg_map, security_groups)
+
+        if 'networks' in kw['server']:
+            server_body['networks'] = []
+            for net_info in kw['server']['networks']:
+                if 'uuid' in net_info:
+                    network = top_client.get_networks(context,
+                                                      net_info['uuid'])
+                    if not network:
+                        pecan.abort(400, 'Network not found')
+                        return
+
+                    if not self._check_network_server_the_same_az(
+                            network, kw['server']['availability_zone']):
+                        pecan.abort(400, 'Network and server not in the same '
+                                         'availability zone')
+                        return
+
+                    subnets = top_client.list_subnets(
+                        context, [{'key': 'network_id',
+                                   'comparator': 'eq',
+                                   'value': network['id']}])
+                    if not subnets:
+                        pecan.abort(400, 'Network not contain subnets')
+                        return
+                    t_port_id, b_port_id = self._handle_network(
+                        context, pod, network, subnets,
+                        top_sg_ids=t_sg_ids, bottom_sg_ids=b_sg_ids)
+                elif 'port' in net_info:
+                    port = top_client.get_ports(context, net_info['port'])
+                    if not port:
+                        pecan.abort(400, 'Port not found')
+                        return
+                    t_port_id, b_port_id = self._handle_port(
+                        context, pod, port)
+                server_body['networks'].append({'port': b_port_id})
+
+        # only for security group first created in a pod, we invoke
+        # _handle_sg_rule_for_new_group to initialize rules in that group, this
+        # method removes all the rules in the new group then add new rules
+        top_sg_id_map = dict((sg['id'], sg) for sg in top_sgs)
+        new_top_sgs = []
+        new_bottom_sg_ids = []
+        default_sg = None
+        for t_id, b_id, is_new in zip(t_sg_ids, b_sg_ids, is_news):
+            sg_name = top_sg_id_map[t_id]['name']
+            if sg_name == 'default':
+                default_sg = top_sg_id_map[t_id]
+                continue
+            if not is_new:
+                continue
+            new_top_sgs.append(top_sg_id_map[t_id])
+            new_bottom_sg_ids.append(b_id)
+        self._handle_sg_rule_for_new_group(context, pod, new_top_sgs,
+                                           new_bottom_sg_ids)
+        if default_sg:
+            self._handle_sg_rule_for_default_group(
+                context, pod, default_sg, self.project_id)
+
+        client = self._get_client(pod['pod_name'])
+        nics = [
+            {'port-id': _port['port']} for _port in server_body['networks']]
+
+        server = client.create_servers(context,
+                                       name=server_body['name'],
+                                       image=server_body['imageRef'],
+                                       flavor=server_body['flavorRef'],
+                                       nics=nics,
+                                       security_groups=b_sg_ids)
+        with context.session.begin():
+            core.create_resource(context, models.ResourceRouting,
+                                 {'top_id': server['id'],
+                                  'bottom_id': server['id'],
+                                  'pod_id': pod['pod_id'],
+                                  'project_id': self.project_id,
+                                  'resource_type': constants.RT_SERVER})
+        return {'server': server}
 
     def _get_or_create_route(self, context, pod, _id, _type):
         def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
@@ -475,159 +649,100 @@ class ServerController(rest.RestController):
         else:
             return False
 
-    def _get_all(self, context):
-        ret = []
-        pods = db_api.list_pods(context)
-        for pod in pods:
-            if not pod['az_name']:
-                continue
-            client = self._get_client(pod['pod_name'])
-            servers = client.list_servers(context)
-            self._remove_fip_info(servers)
-            ret.extend(servers)
-        return ret
+    def _process_injected_file_quota(self, context, t_server_dict):
+        try:
+            ctx = context.elevated()
+            injected_files = t_server_dict.get('injected_files', None)
+            self._check_injected_file_quota(ctx, injected_files)
+        except (t_exceptions.OnsetFileLimitExceeded,
+                t_exceptions.OnsetFilePathLimitExceeded,
+                t_exceptions.OnsetFileContentLimitExceeded) as e:
+            msg = str(e)
+            LOG.exception(_LE('Quota exceeded %(msg)s'),
+                          {'msg': msg})
+            pecan.abort(400, _('Quota exceeded %s') % msg)
 
-    @expose(generic=True, template='json')
-    def get_one(self, _id):
-        context = t_context.extract_context_from_environ()
+    def _check_injected_file_quota(self, context, injected_files):
+        """Enforce quota limits on injected files.
 
-        if _id == 'detail':
-            return {'servers': self._get_all(context)}
+        Raises a QuotaError if any limit is exceeded.
 
-        mappings = db_api.get_bottom_mappings_by_top_id(
-            context, _id, constants.RT_SERVER)
-        if not mappings:
-            pecan.abort(404, 'Server not found')
-            return
-        pod, bottom_id = mappings[0]
-        client = self._get_client(pod['pod_name'])
-        server = client.get_servers(context, bottom_id)
-        if not server:
-            pecan.abort(404, 'Server not found')
-            return
-        else:
-            return {'server': server}
+        """
 
-    @expose(generic=True, template='json')
-    def get_all(self):
-        context = t_context.extract_context_from_environ()
-        return {'servers': self._get_all(context)}
-
-    @expose(generic=True, template='json')
-    def post(self, **kw):
-        context = t_context.extract_context_from_environ()
-
-        if 'server' not in kw:
-            pecan.abort(400, 'Request body not found')
+        if injected_files is None:
             return
 
-        if 'availability_zone' not in kw['server']:
-            pecan.abort(400, 'Availability zone not set')
-            return
+        # Check number of files first
+        try:
+            QUOTAS.limit_check(context,
+                               injected_files=len(injected_files))
+        except t_exceptions.OverQuota:
+            raise t_exceptions.OnsetFileLimitExceeded()
 
-        pod, b_az = az_ag.get_pod_by_az_tenant(
-            context, kw['server']['availability_zone'], self.project_id)
-        if not pod:
-            pecan.abort(400, 'No pod bound to availability zone')
-            return
+        # OK, now count path and content lengths; we're looking for
+        # the max...
+        max_path = 0
+        max_content = 0
+        for path, content in injected_files:
+            max_path = max(max_path, len(path))
+            max_content = max(max_content, len(content))
 
-        server_body = self._get_create_server_body(kw['server'], b_az)
+        try:
+            QUOTAS.limit_check(context,
+                               injected_file_path_bytes=max_path,
+                               injected_file_content_bytes=max_content)
+        except t_exceptions.OverQuota as exc:
+            # Favor path limit over content limit for reporting
+            # purposes
+            if 'injected_file_path_bytes' in exc.kwargs['overs']:
+                raise t_exceptions.OnsetFilePathLimitExceeded()
+            else:
+                raise t_exceptions.OnsetFileContentLimitExceeded()
 
-        top_client = self._get_client()
+    def _process_metadata_quota(self, context, t_server_dict):
+        try:
+            ctx = context.elevated()
+            metadata = t_server_dict.get('metadata', None)
+            self._check_metadata_properties_quota(ctx, metadata)
+        except t_exceptions.InvalidMetadata as e1:
+            LOG.exception(_LE('Invalid metadata %(exception)s'),
+                          {'exception': str(e1)})
+            pecan.abort(400, _('Invalid metadata'))
+        except t_exceptions.InvalidMetadataSize as e2:
+            LOG.exception(_LE('Invalid metadata size %(exception)s'),
+                          {'exception': str(e2)})
+            pecan.abort(400, _('Invalid metadata size'))
+        except t_exceptions.MetadataLimitExceeded as e3:
+            LOG.exception(_LE('Quota exceeded %(exception)s'),
+                          {'exception': str(e3)})
+            pecan.abort(400, _('Quota exceeded in metadata'))
 
-        sg_filters = [{'key': 'tenant_id', 'comparator': 'eq',
-                       'value': self.project_id}]
-        top_sgs = top_client.list_security_groups(context, sg_filters)
-        top_sg_map = dict((sg['name'], sg) for sg in top_sgs)
+    def _check_metadata_properties_quota(self, context, metadata=None):
+        """Enforce quota limits on metadata properties."""
+        if not metadata:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            msg = (_("Metadata type should be dict."))
+            raise t_exceptions.InvalidMetadata(reason=msg)
+        num_metadata = len(metadata)
+        try:
+            QUOTAS.limit_check(context, metadata_items=num_metadata)
+        except t_exceptions.OverQuota as exc:
+            quota_metadata = exc.kwargs['quotas']['metadata_items']
+            raise t_exceptions.MetadataLimitExceeded(allowed=quota_metadata)
 
-        if 'security_groups' not in kw['server']:
-            security_groups = ['default']
-        else:
-            security_groups = []
-            for sg in kw['server']['security_groups']:
-                if 'name' not in sg:
-                    pecan.abort(404, 'Security group name not specify')
-                    return
-                if sg['name'] not in top_sg_map:
-                    pecan.abort(404,
-                                'Security group %s not found' % sg['name'])
-                    return
-                security_groups.append(sg['name'])
-        t_sg_ids, b_sg_ids, is_news = self._handle_security_group(
-            context, pod, top_sg_map, security_groups)
+        # Because metadata is processed in the bottom pod, we just do
+        # parameter validation here to ensure quota management
+        for k, v in six.iteritems(metadata):
+            try:
+                utils.check_string_length(v)
+                utils.check_string_length(k, min_len=1)
+            except t_exceptions.InvalidInput as e:
+                raise t_exceptions.InvalidMetadata(reason=str(e))
 
-        if 'networks' in kw['server']:
-            server_body['networks'] = []
-            for net_info in kw['server']['networks']:
-                if 'uuid' in net_info:
-                    network = top_client.get_networks(context,
-                                                      net_info['uuid'])
-                    if not network:
-                        pecan.abort(400, 'Network not found')
-                        return
-
-                    if not self._check_network_server_the_same_az(
-                            network, kw['server']['availability_zone']):
-                        pecan.abort(400, 'Network and server not in the same '
-                                         'availability zone')
-                        return
-
-                    subnets = top_client.list_subnets(
-                        context, [{'key': 'network_id',
-                                   'comparator': 'eq',
-                                   'value': network['id']}])
-                    if not subnets:
-                        pecan.abort(400, 'Network not contain subnets')
-                        return
-                    t_port_id, b_port_id = self._handle_network(
-                        context, pod, network, subnets,
-                        top_sg_ids=t_sg_ids, bottom_sg_ids=b_sg_ids)
-                elif 'port' in net_info:
-                    port = top_client.get_ports(context, net_info['port'])
-                    if not port:
-                        pecan.abort(400, 'Port not found')
-                        return
-                    t_port_id, b_port_id = self._handle_port(
-                        context, pod, port)
-                server_body['networks'].append({'port': b_port_id})
-
-        # only for security group first created in a pod, we invoke
-        # _handle_sg_rule_for_new_group to initialize rules in that group, this
-        # method removes all the rules in the new group then add new rules
-        top_sg_id_map = dict((sg['id'], sg) for sg in top_sgs)
-        new_top_sgs = []
-        new_bottom_sg_ids = []
-        default_sg = None
-        for t_id, b_id, is_new in zip(t_sg_ids, b_sg_ids, is_news):
-            sg_name = top_sg_id_map[t_id]['name']
-            if sg_name == 'default':
-                default_sg = top_sg_id_map[t_id]
-                continue
-            if not is_new:
-                continue
-            new_top_sgs.append(top_sg_id_map[t_id])
-            new_bottom_sg_ids.append(b_id)
-        self._handle_sg_rule_for_new_group(context, pod, new_top_sgs,
-                                           new_bottom_sg_ids)
-        if default_sg:
-            self._handle_sg_rule_for_default_group(
-                context, pod, default_sg, self.project_id)
-
-        client = self._get_client(pod['pod_name'])
-        nics = [
-            {'port-id': _port['port']} for _port in server_body['networks']]
-
-        server = client.create_servers(context,
-                                       name=server_body['name'],
-                                       image=server_body['imageRef'],
-                                       flavor=server_body['flavorRef'],
-                                       nics=nics,
-                                       security_groups=b_sg_ids)
-        with context.session.begin():
-            core.create_resource(context, models.ResourceRouting,
-                                 {'top_id': server['id'],
-                                  'bottom_id': server['id'],
-                                  'pod_id': pod['pod_id'],
-                                  'project_id': self.project_id,
-                                  'resource_type': constants.RT_SERVER})
-        return {'server': server}
+            if len(k) > MAX_METADATA_KEY_LENGTH:
+                msg = _("Metadata property key greater than 255 characters")
+                raise t_exceptions.InvalidMetadataSize(reason=msg)
+            if len(v) > MAX_METADATA_VALUE_LENGTH:
+                msg = _("Metadata property value greater than 255 characters")
+                raise t_exceptions.InvalidMetadataSize(reason=msg)

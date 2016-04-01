@@ -139,6 +139,7 @@ cfg.CONF.register_group(quota_group)
 CONF.register_opts(quota_opts, quota_group)
 
 NON_QUOTA_KEYS = ['tenant_id', 'id']
+DEFAULT_PROJECT = 'default'
 
 
 class BaseResource(object):
@@ -1294,8 +1295,16 @@ class QuotaSetOperation(object):
                 project = keystone.projects.get(id,
                                                 subtree_as_ids=subtree_as_ids)
                 generic_project.parent_id = project.parent_id
+
+                # all projects in KeyStone will be put under the parent
+                # 'default' if not specifying the parent project id when
+                # creating project
+                if generic_project.parent_id == DEFAULT_PROJECT:
+                    generic_project.parent_id = None
+
                 generic_project.subtree = (
                     project.subtree if subtree_as_ids else None)
+
         except k_exceptions.NotFound:
             msg = _("Tenant ID: %s does not exist.") % id
             LOG.error(msg=msg)
@@ -1310,7 +1319,7 @@ class QuotaSetOperation(object):
 
         quota_set = kw.get('quota_set')
         if not quota_set:
-            raise t_exceptions.InvalidInput(reason=_('no quota_set'))
+            raise t_exceptions.InvalidInput(reason='no quota_set')
 
         # TODO(joehuang): process is_force flag here
 

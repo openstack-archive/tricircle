@@ -24,6 +24,8 @@ import neutronclient.common.exceptions as q_exceptions
 from oslo_utils import uuidutils
 
 from tricircle.common import context
+import tricircle.common.exceptions as t_exceptions
+from tricircle.common.i18n import _
 from tricircle.common import lock_handle
 from tricircle.db import api
 from tricircle.db import core
@@ -858,6 +860,168 @@ class ServerTest(unittest.TestCase):
                 self.assertIsNone(rule['remote_group_id'])
                 ips.append(rule['remote_ip_prefix'])
         self.assertEqual(expected_ips, ips)
+
+    @patch.object(pecan, 'abort')
+    def test_process_injected_file_quota(self, mock_abort):
+        ctx = self.context.elevated()
+
+        def _update_default_quota(num1, len1, len2):
+            self.default_quota = dict(
+                injected_files=num1, injected_file_path_bytes=len1,
+                injected_file_content_bytes=len2)
+            for k, v in self.default_quota.items():
+                api.quota_class_create(ctx, 'default', k, v)
+
+        injected_files = [
+            {
+                "path": "/etc/banner.txt",
+                "contents": "foo foo",
+            },
+
+            {
+                "path": "/etc/canner.txt",
+                "contents": "goo goo",
+            },
+        ]
+
+        t_server_dict = {'injected_files': injected_files}
+
+        max_path = 0
+        max_content = 0
+        for path, content in injected_files:
+            max_path = max(max_path, len(path))
+            max_content = max(max_content, len(content))
+
+        _update_default_quota(len(injected_files) - 1,
+                              max_path + 1,
+                              max_content + 1)
+        self.assertRaises(t_exceptions.OnsetFileLimitExceeded,
+                          self.controller._check_injected_file_quota,
+                          ctx, injected_files)
+
+        self.controller._process_injected_file_quota(ctx, t_server_dict)
+        msg = _('Quota exceeded %s') % \
+            t_exceptions.OnsetFileLimitExceeded.message
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        _update_default_quota(len(injected_files),
+                              max_path + 1,
+                              max_content + 1)
+        self.controller._check_injected_file_quota(ctx, injected_files)
+
+        _update_default_quota(len(injected_files) + 1,
+                              max_path - 1,
+                              max_content + 1)
+        self.assertRaises(t_exceptions.OnsetFilePathLimitExceeded,
+                          self.controller._check_injected_file_quota,
+                          ctx, injected_files)
+
+        self.controller._process_injected_file_quota(ctx, t_server_dict)
+        msg = _('Quota exceeded %s') % \
+            t_exceptions.OnsetFilePathLimitExceeded.message
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        _update_default_quota(len(injected_files) + 1,
+                              max_path,
+                              max_content + 1)
+        self.controller._check_injected_file_quota(ctx, injected_files)
+
+        _update_default_quota(len(injected_files) + 1,
+                              max_path + 1,
+                              max_content - 1)
+        self.assertRaises(t_exceptions.OnsetFileContentLimitExceeded,
+                          self.controller._check_injected_file_quota,
+                          ctx, injected_files)
+
+        self.controller._process_injected_file_quota(ctx, t_server_dict)
+        msg = _('Quota exceeded %s') % \
+            t_exceptions.OnsetFileContentLimitExceeded.message
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        _update_default_quota(len(injected_files) + 1,
+                              max_path + 1,
+                              max_content)
+        self.controller._check_injected_file_quota(ctx, injected_files)
+
+    @patch.object(pecan, 'abort')
+    def test_process_metadata_quota(self, mock_abort):
+        ctx = self.context.elevated()
+
+        def _update_default_quota(num):
+            self.default_quota = dict(metadata_items=num)
+            for k, v in self.default_quota.items():
+                api.quota_class_create(ctx, 'default', k, v)
+
+        meta_data_items = {
+            'A': '1',
+            'B': '2',
+            'C': '3',
+        }
+
+        t_server_dict = {'metadata': meta_data_items}
+
+        self.controller._check_metadata_properties_quota(ctx)
+        self.controller._check_metadata_properties_quota(ctx, {})
+
+        self.assertRaises(t_exceptions.InvalidMetadata,
+                          self.controller._check_metadata_properties_quota,
+                          ctx, [1, ])
+
+        meta_data_items['A'] = None
+        self.assertRaises(t_exceptions.InvalidMetadata,
+                          self.controller._check_metadata_properties_quota,
+                          ctx, meta_data_items)
+        self.controller._process_metadata_quota(ctx, t_server_dict)
+        msg = _('Invalid metadata')
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        meta_data_items['A'] = '1'
+        _update_default_quota(len(meta_data_items))
+        self.controller._check_metadata_properties_quota(ctx, meta_data_items)
+
+        _update_default_quota(len(meta_data_items) + 1)
+        self.controller._check_metadata_properties_quota(ctx, meta_data_items)
+
+        meta_data_items['C'] = '3'
+        _update_default_quota(len(meta_data_items) - 1)
+        self.assertRaises(t_exceptions.MetadataLimitExceeded,
+                          self.controller._check_metadata_properties_quota,
+                          ctx, meta_data_items)
+
+        self.controller._process_metadata_quota(ctx, t_server_dict)
+        msg = _('Quota exceeded in metadata')
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        _update_default_quota(len(meta_data_items) + 1)
+
+        string_exceed_MAX_METADATA_LEGNGTH = (server.MAX_METADATA_VALUE_LENGTH
+                                              + 1) * '3'
+
+        meta_data_items['C'] = string_exceed_MAX_METADATA_LEGNGTH
+        self.assertRaises(t_exceptions.InvalidMetadataSize,
+                          self.controller._check_metadata_properties_quota,
+                          ctx, meta_data_items)
+
+        self.controller._process_metadata_quota(ctx, t_server_dict)
+        msg = _('Invalid metadata size')
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
+
+        meta_data_items['C'] = '3'
+        meta_data_items[string_exceed_MAX_METADATA_LEGNGTH] = '4'
+        self.assertRaises(t_exceptions.InvalidMetadataSize,
+                          self.controller._check_metadata_properties_quota,
+                          ctx, meta_data_items)
+
+        self.controller._process_metadata_quota(ctx, t_server_dict)
+        msg = _('Invalid metadata size')
+        calls = [mock.call(400, msg)]
+        mock_abort.assert_has_calls(calls)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

@@ -15,6 +15,7 @@
 
 import six
 
+import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 
 
@@ -81,3 +82,33 @@ def bool_from_string(subject, strict=False, default=False):
         raise ValueError(msg)
     else:
         return default
+
+
+def check_string_length(value, name=None, min_len=0, max_len=None):
+    """Check the length of specified string
+
+    :param value: the value of the string
+    :param name: the name of the string
+    :param min_len: the minimum length of the string
+    :param max_len: the maximum length of the string
+
+    """
+    if not isinstance(value, six.string_types):
+        if name is None:
+            msg = _("The input is not a string or unicode")
+        else:
+            msg = _("%s is not a string or unicode") % name
+        raise t_exceptions.InvalidInput(message=msg)
+
+    if name is None:
+        name = value
+
+    if len(value) < min_len:
+        msg = _("%(name)s has a minimum character requirement of "
+                "%(min_length)s.") % {'name': name, 'min_length': min_len}
+        raise t_exceptions.InvalidInput(message=msg)
+
+    if max_len and len(value) > max_len:
+        msg = _("%(name)s has more than %(max_length)s "
+                "characters.") % {'name': name, 'max_length': max_len}
+        raise t_exceptions.InvalidInput(message=msg)
