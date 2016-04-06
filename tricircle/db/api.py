@@ -14,6 +14,7 @@
 #    under the License.
 
 import functools
+import sqlalchemy as sql
 import time
 import uuid
 
@@ -234,6 +235,24 @@ def register_job(context, _type, resource_id):
         return None
     finally:
         context.session.close()
+
+
+def get_latest_failed_jobs(context):
+    jobs = []
+    query = context.session.query(models.Job.type, models.Job.resource_id,
+                                  sql.func.count(models.Job.id))
+    query = query.group_by(models.Job.type, models.Job.resource_id)
+    for job_type, resource_id, count in query:
+        _query = context.session.query(models.Job)
+        _query = _query.filter_by(type=job_type, resource_id=resource_id)
+        _query = _query.order_by(sql.desc('timestamp'))
+        # when timestamps of job entries are the same, sort entries by status
+        # so "Fail" job is placed before "New" and "Success" jobs
+        _query = _query.order_by(sql.asc('status'))
+        latest_job = _query[0].to_dict()
+        if latest_job['status'] == constants.JS_Fail:
+            jobs.append(latest_job)
+    return jobs
 
 
 def get_latest_timestamp(context, status, _type, resource_id):
