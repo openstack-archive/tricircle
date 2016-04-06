@@ -267,6 +267,41 @@ class XManagerTest(unittest.TestCase):
         # nothing to assert, what we test is that fake_handle can exit when
         # timeout
 
+    def test_get_failed_jobs(self):
+        job_dict_list = [
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 0, 0),
+             'resource_id': 'uuid1', 'type': 'res1',
+             'status': constants.JS_Fail},  # job_uuid1
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 5, 0),
+             'resource_id': 'uuid1', 'type': 'res1',
+             'status': constants.JS_Fail},  # job_uuid3
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 20, 0),
+             'resource_id': 'uuid2', 'type': 'res2',
+             'status': constants.JS_Fail},  # job_uuid5
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 15, 0),
+             'resource_id': 'uuid2', 'type': 'res2',
+             'status': constants.JS_Fail},  # job_uuid7
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 25, 0),
+             'resource_id': 'uuid3', 'type': 'res3',
+             'status': constants.JS_Fail},  # job_uuid9
+            {'timestamp': datetime.datetime(2000, 1, 1, 12, 30, 0),
+             'resource_id': 'uuid3', 'type': 'res3',
+             'status': constants.JS_Success}]
+        for i, job_dict in enumerate(job_dict_list, 1):
+            job_dict['id'] = 'job_uuid%d' % (2 * i - 1)
+            job_dict['extra_id'] = 'extra_uuid%d' % (2 * i - 1)
+            core.create_resource(self.context, models.Job, job_dict)
+            job_dict['id'] = 'job_uuid%d' % (2 * i)
+            job_dict['extra_id'] = 'extra_uuid%d' % (2 * i)
+            job_dict['status'] = constants.JS_New
+            core.create_resource(self.context, models.Job, job_dict)
+
+        # for res3 + uuid3, the latest job's status is "Success", not returned
+        expected_ids = ['job_uuid3', 'job_uuid5']
+        returned_jobs = db_api.get_latest_failed_jobs(self.context)
+        actual_ids = [job['id'] for job in returned_jobs]
+        self.assertItemsEqual(expected_ids, actual_ids)
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
         for res in RES_LIST:

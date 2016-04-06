@@ -16,6 +16,7 @@
 import datetime
 import eventlet
 import netaddr
+import random
 import six
 
 from oslo_config import cfg
@@ -127,12 +128,13 @@ class XManager(PeriodicTasks):
         self.service_name = service_name
         # self.notifier = rpc.get_notifier(self.service_name, self.host)
         self.additional_endpoints = []
-        self.clients = {'top': client.Client()}
+        self.clients = {constants.TOP: client.Client()}
+        self.job_handles = {constants.JT_ROUTER: self.configure_extra_routes}
         super(XManager, self).__init__()
 
     def _get_client(self, pod_name=None):
         if not pod_name:
-            return self.clients['top']
+            return self.clients[constants.TOP]
         if pod_name not in self.clients:
             self.clients[pod_name] = client.Client(pod_name)
         return self.clients[pod_name]
@@ -205,11 +207,29 @@ class XManager(PeriodicTasks):
 
         return info_text
 
-    @_job_handle('router')
+    @periodic_task.periodic_task
+    def redo_failed_job(self, ctx):
+        failed_jobs = db_api.get_latest_failed_jobs(ctx)
+        failed_jobs = [
+            job for job in failed_jobs if job['type'] in self.job_handles]
+        if not failed_jobs:
+            return
+        # in one run we only pick one job to handle
+        job_index = random.randint(0, len(failed_jobs) - 1)
+        failed_job = failed_jobs[job_index]
+        job_type = failed_job['type']
+        payload = {job_type: failed_job['resource_id']}
+        LOG.debug(_('Redo failed job for %(resource_id)s of type '
+                    '%(job_type)s'),
+                  {'resource_id': failed_job['resource_id'],
+                   'job_type': job_type})
+        self.job_handles[job_type](ctx, payload=payload)
+
+    @_job_handle(constants.JT_ROUTER)
     def configure_extra_routes(self, ctx, payload):
         # TODO(zhiyuan) performance and reliability issue
         # better have a job tracking mechanism
-        t_router_id = payload['router']
+        t_router_id = payload[constants.JT_ROUTER]
 
         b_pods, b_router_ids = zip(*db_api.get_bottom_mappings_by_top_id(
             ctx, t_router_id, constants.RT_ROUTER))
