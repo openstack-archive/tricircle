@@ -31,12 +31,12 @@ from neutron.db import l3_agentschedulers_db  # noqa
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.db import segments_db
 from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.plugins.ml2.drivers import type_vlan
+import neutron.plugins.ml2.models as ml2_models
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
@@ -706,12 +706,12 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # allocate a VLAN id for bridge network
         phy_net = cfg.CONF.tricircle.bridge_physical_network
         with q_ctx.session.begin():
-            query = q_ctx.session.query(segments_db.NetworkSegment)
+            query = q_ctx.session.query(ml2_models.NetworkSegment)
             query = query.filter_by(network_id=net_id)
             if not query.first():
                 segment = self.vlan_driver.reserve_provider_segment(
                     q_ctx.session, {'physical_network': phy_net})
-                record = segments_db.NetworkSegment(
+                record = ml2_models.NetworkSegment(
                     id=uuidutils.generate_uuid(),
                     network_id=net_id,
                     network_type='vlan',
@@ -820,7 +820,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         phy_net = cfg.CONF.tricircle.bridge_physical_network
         with q_ctx.session.begin():
-            query = q_ctx.session.query(segments_db.NetworkSegment)
+            query = q_ctx.session.query(ml2_models.NetworkSegment)
             query = query.filter_by(network_id=t_net['id'])
             vlan = query.first().segmentation_id
 
