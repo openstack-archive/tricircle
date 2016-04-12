@@ -24,6 +24,9 @@ import rpc
 from serializer import TricircleSerializer as Serializer
 import topics
 
+from tricircle.common import constants
+
+
 CONF = cfg.CONF
 
 rpcapi_cap_opt = cfg.StrOpt('xjobapi',
@@ -78,4 +81,5 @@ class XJobAPI(object):
         # specifying its control exchange, so the default value "openstack" is
         # used, thus we need to pass exchange as "openstack" here.
         self.client.prepare(exchange='openstack').cast(
-            ctxt, 'configure_extra_routes', payload={'router': router_id})
+            ctxt, 'configure_extra_routes',
+            payload={constants.JT_ROUTER: router_id})
