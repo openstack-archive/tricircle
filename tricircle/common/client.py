@@ -98,6 +98,65 @@ def _safe_operation(operation_name):
 
 
 class Client(object):
+    """Wrapper of all OpenStack service clients
+
+    Client works as a wrapper of all OpenStack service clients so you can
+    operate all kinds of resources by only interacting with Client. Client
+    provides five methods to operate resources:
+        create_resources
+        delete_resources
+        get_resources
+        list_resources
+        action_resources
+
+    Take create_resources as an example to show how Client works. When
+    create_resources is called, it gets the corresponding service handler
+    according to the resource type. Service handlers are defined in
+    resource_handle.py and each service has one. Each handler has the
+    following methods:
+        handle_create
+        handle_delete
+        handle_get
+        handle_list
+        handle_action
+    It's obvious that create_resources is mapped to handle_create(for port,
+    handle_create in NeutronResourceHandle is called).
+
+    Not all kinds of resources support the above five operations(or not
+    supported yet by Tricircle), so each service handler has a
+    support_resource field to specify the resources and operations it
+    supports, like:
+        'port': LIST | CREATE | DELETE | GET
+    This line means that NeutronResourceHandle supports list, create, delete
+    and get operations for port resource. To support more resources or make a
+    resource support more operations, register them in support_resource.
+
+    Dig into "handle_xxx" you can find that it will call methods in each
+    OpenStack service client finally. Calling handle_create for port will
+    result in calling create_port in neutronclient module.
+
+    Current "handle_xxx" implementation constructs method name by resource
+    and operation type and uses getattr to dynamically load method from
+    OpenStack service client so it can cover most of the cases. Supporting a
+    new kind of resource or making a resource support a new kind of operation
+    is simply to register an entry in support_resource as described above.
+    But if some special cases occur later, modifying "handle_xxx" is needed.
+
+    Also, pay attention to action operation since you need to check the
+    implementation of the OpenStack service client to know what the method
+    name of the action is and what parameters the method has. In the comment of
+    action_resources you can find that for each action, there is one line to
+    describe the method name and parameters like:
+        aggregate -> add_host -> aggregate, host -> none
+    This line means that for aggregate resource, novaclient module has an
+    add_host method and it has two position parameters and no key parameter.
+    For simplicity, action name and method name are the same.
+
+    One more thing to mention, Client registers a partial function
+    (operation)_(resource)s for each operation and each resource. For example,
+    you can call create_resources(self, resource, cxt, body) directly to create
+    a network, or use create_networks(self, cxt, body) for short.
+    """
     def __init__(self, pod_name=None):
         self.auth_url = cfg.CONF.client.auth_url
         self.resource_service_map = {}
@@ -458,6 +517,8 @@ class Client(object):
                server_volume -> create_server_volume
                              -> server_id, volume_id, device=None
                              -> none
+               server -> start -> server_id -> none
+               server -> stop -> server_id -> none
                --------------------------
         :return: None
         :raises: EndpointNotAvailable

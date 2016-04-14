@@ -25,6 +25,7 @@ import webob.exc as web_exc
 
 from tricircle.common import context as ctx
 from tricircle.common import xrpcapi
+from tricircle.nova_apigw.controllers import action
 from tricircle.nova_apigw.controllers import aggregate
 from tricircle.nova_apigw.controllers import flavor
 from tricircle.nova_apigw.controllers import image
@@ -95,7 +96,8 @@ class V21Controller(object):
             'limits': quota_sets.LimitsController,
         }
         self.server_sub_controller = {
-            'os-volume_attachments': volume.VolumeController
+            'os-volume_attachments': volume.VolumeController,
+            'action': action.ActionController
         }
 
     def _get_resource_controller(self, project_id, remainder):

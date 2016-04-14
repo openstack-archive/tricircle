@@ -202,10 +202,14 @@ class NeutronResourceHandle(ResourceHandle):
                 'neutron', client.httpclient.endpoint_url)
 
 
+def _convert_into_with_meta(item, resp):
+    return resp, item
+
+
 class NovaResourceHandle(ResourceHandle):
     service_type = cons.ST_NOVA
     support_resource = {'flavor': LIST,
-                        'server': LIST | CREATE | GET,
+                        'server': LIST | CREATE | GET | ACTION,
                         'aggregate': LIST | CREATE | DELETE | ACTION,
                         'server_volume': ACTION}
 
@@ -288,6 +292,9 @@ class NovaResourceHandle(ResourceHandle):
             client = self._get_client(cxt)
             collection = '%ss' % resource
             resource_manager = getattr(client, collection)
+            resource_manager.convert_into_with_meta = _convert_into_with_meta
+            # NOTE(zhiyuan) yes, this is a dirty hack. but the original
+            # implementation hides response object which is needed
             return getattr(resource_manager, action)(*args, **kwargs)
         except r_exceptions.ConnectTimeout:
             self.endpoint_url = None
