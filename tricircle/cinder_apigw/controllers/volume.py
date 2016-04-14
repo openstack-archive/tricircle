@@ -286,7 +286,7 @@ class VolumeController(rest.RestController):
         # remove the routing when query is executed but not find
 
         # No content in the resp actually
-        return {}
+        return response
 
     # move to common function if other modules need
     def _get_res_routing_ref(self, context, _id, t_url):
