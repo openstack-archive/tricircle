@@ -23,10 +23,12 @@ import unittest
 import neutronclient.common.exceptions as q_exceptions
 from oslo_utils import uuidutils
 
+from tricircle.common import constants
 from tricircle.common import context
 import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 from tricircle.common import lock_handle
+from tricircle.common import xrpcapi
 from tricircle.db import api
 from tricircle.db import core
 from tricircle.db import models
@@ -60,10 +62,15 @@ class FakeException(Exception):
     pass
 
 
+class FakeResponse(object):
+    pass
+
+
 class FakeServerController(server.ServerController):
     def __init__(self, project_id):
         self.clients = {'t_region': FakeClient('t_region')}
         self.project_id = project_id
+        self.xjob_handler = xrpcapi.XJobAPI()
 
     def _get_client(self, pod_name=None):
         if not pod_name:
@@ -254,6 +261,9 @@ class FakeClient(object):
                 if rule['id'] == rule_id:
                     sg['security_group_rules'].remove(rule)
                     return
+
+    def delete_servers(self, ctx, _id):
+        pass
 
 
 class ServerTest(unittest.TestCase):
@@ -860,6 +870,82 @@ class ServerTest(unittest.TestCase):
                 self.assertIsNone(rule['remote_group_id'])
                 ips.append(rule['remote_ip_prefix'])
         self.assertEqual(expected_ips, ips)
+
+    @patch.object(xrpcapi.XJobAPI, 'delete_server_port')
+    @patch.object(FakeClient, 'delete_servers')
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(context, 'extract_context_from_environ')
+    def test_delete(self, mock_ctx, mock_delete, mock_delete_port):
+        t_pod, b_pod = self._prepare_pod()
+        mock_ctx.return_value = self.context
+        t_server_id = 't_server_id'
+        b_server_id = 'b_server_id'
+
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_server_id, 'bottom_id': b_server_id,
+                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_SERVER})
+
+        port_id = uuidutils.generate_uuid()
+        server_port = {
+            'id': port_id,
+            'device_id': t_server_id
+        }
+        TOP_PORTS.append(server_port)
+
+        mock_delete.return_value = ()
+        res = self.controller.delete(t_server_id)
+        mock_delete_port.assert_called_once_with(self.context, port_id)
+        mock_delete.assert_called_once_with(self.context, b_server_id)
+        self.assertEqual(204, res.status)
+
+    @patch.object(FakeClient, 'delete_servers')
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(context, 'extract_context_from_environ')
+    def test_delete_error(self, mock_ctx, mock_delete):
+        t_pod, b_pod = self._prepare_pod()
+        mock_ctx.return_value = self.context
+
+        # pass invalid id
+        res = self.controller.delete('fake_id')
+        self.assertEqual('Server not found', res['Error']['message'])
+        self.assertEqual(404, res['Error']['code'])
+
+        t_server_id = 't_server_id'
+        b_server_id = 'b_server_id'
+
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_server_id, 'bottom_id': b_server_id,
+                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_SERVER})
+        mock_delete.return_value = None
+        # pass stale server id
+        res = self.controller.delete(t_server_id)
+        self.assertEqual('Server not found', res['Error']['message'])
+        self.assertEqual(404, res['Error']['code'])
+        routes = core.query_resource(
+            self.context, models.ResourceRouting,
+            [{'key': 'top_id', 'comparator': 'eq', 'value': t_server_id}], [])
+        # check the stale mapping is deleted
+        self.assertEqual(0, len(routes))
+
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_server_id, 'bottom_id': b_server_id,
+                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_SERVER})
+
+        # exception occurs when deleting server
+        mock_delete.side_effect = t_exceptions.PodNotFound('pod2')
+        res = self.controller.delete(t_server_id)
+        self.assertEqual('Pod pod2 could not be found.',
+                         res['Error']['message'])
+        self.assertEqual(404, res['Error']['code'])
 
     @patch.object(pecan, 'abort')
     def test_process_injected_file_quota(self, mock_abort):

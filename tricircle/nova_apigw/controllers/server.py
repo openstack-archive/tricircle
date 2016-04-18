@@ -33,6 +33,7 @@ from tricircle.common.i18n import _LE
 import tricircle.common.lock_handle as t_lock
 from tricircle.common.quota import QUOTAS
 from tricircle.common import utils
+from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
@@ -47,9 +48,10 @@ class ServerController(rest.RestController):
 
     def __init__(self, project_id):
         self.project_id = project_id
-        self.clients = {'top': t_client.Client()}
+        self.clients = {constants.TOP: t_client.Client()}
+        self.xjob_handler = xrpcapi.XJobAPI()
 
-    def _get_client(self, pod_name='top'):
+    def _get_client(self, pod_name=constants.TOP):
         if pod_name not in self.clients:
             self.clients[pod_name] = t_client.Client(pod_name)
         return self.clients[pod_name]
@@ -82,6 +84,7 @@ class ServerController(rest.RestController):
         client = self._get_client(pod['pod_name'])
         server = client.get_servers(context, bottom_id)
         if not server:
+            self._remove_stale_mapping(context, _id)
             pecan.abort(404, 'Server not found')
             return
         else:
@@ -214,6 +217,52 @@ class ServerController(rest.RestController):
                                   'project_id': self.project_id,
                                   'resource_type': constants.RT_SERVER})
         return {'server': server}
+
+    @expose(generic=True, template='json')
+    def delete(self, _id):
+        context = t_context.extract_context_from_environ()
+
+        mappings = db_api.get_bottom_mappings_by_top_id(context, _id,
+                                                        constants.RT_SERVER)
+        if not mappings:
+            pecan.response.status = 404
+            return {'Error': {'message': _('Server not found'), 'code': 404}}
+
+        pod, bottom_id = mappings[0]
+        client = self._get_client(pod['pod_name'])
+        top_client = self._get_client()
+        try:
+            server_ports = top_client.list_ports(
+                context, filters=[{'key': 'device_id', 'comparator': 'eq',
+                                   'value': _id}])
+            ret = client.delete_servers(context, bottom_id)
+            # none return value indicates server not found
+            if ret is None:
+                self._remove_stale_mapping(context, _id)
+                pecan.response.status = 404
+                return {'Error': {'message': _('Server not found'),
+                                  'code': 404}}
+            for server_port in server_ports:
+                self.xjob_handler.delete_server_port(context,
+                                                     server_port['id'])
+        except Exception as e:
+            code = 500
+            message = _('Delete server %(server_id)s fails') % {
+                'server_id': _id}
+            if hasattr(e, 'code'):
+                code = e.code
+            ex_message = str(e)
+            if ex_message:
+                message = ex_message
+            LOG.error(message)
+
+            pecan.response.status = code
+            return {'Error': {'message': message, 'code': code}}
+
+        # NOTE(zhiyuan) Security group rules for default security group are
+        # also kept until subnet is deleted.
+        pecan.response.status = 204
+        return pecan.response
 
     def _get_or_create_route(self, context, pod, _id, _type):
         def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
@@ -634,6 +683,17 @@ class ServerController(rest.RestController):
                         break
                 if remove_index >= 0:
                     del addresses[remove_index]
+
+    @staticmethod
+    def _remove_stale_mapping(context, server_id):
+        filters = [{'key': 'top_id', 'comparator': 'eq', 'value': server_id},
+                   {'key': 'resource_type',
+                    'comparator': 'eq',
+                    'value': constants.RT_SERVER}]
+        with context.session.begin():
+            core.delete_resources(context,
+                                  models.ResourceRouting,
+                                  filters)
 
     @staticmethod
     def _check_network_server_the_same_az(network, server_az):

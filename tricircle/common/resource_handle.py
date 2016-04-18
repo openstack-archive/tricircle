@@ -209,7 +209,7 @@ def _convert_into_with_meta(item, resp):
 class NovaResourceHandle(ResourceHandle):
     service_type = cons.ST_NOVA
     support_resource = {'flavor': LIST,
-                        'server': LIST | CREATE | GET | ACTION,
+                        'server': LIST | CREATE | DELETE | GET | ACTION,
                         'aggregate': LIST | CREATE | DELETE | ACTION,
                         'server_volume': ACTION}
 
