@@ -37,8 +37,15 @@ License: Apache 2.0
 ## Play with DevStack
 Now stateless design can be played with DevStack.
 
-- 1 Git clone DevStack.
-- 2 Git clone Tricircle, or just download devstack/local.conf.sample.
+- 1 Git clone DevStack of stable/mitaka branch.
+```
+git clone https://github.com/openstack-dev/devstack.git -b stable/mitaka
+```
+- 2 Git clone Tricircle of stable/mitaka branch, or just download
+devstack/local.conf.sample.
+```
+git clone https://github.com/openstack/tricircle.git -b stable/mitaka
+```
 - 3 Copy devstack/local.conf.sample to DevStack folder and rename it to
 local.conf, change password in the file if needed.
 - 4 Run DevStack.
@@ -229,8 +236,15 @@ type external network setup.
 
 In node1,
 
-- 1 Git clone DevStack.
-- 2 Git clone Tricircle, or just download devstack/local.conf.node_1.sample.
+- 1 Git clone DevStack of stable/mitaka branch.
+```
+git clone https://github.com/openstack-dev/devstack.git -b stable/mitaka
+```
+- 2 Git clone Tricircle of stable/mitaka branch, or just download
+devstack/local.conf.node_1.sample.
+```
+git clone https://github.com/openstack/tricircle.git -b stable/mitaka
+```
 - 3 Copy devstack/local.conf.node_1.sample to DevStack folder and rename it to
 local.conf, change password in the file if needed.
 - 4 Change the following options according to your environment:
@@ -266,8 +280,15 @@ the device name of your VLAN network interface
 
 In node2,
 
-- 1 Git clone DevStack.
-- 2 Git clone Tricircle, or just download devstack/local.conf.node_2.sample.
+- 1 Git clone DevStack of stable/mitaka branch.
+```
+git clone https://github.com/openstack-dev/devstack.git -b stable/mitaka
+```
+- 2 Git clone Tricircle of stable/mitaka branch, or just download
+devstack/local.conf.node_2.sample.
+```
+git clone https://github.com/openstack/tricircle.git -b stable/mitaka
+```
 - 3 Copy devstack/local.conf.node_2.sample to DevStack folder and rename it to
 local.conf, change password in the file if needed.
 - 4 Change the following options according to your environment:
