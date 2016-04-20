@@ -16,9 +16,52 @@
 import pecan
 from pecan import expose
 from pecan import rest
+import re
+import urlparse
 
 import tricircle.common.client as t_client
+from tricircle.common import constants
 import tricircle.common.context as t_context
+import tricircle.db.api as db_api
+
+
+def url_join(*parts):
+    """Convenience method for joining parts of a URL
+
+    Any leading and trailing '/' characters are removed, and the parts joined
+    together with '/' as a separator. If last element of 'parts' is an empty
+    string, the returned URL will have a trailing slash.
+    """
+    parts = parts or ['']
+    clean_parts = [part.strip('/') for part in parts if part]
+    if not parts[-1]:
+        # Empty last element should add a trailing slash
+        clean_parts.append('')
+    return '/'.join(clean_parts)
+
+
+def remove_trailing_version_from_href(href):
+    """Removes the api version from the href.
+
+    Given: 'http://www.nova.com/compute/v1.1'
+    Returns: 'http://www.nova.com/compute'
+
+    Given: 'http://www.nova.com/v1.1'
+    Returns: 'http://www.nova.com'
+
+    """
+    parsed_url = urlparse.urlsplit(href)
+    url_parts = parsed_url.path.rsplit('/', 1)
+
+    # NOTE: this should match vX.X or vX
+    expression = re.compile(r'^v([0-9]+|[0-9]+\.[0-9]+)(/.*|$)')
+    if not expression.match(url_parts.pop()):
+        raise ValueError('URL %s does not contain version' % href)
+
+    new_path = url_join(*url_parts)
+    parsed_url = list(parsed_url)
+    parsed_url[2] = new_path
+    return urlparse.urlunsplit(parsed_url)
 
 
 class ImageController(rest.RestController):
@@ -27,6 +70,72 @@ class ImageController(rest.RestController):
         self.project_id = project_id
         self.client = t_client.Client()
 
+    def _get_links(self, context, image):
+        nova_url = self.client.get_endpoint(
+            context, db_api.get_top_pod(context)['pod_id'],
+            constants.ST_NOVA)
+        nova_url = nova_url.replace('/$(tenant_id)s', '')
+        self_link = url_join(nova_url, self.project_id, 'images', image['id'])
+        bookmark_link = url_join(
+            remove_trailing_version_from_href(nova_url),
+            self.project_id, 'images', image['id'])
+        glance_url = self.client.get_endpoint(
+            context, db_api.get_top_pod(context)['pod_id'],
+            constants.ST_GLANCE)
+        alternate_link = '/'.join([glance_url, 'images', image['id']])
+        return [{'rel': 'self', 'href': self_link},
+                {'rel': 'bookmark', 'href': bookmark_link},
+                {'rel': 'alternate',
+                        'type': 'application/vnd.openstack.image',
+                        'href': alternate_link}]
+
+    @staticmethod
+    def _format_date(dt):
+        """Return standard format for a given datetime string."""
+        if dt is not None:
+            date_string = dt.split('.')[0]
+            date_string += 'Z'
+            return date_string
+
+    @staticmethod
+    def _get_status(image):
+        """Update the status field to standardize format."""
+        return {
+            'active': 'ACTIVE',
+            'queued': 'SAVING',
+            'saving': 'SAVING',
+            'deleted': 'DELETED',
+            'pending_delete': 'DELETED',
+            'killed': 'ERROR',
+        }.get(image.get('status'), 'UNKNOWN')
+
+    @staticmethod
+    def _get_progress(image):
+        return {
+            'queued': 25,
+            'saving': 50,
+            'active': 100,
+        }.get(image.get('status'), 0)
+
+    def _construct_list_image_entry(self, context, image):
+        return {'id': image['id'],
+                'name': image.get('name'),
+                'links': self._get_links(context, image)}
+
+    def _construct_show_image_entry(self, context, image):
+        return {
+            'id': image['id'],
+            'name': image.get('name'),
+            'minRam': int(image.get('min_ram') or 0),
+            'minDisk': int(image.get('min_disk') or 0),
+            'metadata': image.get('properties', {}),
+            'created': self._format_date(image.get('created_at')),
+            'updated': self._format_date(image.get('updated_at')),
+            'status': self._get_status(image),
+            'progress': self._get_progress(image),
+            'links': self._get_links(context, image)
+        }
+
     @expose(generic=True, template='json')
     def get_one(self, _id):
         context = t_context.extract_context_from_environ()
@@ -34,10 +143,12 @@ class ImageController(rest.RestController):
         if not image:
             pecan.abort(404, 'Image not found')
             return
-        return {'image': image}
+        return {'image': self._construct_show_image_entry(context, image)}
 
     @expose(generic=True, template='json')
     def get_all(self):
         context = t_context.extract_context_from_environ()
         images = self.client.list_images(context)
-        return {'images': images}
+        ret_images = [self._construct_list_image_entry(
+            context, image) for image in images]
+        return {'images': ret_images}

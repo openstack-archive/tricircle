@@ -52,8 +52,9 @@ BOTTOM_NETS = BOTTOM1_NETS
 BOTTOM_SUBNETS = BOTTOM1_SUBNETS
 BOTTOM_PORTS = BOTTOM1_PORTS
 BOTTOM_SGS = BOTTOM1_SGS
+BOTTOM_SERVERS = []
 
-RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS,
+RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS, BOTTOM_SERVERS,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_SGS,
             BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_SGS]
 
@@ -90,7 +91,8 @@ class FakeClient(object):
                 'bottom': {'network': BOTTOM_NETS,
                            'subnet': BOTTOM_SUBNETS,
                            'port': BOTTOM_PORTS,
-                           'security_group': BOTTOM_SGS},
+                           'security_group': BOTTOM_SGS,
+                           'server': BOTTOM_SERVERS},
                 'bottom2': {'network': BOTTOM2_NETS,
                             'subnet': BOTTOM2_SUBNETS,
                             'port': BOTTOM2_PORTS,
@@ -224,9 +226,34 @@ class FakeClient(object):
             'subnet', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
 
-    def create_servers(self, ctx, body):
-        # do nothing here since it will be mocked
-        pass
+    def create_servers(self, ctx, **body):
+        body['id'] = uuidutils.generate_uuid()
+        BOTTOM_SERVERS.append(body)
+        return body
+
+    def list_servers(self, ctx, filters):
+        ret_servers = []
+        for b_server in self.list_resources('server', ctx, filters):
+            ret_server = copy.deepcopy(b_server)
+            for nic in ret_server['nics']:
+                ports = self.list_ports(
+                    ctx, [{'key': 'id', 'comparator': 'eq',
+                           'value': nic['port-id']}])
+                nets = self.list_resources(
+                    'network', ctx, [{'key': 'id', 'comparator': 'eq',
+                                      'value': ports[0]['network_id']}])
+                ret_server['addresses'] = {
+                    nets[0]['name']: [
+                        {'OS-EXT-IPS-MAC:mac_addr': ports[0]['mac_address'],
+                         'version': 4,
+                         'addr': ports[0]['fixed_ips'][0]['ip_address'],
+                         'OS-EXT-IPS:type': 'fixed'}]}
+            ret_servers.append(ret_server)
+        return ret_servers
+
+    def get_servers(self, ctx, server_id):
+        return self.list_servers(
+            ctx, [{'key': 'id', 'comparator': 'eq', 'value': server_id}])[0]
 
     def get_security_groups(self, ctx, sg_id):
         sg = self.list_resources(
@@ -399,7 +426,7 @@ class ServerTest(unittest.TestCase):
 
     def test_handle_network(self):
         t_pod, b_pod = self._prepare_pod()
-        net = {'id': 'top_net_id'}
+        net = {'id': 'top_net_id', 'name': 'net'}
         subnet = {'id': 'top_subnet_id',
                   'network_id': 'top_net_id',
                   'ip_version': 4,
@@ -415,7 +442,7 @@ class ServerTest(unittest.TestCase):
 
     def test_handle_port(self):
         t_pod, b_pod = self._prepare_pod()
-        net = {'id': 'top_net_id'}
+        net = {'id': 'top_net_id', 'name': 'net'}
         subnet = {'id': 'top_subnet_id',
                   'network_id': 'top_net_id',
                   'ip_version': 4,
@@ -444,7 +471,7 @@ class ServerTest(unittest.TestCase):
         bottom_net_id = 'bottom_net_id'
         top_subnet_id = 'top_subnet_id'
         bottom_subnet_id = 'bottom_subnet_id'
-        t_net = {'id': top_net_id}
+        t_net = {'id': top_net_id, 'name': 'net'}
         b_net = {'id': bottom_net_id}
         t_subnet = {'id': top_subnet_id,
                     'network_id': top_net_id,
@@ -498,6 +525,7 @@ class ServerTest(unittest.TestCase):
     def test_handle_network_dhcp_port_exist_diff_ip(self):
         self._test_handle_network_dhcp_port('10.0.0.4')
 
+    @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(pecan, 'abort')
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
@@ -506,7 +534,7 @@ class ServerTest(unittest.TestCase):
         top_net_id = 'top_net_id'
         top_subnet_id = 'top_subnet_id'
         top_sg_id = 'top_sg_id'
-        t_net = {'id': top_net_id}
+        t_net = {'id': top_net_id, 'name': 'net'}
         t_subnet = {'id': top_subnet_id,
                     'network_id': top_net_id,
                     'ip_version': 4,
@@ -569,6 +597,7 @@ class ServerTest(unittest.TestCase):
         calls = [mock.call(400, msg), mock.call(400, msg)]
         mock_abort.assert_has_calls(calls)
 
+    @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
     def test_post(self, mock_ctx, mock_create):
@@ -577,7 +606,7 @@ class ServerTest(unittest.TestCase):
         top_subnet_id = 'top_subnet_id'
         top_sg_id = 'top_sg_id'
 
-        t_net = {'id': top_net_id}
+        t_net = {'id': top_net_id, 'name': 'net'}
         t_subnet = {'id': top_subnet_id,
                     'network_id': top_net_id,
                     'ip_version': 4,
@@ -641,6 +670,7 @@ class ServerTest(unittest.TestCase):
             if rule['ethertype'] == 'IPv4' and rule['direction'] == 'ingress':
                 self.assertIsNone(rule['remote_group_id'])
                 self.assertEqual('10.0.0.0/24', rule['remote_ip_prefix'])
+
         with self.context.session.begin():
             routes = core.query_resource(self.context, models.ResourceRouting,
                                          [{'key': 'resource_type',
@@ -663,6 +693,7 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(b_pod['pod_id'], routes[0]['pod_id'])
             self.assertEqual(self.project_id, routes[0]['project_id'])
 
+    @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
     def test_post_exception_retry(self, mock_ctx, mock_server):
@@ -671,7 +702,7 @@ class ServerTest(unittest.TestCase):
         top_subnet_id = 'top_subnet_id'
         top_sg_id = 'top_sg_id'
 
-        t_net = {'id': top_net_id}
+        t_net = {'id': top_net_id, 'name': 'net'}
         t_subnet = {'id': top_subnet_id,
                     'network_id': top_net_id,
                     'ip_version': 4,
@@ -750,6 +781,7 @@ class ServerTest(unittest.TestCase):
                                        nics=[{'port-id': bottom_port_id}],
                                        security_groups=[bottom_sg['id']])
 
+    @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
     def test_post_across_pods(self, mock_ctx, mock_create):
@@ -761,7 +793,7 @@ class ServerTest(unittest.TestCase):
         top_subnet2_id = 'top_subnet2_id'
         top_sg_id = 'top_sg_id'
 
-        t_net1 = {'id': top_net1_id}
+        t_net1 = {'id': top_net1_id, 'name': 'net1'}
         t_subnet1 = {'id': top_subnet1_id,
                      'tenant_id': self.project_id,
                      'network_id': top_net1_id,
@@ -771,7 +803,7 @@ class ServerTest(unittest.TestCase):
                      'allocation_pools': {'start': '10.0.1.2',
                                           'end': '10.0.1.254'},
                      'enable_dhcp': True}
-        t_net2 = {'id': top_net2_id}
+        t_net2 = {'id': top_net2_id, 'name': 'net2'}
         t_subnet2 = {'id': top_subnet2_id,
                      'tenant_id': self.project_id,
                      'network_id': top_net2_id,
@@ -1108,6 +1140,72 @@ class ServerTest(unittest.TestCase):
         msg = _('Invalid metadata size')
         calls = [mock.call(400, msg)]
         mock_abort.assert_has_calls(calls)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(context, 'extract_context_from_environ')
+    def test_get(self, mock_ctx):
+        t_pod, b_pod = self._prepare_pod()
+        top_net_id = 'top_net_id'
+        top_subnet_id = 'top_subnet_id'
+        top_sg_id = 'top_sg_id'
+
+        t_net = {'id': top_net_id, 'name': 'net'}
+        t_subnet = {'id': top_subnet_id,
+                    'network_id': top_net_id,
+                    'ip_version': 4,
+                    'cidr': '10.0.0.0/24',
+                    'gateway_ip': '10.0.0.1',
+                    'allocation_pools': {'start': '10.0.0.2',
+                                         'end': '10.0.0.254'},
+                    'enable_dhcp': True}
+        t_sg = {'id': top_sg_id, 'name': 'default', 'description': '',
+                'tenant_id': self.project_id,
+                'security_group_rules': [
+                    {'remote_group_id': top_sg_id,
+                     'direction': 'ingress',
+                     'remote_ip_prefix': None,
+                     'protocol': None,
+                     'port_range_max': None,
+                     'port_range_min': None,
+                     'ethertype': 'IPv4'},
+                    {'remote_group_id': None,
+                     'direction': 'egress',
+                     'remote_ip_prefix': None,
+                     'protocol': None,
+                     'port_range_max': None,
+                     'port_range_min': None,
+                     'ethertype': 'IPv4'},
+                ]}
+        TOP_NETS.append(t_net)
+        TOP_SUBNETS.append(t_subnet)
+        TOP_SGS.append(t_sg)
+
+        server_name = 'test_server'
+        image_id = 'image_id'
+        flavor_id = 1
+        body = {
+            'server': {
+                'name': server_name,
+                'imageRef': image_id,
+                'flavorRef': flavor_id,
+                'availability_zone': b_pod['az_name'],
+                'networks': [{'uuid': top_net_id}]
+            }
+        }
+        mock_ctx.return_value = self.context
+
+        server_dict = self.controller.post(**body)['server']
+        ret_server = self.controller.get_one(server_dict['id'])['server']
+        self.assertEqual(server_name, ret_server['name'])
+        self.assertEqual(image_id, ret_server['image'])
+        self.assertEqual(flavor_id, ret_server['flavor'])
+        self.assertEqual(t_net['name'], ret_server['addresses'].keys()[0])
+
+        ret_server = self.controller.get_one('detail')['servers'][0]
+        self.assertEqual(server_name, ret_server['name'])
+        self.assertEqual(image_id, ret_server['image'])
+        self.assertEqual(flavor_id, ret_server['flavor'])
+        self.assertEqual(t_net['name'], ret_server['addresses'].keys()[0])
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

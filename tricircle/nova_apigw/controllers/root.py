@@ -29,6 +29,7 @@ from tricircle.nova_apigw.controllers import action
 from tricircle.nova_apigw.controllers import aggregate
 from tricircle.nova_apigw.controllers import flavor
 from tricircle.nova_apigw.controllers import image
+from tricircle.nova_apigw.controllers import network
 from tricircle.nova_apigw.controllers import quota_sets
 from tricircle.nova_apigw.controllers import server
 from tricircle.nova_apigw.controllers import volume
@@ -94,6 +95,7 @@ class V21Controller(object):
             'images': image.ImageController,
             'os-quota-sets': quota_sets.QuotaSetsController,
             'limits': quota_sets.LimitsController,
+            'os-networks': network.NetworkController
         }
         self.server_sub_controller = {
             'os-volume_attachments': volume.VolumeController,

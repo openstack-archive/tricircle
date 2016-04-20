@@ -112,3 +112,7 @@ def check_string_length(value, name=None, min_len=0, max_len=None):
         msg = _("%(name)s has more than %(max_length)s "
                 "characters.") % {'name': name, 'max_length': max_len}
         raise t_exceptions.InvalidInput(message=msg)
+
+
+def get_bottom_network_name(network):
+    return '%s#%s' % (network['id'], network['name'])

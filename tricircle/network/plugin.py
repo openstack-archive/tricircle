@@ -49,6 +49,7 @@ import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LI
 import tricircle.common.lock_handle as t_lock
+from tricircle.common import utils
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
@@ -629,9 +630,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _prepare_top_element(self, t_ctx, q_ctx,
                              project_id, pod, ele, _type, body):
-        def list_resources(t_ctx_, q_ctx_, pod_, _id_, _type_):
+        def list_resources(t_ctx_, q_ctx_, pod_, ele_, _type_):
             return getattr(self, 'get_%ss' % _type_)(
-                q_ctx_, filters={'name': _id_})
+                q_ctx_, filters={'name': ele_['id']})
 
         def create_resources(t_ctx_, q_ctx_, pod_, body_, _type_):
             return getattr(self, 'create_%s' % _type_)(q_ctx_, body_)
@@ -643,11 +644,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _prepare_bottom_element(self, t_ctx,
                                 project_id, pod, ele, _type, body):
-        def list_resources(t_ctx_, q_ctx, pod_, _id_, _type_):
+        def list_resources(t_ctx_, q_ctx, pod_, ele_, _type_):
             client = self._get_client(pod_['pod_name'])
-            return client.list_resources(_type_, t_ctx_, [{'key': 'name',
-                                                           'comparator': 'eq',
-                                                           'value': _id_}])
+            if _type_ == t_constants.RT_NETWORK:
+                value = utils.get_bottom_network_name(ele_)
+            else:
+                value = ele_['id']
+            return client.list_resources(_type_, t_ctx_,
+                                         [{'key': 'name', 'comparator': 'eq',
+                                           'value': value}])
 
         def create_resources(t_ctx_, q_ctx, pod_, body_, _type_):
             client = self._get_client(pod_['pod_name'])
@@ -753,7 +758,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         net_body = {
             'network': {
                 'tenant_id': project_id,
-                'name': t_net['id'],
+                'name': utils.get_bottom_network_name(t_net),
                 'admin_state_up': True
             }
         }

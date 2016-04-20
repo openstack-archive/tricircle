@@ -30,10 +30,11 @@ NONE_DONE = 2  # neither router nor bottom resources exists
 
 
 def get_or_create_route(t_ctx, q_ctx,
-                        project_id, pod, _id, _type, list_ele_method):
+                        project_id, pod, ele, _type, list_ele_method):
     # use configuration option later
     route_expire_threshold = 30
 
+    _id = ele['id']
     with t_ctx.session.begin():
         routes = core.query_resource(
             t_ctx, models.ResourceRouting,
@@ -53,7 +54,7 @@ def get_or_create_route(t_ctx, q_ctx,
                     # a race here that other worker is updating this route, we
                     # need to check if the corresponding element has been
                     # created by other worker
-                    eles = list_ele_method(t_ctx, q_ctx, pod, _id, _type)
+                    eles = list_ele_method(t_ctx, q_ctx, pod, ele, _type)
                     if eles:
                         route['bottom_id'] = eles[0]['id']
                         core.update_resource(t_ctx,
@@ -92,7 +93,7 @@ def get_or_create_element(t_ctx, q_ctx,
     max_tries = 5
     for _ in xrange(max_tries):
         route, status = get_or_create_route(
-            t_ctx, q_ctx, project_id, pod, ele['id'], _type, list_ele_method)
+            t_ctx, q_ctx, project_id, pod, ele, _type, list_ele_method)
         if not route:
             eventlet.sleep(0)
             continue
@@ -101,7 +102,7 @@ def get_or_create_element(t_ctx, q_ctx,
             break
         if status == NONE_DONE:
             try:
-                ele = create_ele_method(t_ctx, q_ctx, pod, body, _type)
+                new_ele = create_ele_method(t_ctx, q_ctx, pod, body, _type)
             except Exception:
                 with t_ctx.session.begin():
                     try:
@@ -118,7 +119,7 @@ def get_or_create_element(t_ctx, q_ctx,
                 # NOTE(zhiyuan) it's safe to update route, the bottom network
                 # has been successfully created, so other worker will not
                 # delete this route
-                route['bottom_id'] = ele['id']
+                route['bottom_id'] = new_ele['id']
                 core.update_resource(t_ctx, models.ResourceRouting,
                                      route['id'], route)
                 break

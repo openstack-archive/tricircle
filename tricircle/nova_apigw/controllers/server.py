@@ -56,24 +56,45 @@ class ServerController(rest.RestController):
             self.clients[pod_name] = t_client.Client(pod_name)
         return self.clients[pod_name]
 
-    def _get_all(self, context):
+    def _get_all(self, context, params):
+        filters = [{'key': key,
+                    'comparator': 'eq',
+                    'value': value} for key, value in params.iteritems()]
         ret = []
         pods = db_api.list_pods(context)
         for pod in pods:
             if not pod['az_name']:
                 continue
             client = self._get_client(pod['pod_name'])
-            servers = client.list_servers(context)
+            servers = client.list_servers(context, filters=filters)
             self._remove_fip_info(servers)
             ret.extend(servers)
         return ret
 
+    @staticmethod
+    def _construct_brief_server_entry(server):
+        return {'id': server['id'],
+                'name': server.get('name'),
+                'links': server.get('links')}
+
+    @staticmethod
+    def _transform_network_name(server):
+        if 'addresses' not in server:
+            return
+        keys = [key for key in server['addresses'].iterkeys()]
+        for key in keys:
+            value = server['addresses'].pop(key)
+            network_name = key.split('#')[1]
+            server['addresses'][network_name] = value
+        return server
+
     @expose(generic=True, template='json')
-    def get_one(self, _id):
+    def get_one(self, _id, **kwargs):
         context = t_context.extract_context_from_environ()
 
         if _id == 'detail':
-            return {'servers': self._get_all(context)}
+            return {'servers': [self._transform_network_name(
+                server) for server in self._get_all(context, kwargs)]}
 
         mappings = db_api.get_bottom_mappings_by_top_id(
             context, _id, constants.RT_SERVER)
@@ -88,12 +109,14 @@ class ServerController(rest.RestController):
             pecan.abort(404, 'Server not found')
             return
         else:
+            self._transform_network_name(server)
             return {'server': server}
 
     @expose(generic=True, template='json')
-    def get_all(self):
+    def get_all(self, **kwargs):
         context = t_context.extract_context_from_environ()
-        return {'servers': self._get_all(context)}
+        return {'servers': [self._construct_brief_server_entry(
+            server) for server in self._get_all(context, kwargs)]}
 
     @expose(generic=True, template='json')
     def post(self, **kw):
@@ -216,6 +239,7 @@ class ServerController(rest.RestController):
                                   'pod_id': pod['pod_id'],
                                   'project_id': self.project_id,
                                   'resource_type': constants.RT_SERVER})
+        pecan.response.status = 202
         return {'server': server}
 
     @expose(generic=True, template='json')
@@ -265,21 +289,21 @@ class ServerController(rest.RestController):
         return pecan.response
 
     def _get_or_create_route(self, context, pod, _id, _type):
-        def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
+        def list_resources(t_ctx, q_ctx, pod_, ele, _type_):
             client = self._get_client(pod_['pod_name'])
             return client.list_resources(_type_, t_ctx, [{'key': 'name',
                                                           'comparator': 'eq',
-                                                          'value': _id_}])
+                                                          'value': ele['id']}])
 
         return t_lock.get_or_create_route(context, None,
-                                          self.project_id, pod, _id, _type,
-                                          list_resources)
+                                          self.project_id, pod, {'id': _id},
+                                          _type, list_resources)
 
     def _get_create_network_body(self, network):
         body = {
             'network': {
                 'tenant_id': self.project_id,
-                'name': network['id'],
+                'name': utils.get_bottom_network_name(network),
                 'admin_state_up': True
             }
         }
@@ -342,11 +366,16 @@ class ServerController(rest.RestController):
         return body
 
     def _prepare_neutron_element(self, context, pod, ele, _type, body):
-        def list_resources(t_ctx, q_ctx, pod_, _id_, _type_):
+        def list_resources(t_ctx, q_ctx, pod_, ele_, _type_):
             client = self._get_client(pod_['pod_name'])
-            return client.list_resources(_type_, t_ctx, [{'key': 'name',
-                                                          'comparator': 'eq',
-                                                          'value': _id_}])
+            if _type_ == constants.RT_NETWORK:
+                value = utils.get_bottom_network_name(ele_)
+            else:
+                value = ele_['id']
+            return client.list_resources(
+                _type_, t_ctx,
+                [{'key': 'name', 'comparator': 'eq',
+                  'value': value}])
 
         def create_resources(t_ctx, q_ctx, pod_, body_, _type_):
             client = self._get_client(pod_['pod_name'])
