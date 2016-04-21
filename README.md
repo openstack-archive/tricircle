@@ -207,24 +207,6 @@ network interface in the second node for external network. In this guide, the
 external network is also vlan type, so the local.conf sample is based on vlan
 type external network setup.
 
-> DevStack supports multiple regions sharing the same Keystone, but one recent
-> merged [patch](https://github.com/openstack-dev/devstack/commit/923be5f791c78fa9f21b2e217a6b61328c493a38#diff-4f76c30de6fd72bd49643dbcf1007a61)
-> introduces a bug to DevStack so you may have problem deploying Tricircle if
-> you use the newest DevStack code. One quick fix is:
-```
-> diff --git a/stack.sh b/stack.sh
-> index c21ff77..0f8251e 100755
-> --- a/stack.sh
-> +++ b/stack.sh
-> @@ -1024,7 +1024,7 @@ export OS_USER_DOMAIN_ID=default
->  export OS_PASSWORD=$ADMIN_PASSWORD
->  export OS_PROJECT_NAME=admin
->  export OS_PROJECT_DOMAIN_ID=default
-> -export OS_REGION_NAME=$REGION_NAME
-> +export OS_REGION_NAME=RegionOne
-```
-> RegionOne is the region name of top OpenStack(Tricircle).
-
 ### Setup
 
 In node1,
@@ -247,12 +229,6 @@ OVS_BRIDGE_MAPPINGS=bridge:br-bridge
       but remember to adapt your change to the commands showed in this guide.
 Q_USE_PROVIDERNET_FOR_PUBLIC=True
     - use this option if you would like to try L3 north-south networking.
-```
-Tricircle doesn't support security group currently so we use these two options
-to disable security group functionality.
-```
-Q_USE_SECGROUP=False
-LIBVIRT_FIREWALL_DRIVER=nova.virt.firewall.NoopFirewallDriver
 ```
 - 5 Create OVS bridge and attach the VLAN network interface to it
 ```
@@ -337,7 +313,10 @@ list" and you should get similar output as following:
 default value is "RegionOne", we use it as the region for Tricircle; "Pod1" is
 the region set via POD_REGION_NAME, new configuration option introduced by
 Tricircle, we use it as the bottom OpenStack; "Pod2" is the region you set via
-REGION_NAME in node2, we use it as another bottom OpenStack.
+REGION_NAME in node2, we use it as another bottom OpenStack. In node2, you also
+need to set KEYSTONE_REGION_NAME the same as REGION_NAME in node1, which is
+"RegionOne" in this example. So services in node2 can interact with Keystone
+service in RegionOne.
 - 2 Create pod instances for Tricircle and bottom OpenStack
 ```
 curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
@@ -387,8 +366,8 @@ nova --os-region-name Pod1 get-vnc-console vm1 novnc
 nova --os-region-name Pod2 get-vnc-console vm2 novnc
 ```
 Login one virtual machine via VNC and you should find it can "ping" the other
-virtual machine. Security group functionality is disabled in bottom OpenStack
-so no need to configure security group rule.
+virtual machine. Default security group is applied so no need to configure
+security group rule.
 
 ### North-South Networking
 
