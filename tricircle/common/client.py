@@ -470,7 +470,7 @@ class Client(object):
 
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
-        handle.handle_delete(cxt, resource, resource_id)
+        return handle.handle_delete(cxt, resource, resource_id)
 
     @_safe_operation('get')
     def get_resources(self, resource, cxt, resource_id):

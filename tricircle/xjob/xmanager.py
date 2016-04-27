@@ -227,8 +227,6 @@ class XManager(PeriodicTasks):
 
     @_job_handle(constants.JT_ROUTER)
     def configure_extra_routes(self, ctx, payload):
-        # TODO(zhiyuan) performance and reliability issue
-        # better have a job tracking mechanism
         t_router_id = payload[constants.JT_ROUTER]
 
         b_pods, b_router_ids = zip(*db_api.get_bottom_mappings_by_top_id(
@@ -274,3 +272,8 @@ class XManager(PeriodicTasks):
                          'destination': cidr})
             bottom_client.update_routers(ctx, b_router_id,
                                          {'router': {'routes': extra_routes}})
+
+    @_job_handle(constants.JT_PORT_DELETE)
+    def delete_server_port(self, ctx, payload):
+        t_port_id = payload[constants.JT_PORT_DELETE]
+        self._get_client().delete_ports(ctx, t_port_id)
