@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import urlparse
+
 import pecan
 from pecan import expose
 from pecan import request
@@ -218,6 +220,16 @@ class VolumeController(rest.RestController):
         pods = az_ag.list_pods_by_tenant(context, self.tenant_id)
         for pod in pods:
             if pod['pod_name'] == '':
+                continue
+
+            query = urlparse.urlsplit(request.url).query
+            query_filters = urlparse.parse_qsl(query)
+            skip_pod = False
+            for k, v in query_filters:
+                if k == 'availability_zone' and v != pod['az_name']:
+                    skip_pod = True
+                    break
+            if skip_pod:
                 continue
 
             s_ctx = hclient.get_pod_service_ctx(

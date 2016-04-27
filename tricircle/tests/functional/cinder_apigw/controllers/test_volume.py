@@ -14,6 +14,7 @@
 #    under the License.
 
 from mock import patch
+import urlparse
 
 import pecan
 from pecan.configuration import set_config
@@ -49,6 +50,7 @@ def fake_volumes_forward_req(ctx, action, b_header, b_url, b_req_body):
     resp = Response()
     resp.status_code = 404
 
+    parse = urlparse.urlsplit(b_url)
     if action == 'POST':
         b_body = jsonutils.loads(b_req_body)
         if b_body.get('volume'):
@@ -56,7 +58,7 @@ def fake_volumes_forward_req(ctx, action, b_header, b_url, b_req_body):
             vol['id'] = uuidutils.generate_uuid()
             stored_vol = {
                 'volume': vol,
-                'url': b_url
+                'host': parse.hostname
             }
             fake_volumes.append(stored_vol)
             resp.status_code = 202
@@ -66,17 +68,16 @@ def fake_volumes_forward_req(ctx, action, b_header, b_url, b_req_body):
             # resp.json = vol_dict
             return resp
 
-    pos = b_url.rfind('/volumes')
+    b_path = parse.path
+    pos = b_path.rfind('/volumes')
     op = ''
-    cmp_url = b_url
     if pos > 0:
-        op = b_url[pos:]
-        cmp_url = b_url[:pos] + '/volumes'
+        op = b_path[pos:]
         op = op[len('/volumes'):]
 
     if action == 'GET':
         if op == '' or op == '/detail':
-            tenant_id = b_url[:pos]
+            tenant_id = b_path[:pos]
             pos2 = tenant_id.rfind('/')
             if pos2 > 0:
                 tenant_id = tenant_id[(pos2 + 1):]
@@ -84,8 +85,9 @@ def fake_volumes_forward_req(ctx, action, b_header, b_url, b_req_body):
                 resp.status_code = 404
                 return resp
             ret_vols = []
+            cmp_host = parse.hostname
             for temp_vol in fake_volumes:
-                if temp_vol['url'] != cmp_url:
+                if temp_vol['host'] != cmp_host:
                     continue
 
                 if temp_vol['volume']['project_id'] == tenant_id:
@@ -210,6 +212,7 @@ class CinderVolumeFunctionalTest(base.TestCase):
         cfg.CONF.unregister_opts(app.common_opts)
         pecan.set_config({}, overwrite=True)
         core.ModelBase.metadata.drop_all(core.get_engine())
+        del fake_volumes[:]
 
 
 class TestVolumeController(CinderVolumeFunctionalTest):
@@ -395,6 +398,96 @@ class TestVolumeController(CinderVolumeFunctionalTest):
         json_body = jsonutils.loads(response.body)
         vols = json_body.get('volumes')
         self.assertEqual(0, len(vols))
+
+    @patch.object(hclient, 'forward_req',
+                  new=fake_volumes_forward_req)
+    def test_get_all(self):
+        update_dict = {'pod_az_name': 'fake_pod_az2'}
+        # update pod2 to set pod_az_name
+        db_api.update_pod(self.context, 'fake_pod_id2', update_dict)
+
+        volumes = [
+            # normal volume with correct parameter
+            {
+                "volume":
+                {
+                    "name": 'vol_1',
+                    "availability_zone": FAKE_AZ,
+                    "source_volid": '',
+                    "consistencygroup_id": '',
+                    "snapshot_id": '',
+                    "source_replica": '',
+                    "size": 10,
+                    "user_id": '',
+                    "imageRef": '',
+                    "attach_status": "detached",
+                    "volume_type": '',
+                    "project_id": 'my_tenant_id',
+                    "metadata": {}
+                },
+                "expected_error": 202
+            },
+
+            # same tenant, multiple volumes
+            {
+                "volume":
+                {
+                    "name": 'vol_2',
+                    "availability_zone": FAKE_AZ,
+                    "source_volid": '',
+                    "consistencygroup_id": '',
+                    "snapshot_id": '',
+                    "source_replica": '',
+                    "size": 20,
+                    "user_id": '',
+                    "imageRef": '',
+                    "attach_status": "detached",
+                    "volume_type": '',
+                    "project_id": 'my_tenant_id',
+                    "metadata": {}
+                },
+                "expected_error": 202
+            },
+
+            # same tenant, different az
+            {
+                "volume":
+                {
+                    "name": 'vol_3',
+                    "availability_zone": FAKE_AZ + '2',
+                    "source_volid": '',
+                    "consistencygroup_id": '',
+                    "snapshot_id": '',
+                    "source_replica": '',
+                    "size": 20,
+                    "user_id": '',
+                    "imageRef": '',
+                    "attach_status": "detached",
+                    "volume_type": '',
+                    "project_id": 'my_tenant_id',
+                    "metadata": {}
+                },
+                "expected_error": 202
+            },
+        ]
+        tenant_id = 'my_tenant_id'
+        for volume in volumes:
+            self.app.post_json('/v2/' + tenant_id + '/volumes',
+                               dict(volume=volume['volume']),
+                               expect_errors=True)
+        query_string = '?availability_zone=' + FAKE_AZ
+        resp = self.app.get('/v2/' + tenant_id + '/volumes' + query_string)
+        self.assertEqual(resp.status_int, 200)
+        json_body = jsonutils.loads(resp.body)
+        ret_vols = json_body.get('volumes')
+        self.assertEqual(len(ret_vols), 2)
+
+        query_string = '?availability_zone=' + FAKE_AZ + '2'
+        resp = self.app.get('/v2/' + tenant_id + '/volumes' + query_string)
+        self.assertEqual(resp.status_int, 200)
+        json_body = jsonutils.loads(resp.body)
+        ret_vols = json_body.get('volumes')
+        self.assertEqual(len(ret_vols), 1)
 
     def _test_and_check(self, volumes, tenant_id):
         for test_vol in volumes:
