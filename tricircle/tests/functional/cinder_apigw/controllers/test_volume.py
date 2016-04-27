@@ -115,6 +115,19 @@ def fake_volumes_forward_req(ctx, action, b_header, b_url, b_req_body):
                         fake_volumes.remove(vol)
                         resp.status_code = 202
                         return resp
+    if action == 'PUT':
+        b_body = jsonutils.loads(b_req_body)
+        update_vol = b_body.get('volume', {})
+        if op != '':
+            if op[0] == '/':
+                _id = op[1:]
+                for vol in fake_volumes:
+                    if vol['volume']['id'] == _id:
+                        vol['volume'].update(update_vol)
+                        vol_dict = {'volume': vol['volume']}
+                        resp._content = jsonutils.dumps(vol_dict)
+                        resp.status_code = 200
+                        return resp
     else:
         resp.status_code = 404
 
@@ -488,6 +501,44 @@ class TestVolumeController(CinderVolumeFunctionalTest):
         json_body = jsonutils.loads(resp.body)
         ret_vols = json_body.get('volumes')
         self.assertEqual(len(ret_vols), 1)
+
+    @patch.object(hclient, 'forward_req',
+                  new=fake_volumes_forward_req)
+    def test_put(self):
+        volume = {
+            "volume":
+            {
+                "name": 'vol_1',
+                "availability_zone": FAKE_AZ,
+                "source_volid": '',
+                "consistencygroup_id": '',
+                "snapshot_id": '',
+                "source_replica": '',
+                "size": 10,
+                "user_id": '',
+                "imageRef": '',
+                "attach_status": "detached",
+                "volume_type": '',
+                "project_id": 'my_tenant_id',
+                "metadata": {}
+            },
+            "expected_error": 202
+        }
+
+        tenant_id = 'my_tenant_id'
+        resp = self.app.post_json('/v2/' + tenant_id + '/volumes',
+                                  dict(volume=volume['volume']),
+                                  expect_errors=True)
+        volume_dict = jsonutils.loads(resp.body)
+        volume_id = volume_dict['volume']['id']
+
+        update_dict = {"volume": {"name": 'vol_2'}}
+        resp = self.app.put_json('/v2/' + tenant_id + '/volumes/' + volume_id,
+                                 dict(volume=update_dict['volume']),
+                                 expect_errors=True)
+        volume_dict = jsonutils.loads(resp.body)
+        self.assertEqual(resp.status_int, 200)
+        self.assertEqual(volume_dict['volume']['name'], 'vol_2')
 
     def _test_and_check(self, volumes, tenant_id):
         for test_vol in volumes:

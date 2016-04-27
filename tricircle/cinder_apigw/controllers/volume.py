@@ -269,6 +269,73 @@ class VolumeController(rest.RestController):
         return ret
 
     @expose(generic=True, template='json')
+    def put(self, _id, **kw):
+        context = t_context.extract_context_from_environ()
+
+        # TODO(joehuang): Implement API multi-version compatibility
+        # currently _convert_header and _convert_object are both dummy
+        # functions and API versions are hard coded. After multi-version
+        # compatibility is implemented, API versions will be retrieved from
+        # top and bottom API server, also, _convert_header and _convert_object
+        # will do the real job to convert the request header and body
+        # according to the API versions.
+        t_release = cons.R_MITAKA
+        b_release = cons.R_MITAKA
+
+        s_ctx = self._get_res_routing_ref(context, _id, request.url)
+        if not s_ctx:
+            return Response(_('Resource not found'), 404)
+
+        if s_ctx['b_url'] == '':
+            return Response(_('Bottom pod endpoint incorrect'), 404)
+
+        b_headers = self._convert_header(t_release,
+                                         b_release,
+                                         request.headers)
+
+        t_vol = kw['volume']
+
+        # add or remove key-value in the request for diff. version
+        b_vol_req = self._convert_object(t_release, b_release, t_vol,
+                                         res_type=cons.RT_VOLUME)
+
+        b_body = jsonutils.dumps({'volume': b_vol_req})
+
+        resp = hclient.forward_req(context, 'PUT',
+                                   b_headers,
+                                   s_ctx['b_url'],
+                                   b_body)
+
+        b_status = resp.status_code
+        b_ret_body = jsonutils.loads(resp.content)
+        response.status = b_status
+
+        if b_status == 200:
+            if b_ret_body.get('volume') is not None:
+                b_vol_ret = b_ret_body['volume']
+                ret_vol = self._convert_object(b_release, t_release,
+                                               b_vol_ret,
+                                               res_type=cons.RT_VOLUME)
+
+                pod = self._get_pod_by_top_id(context, _id)
+                if pod:
+                    ret_vol['availability_zone'] = pod['az_name']
+
+                return {'volume': ret_vol}
+
+        # resource not found but routing exist, remove the routing
+        if b_status == 404:
+            filters = [{'key': 'top_id', 'comparator': 'eq', 'value': _id},
+                       {'key': 'resource_type',
+                        'comparator': 'eq',
+                        'value': cons.RT_VOLUME}]
+            with context.session.begin():
+                core.delete_resources(context,
+                                      models.ResourceRouting,
+                                      filters)
+        return b_ret_body
+
+    @expose(generic=True, template='json')
     def delete(self, _id):
         context = t_context.extract_context_from_environ()
 
