@@ -514,6 +514,7 @@ class Client(object):
                volume -> set_bootable -> volume, flag -> none
                router -> add_interface -> router, body -> none
                router -> add_gateway -> router, body -> none
+               router -> remove_gateway -> router -> none
                server_volume -> create_server_volume
                              -> server_id, volume_id, device=None
                              -> none

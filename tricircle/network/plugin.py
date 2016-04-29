@@ -898,52 +898,68 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             query = context.session.query(l3_db.RouterPort)
             query.filter_by(port_id=port_id, router_id=router_id).delete()
 
-    def _update_bottom_router_gateway(self, context, router_id, router_data):
+    def _add_router_gateway(self, context, router_id, router_data):
+        # get top external network information
         ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
-        if ext_net_id:
-            # add router gateway
-            t_ctx = t_context.get_context_from_neutron_context(context)
-            network = self.get_network(context, ext_net_id)
-            pod_name = network[az_ext.AZ_HINTS][0]
-            pod = db_api.get_pod_by_name(t_ctx, pod_name)
-            b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-                t_ctx, ext_net_id, pod_name, t_constants.RT_NETWORK)
-            t_router = self._get_router(context, router_id)
-            body = {'router': {'name': router_id,
-                               'distributed': False}}
-            _, b_router_id = self._prepare_bottom_element(
-                t_ctx, t_router['tenant_id'], pod, t_router,
-                t_constants.RT_ROUTER, body)
-            b_client = self._get_client(pod_name)
-            t_info = router_data[l3.EXTERNAL_GW_INFO]
-            b_info = {'network_id': b_net_id}
-            if 'enable_snat' in t_info:
-                b_info['enable_snat'] = t_info['enable_snat']
-            if 'external_fixed_ips' in t_info:
-                fixed_ips = []
-                for ip in t_info['external_fixed_ips']:
-                    t_subnet_id = ip['subnet_id']
-                    b_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
-                        t_ctx, t_subnet_id, pod_name,
-                        t_constants.RT_SUBNET)
-                    fixed_ips.append({'subnet_id': b_subnet_id,
-                                      'ip_address': ip['ip_address']})
-                b_info['external_fixed_ips'] = fixed_ips
-            b_client.action_routers(t_ctx, 'add_gateway', b_router_id, b_info)
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        network = self.get_network(context, ext_net_id)
 
-            # create bridge network and attach to router
-            t_pod = db_api.get_top_pod(t_ctx)
-            project_id = t_router['tenant_id']
-            admin_project_id = 'admin_project_id'
-            pool_id = self._get_bridge_subnet_pool_id(
-                t_ctx, context, admin_project_id, t_pod, False)
-            t_bridge_net, t_bridge_subnet = self._get_bridge_network_subnet(
-                t_ctx, context, project_id, t_pod, pool_id, False)
-            (_, _, b_bridge_subnet_id,
-             b_bridge_net_id) = self._get_bottom_bridge_elements(
-                context, project_id, pod, t_bridge_net, False, t_bridge_subnet,
-                None)
-            is_attach = False
+        # when creating external network in top pod, pod name is passed via
+        # az hint parameter, so tricircle plugin knows where to create the
+        # corresponding bottom external network. here we get bottom external
+        # network ID from resource routing table.
+        pod_name = network[az_ext.AZ_HINTS][0]
+        pod = db_api.get_pod_by_name(t_ctx, pod_name)
+        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, ext_net_id, pod_name, t_constants.RT_NETWORK)
+
+        # create corresponding bottom router in the pod where external network
+        # is located.
+        t_router = self._get_router(context, router_id)
+        body = {'router': {'name': router_id,
+                           'distributed': False}}
+        _, b_router_id = self._prepare_bottom_element(
+            t_ctx, t_router['tenant_id'], pod, t_router,
+            t_constants.RT_ROUTER, body)
+
+        # both router and external network in bottom pod are ready, attach
+        # external network to router in bottom pod.
+        b_client = self._get_client(pod_name)
+        t_info = router_data[l3.EXTERNAL_GW_INFO]
+        b_info = {'network_id': b_net_id}
+        if 'enable_snat' in t_info:
+            b_info['enable_snat'] = t_info['enable_snat']
+        if 'external_fixed_ips' in t_info:
+            fixed_ips = []
+            for ip in t_info['external_fixed_ips']:
+                t_subnet_id = ip['subnet_id']
+                b_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+                    t_ctx, t_subnet_id, pod_name,
+                    t_constants.RT_SUBNET)
+                fixed_ips.append({'subnet_id': b_subnet_id,
+                                  'ip_address': ip['ip_address']})
+            b_info['external_fixed_ips'] = fixed_ips
+        b_client.action_routers(t_ctx, 'add_gateway', b_router_id, b_info)
+
+        # when internal network(providing fixed ip) and external network
+        # (providing floating ip) are in different bottom pods, we utilize a
+        # bridge network to connect these two networks. here we create the
+        # bridge network.
+        t_pod = db_api.get_top_pod(t_ctx)
+        project_id = t_router['tenant_id']
+        pool_id = self._get_bridge_subnet_pool_id(
+            t_ctx, context, None, t_pod, False)
+        t_bridge_net, t_bridge_subnet = self._get_bridge_network_subnet(
+            t_ctx, context, project_id, t_pod, pool_id, False)
+        (_, _, b_bridge_subnet_id,
+         b_bridge_net_id) = self._get_bottom_bridge_elements(
+            context, project_id, pod, t_bridge_net, False, t_bridge_subnet,
+            None)
+
+        # here we attach the bridge network to the router in bottom pod. to
+        # make this method reentrant, we check if the interface is already
+        # attached before attaching the interface.
+        def _is_bridge_network_attached():
             interfaces = b_client.list_ports(t_ctx,
                                              filters=[{'key': 'device_id',
                                                        'comparator': 'eq',
@@ -951,13 +967,39 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             for interface in interfaces:
                 for fixed_ip in interface['fixed_ips']:
                     if fixed_ip['subnet_id'] == b_bridge_subnet_id:
-                        is_attach = True
-                        break
-                if is_attach:
-                    break
-            if not is_attach:
-                b_client.action_routers(t_ctx, 'add_interface', b_router_id,
-                                        {'subnet_id': b_bridge_subnet_id})
+                        return True
+            return False
+
+        is_attach = _is_bridge_network_attached()
+        if not is_attach:
+            b_client.action_routers(t_ctx, 'add_interface', b_router_id,
+                                    {'subnet_id': b_bridge_subnet_id})
+
+    def _remove_router_gateway(self, context, router_id):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        t_router = self._get_router(context, router_id)
+        gw_port = t_router.gw_port
+        if not gw_port:
+            return
+        ext_net_id = gw_port['network_id']
+        t_network = self.get_network(context, ext_net_id)
+        if az_ext.AZ_HINTS not in t_network:
+            raise t_exceptions.ExternalNetPodNotSpecify()
+        if not t_network[az_ext.AZ_HINTS]:
+            raise t_exceptions.ExternalNetPodNotSpecify()
+
+        pod_name = t_network[az_ext.AZ_HINTS][0]
+        b_router_id = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, router_id, pod_name, t_constants.RT_ROUTER)
+        b_client = self._get_client(pod_name)
+        b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
+
+    def _update_bottom_router_gateway(self, context, router_id, router_data):
+        ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
+        if ext_net_id:
+            self._add_router_gateway(context, router_id, router_data)
+        else:
+            self._remove_router_gateway(context, router_id)
 
     def update_router(self, context, router_id, router):
         router_data = router['router']
@@ -982,7 +1024,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         router = self._get_router(context, router_id)
         project_id = router['tenant_id']
-        admin_project_id = 'admin_project_id'
         add_by_port, _ = self._validate_interface_info(interface_info)
         # make sure network not crosses pods
         # TODO(zhiyuan) support cross-pod tenant network
@@ -999,7 +1040,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         # bridge network for E-W networking
         pool_id = self._get_bridge_subnet_pool_id(
-            t_ctx, context, admin_project_id, t_pod, True)
+            t_ctx, context, None, t_pod, True)
         t_bridge_net, t_bridge_subnet = self._get_bridge_network_subnet(
             t_ctx, context, project_id, t_pod, pool_id, True)
         t_bridge_port = self._get_bridge_interface(
@@ -1022,7 +1063,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 need_ns_bridge = True
         if need_ns_bridge:
             pool_id = self._get_bridge_subnet_pool_id(
-                t_ctx, context, admin_project_id, t_pod, False)
+                t_ctx, context, None, t_pod, False)
             t_bridge_net, t_bridge_subnet = self._get_bridge_network_subnet(
                 t_ctx, context, project_id, t_pod, pool_id, False)
             (_, _, b_bridge_subnet_id,

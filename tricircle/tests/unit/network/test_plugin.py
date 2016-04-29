@@ -470,6 +470,9 @@ class FakeQuery(object):
     def all(self):
         return self.records
 
+    def count(self):
+        return len(self.records)
+
     def __iter__(self):
         return self
 
@@ -560,6 +563,9 @@ class FakeSession(object):
             delete_model(res_list, model_obj)
 
     def flush(self):
+        pass
+
+    def expire(self, obj):
         pass
 
 
@@ -1548,6 +1554,83 @@ class PluginTest(unittest.TestCase,
                  mock.call(t_ctx, 'add_interface', b_router_id,
                            {'subnet_id': b_ns_bridge_subnet_id})]
         mock_action.assert_has_calls(calls)
+
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_allocate_specific_ip', new=_allocate_specific_ip)
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_generate_ip', new=fake_generate_ip)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
+                  new=mock.Mock)
+    @patch.object(FakeClient, 'action_routers')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_unset_gateway(self, mock_context, mock_action):
+        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
+        cfg.CONF.set_override('core_plugin', plugin_path)
+
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = 'test_tenant_id'
+        t_net_body = {
+            'name': 'ext_net',
+            'availability_zone_hints': ['pod_1'],
+            'tenant_id': tenant_id,
+            'router:external': True,
+            'admin_state_up': True,
+            'shared': False,
+        }
+        fake_plugin.create_network(q_ctx, {'network': t_net_body})
+        t_net_id = TOP_NETS[0]['id']
+
+        t_subnet_body = {
+            'network_id': t_net_id,  # only one network created
+            'name': 'ext_subnet',
+            'ip_version': 4,
+            'cidr': '100.64.0.0/24',
+            'allocation_pools': [],
+            'enable_dhcp': False,
+            'gateway_ip': '100.64.0.1',
+            'dns_nameservers': '',
+            'host_routes': '',
+            'tenant_id': tenant_id
+        }
+        fake_plugin.create_subnet(q_ctx, {'subnet': t_subnet_body})
+        t_subnet_id = TOP_SUBNETS[0]['id']
+
+        t_router_id = uuidutils.generate_uuid()
+        t_router = {
+            'id': t_router_id,
+            'name': 'router',
+            'distributed': False,
+            'tenant_id': tenant_id,
+            'attached_ports': []
+        }
+
+        TOP_ROUTERS.append(DotDict(t_router))
+        # first add router gateway
+        fake_plugin.update_router(
+            q_ctx, t_router_id,
+            {'router': {'external_gateway_info': {
+                'network_id': t_net_id,
+                'enable_snat': False,
+                'external_fixed_ips': [{'subnet_id': t_subnet_id,
+                                        'ip_address': '100.64.0.5'}]}}})
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+
+        # then remove router gateway
+        fake_plugin.update_router(
+            q_ctx, t_router_id,
+            {'router': {'external_gateway_info': {}}})
+        mock_action.assert_called_with(t_ctx, 'remove_gateway', b_router_id)
 
     def _prepare_associate_floatingip_test(self, t_ctx, q_ctx, fake_plugin):
         tenant_id = 'test_tenant_id'
