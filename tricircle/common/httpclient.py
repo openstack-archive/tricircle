@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import urllib
 import urlparse
 
 from requests import Request
@@ -87,7 +88,17 @@ def get_bottom_url(t_ver, t_url, b_ver, b_endpoint):
     path = '/' + b_ver + '/' + after_ver
     if b_ver == '':
         path = '/' + after_ver
-    query = t_parse.query
+
+    # Remove availability_zone filter since it is handled by VolumeController.
+    # VolumeController will send GET request only to bottom pods whose AZ
+    # is specified in availability_zone filter.
+    query_filters = []
+    for k, v in urlparse.parse_qsl(t_parse.query):
+        if k == 'availability_zone':
+            continue
+        query_filters.append((k, v))
+    query = urllib.urlencode(query_filters)
+
     fragment = t_parse.fragment
 
     b_url = urlparse.urlunsplit((scheme,
