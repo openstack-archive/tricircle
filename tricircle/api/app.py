@@ -22,10 +22,10 @@ from tricircle.common import restapp
 
 
 common_opts = [
-    cfg.StrOpt('bind_host', default='0.0.0.0',
-               help=_("The host IP to bind to")),
-    cfg.IntOpt('bind_port', default=19999,
-               help=_("The port to bind to")),
+    cfg.IPOpt('bind_host', default='0.0.0.0',
+              help=_("The host IP to bind to")),
+    cfg.PortOpt('bind_port', default=19999,
+                help=_("The port to bind to")),
     cfg.IntOpt('api_workers', default=1,
                help=_("number of api workers")),
     cfg.StrOpt('api_extensions_path', default="",
