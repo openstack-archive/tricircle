@@ -1378,6 +1378,42 @@ class PluginTest(unittest.TestCase,
         # bottom interface and bridge port
         self.assertEqual(2, len(BOTTOM1_PORTS))
 
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_allocate_specific_ip', new=_allocate_specific_ip)
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_generate_ip', new=fake_generate_ip)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
+                  new=mock.Mock)
+    @patch.object(FakeRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeClient, 'action_routers')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_remove_interface(self, mock_context, mock_action, mock_rpc):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = 'test_tenant_id'
+        t_net_id, t_subnet_id, t_router_id = self._prepare_router_test(
+            tenant_id)
+        t_port_id = fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+        _, b_port_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_port_id, constants.RT_PORT)[0]
+
+        fake_plugin.remove_router_interface(
+            q_ctx, t_router_id, {'port_id': t_port_id})
+
+        mock_action.assert_called_with(
+            t_ctx, 'remove_interface', b_router_id, {'port_id': b_port_id})
+        mock_rpc.assert_called_with(t_ctx, t_router_id)
+
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network(self, mock_context):
         plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'

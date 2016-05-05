@@ -305,7 +305,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         super(TricirclePlugin, self).delete_subnet(context, subnet_id)
 
     def update_subnet(self, context, subnet_id, subnet):
-        return super(TricirclePlugin, self).update_network(
+        return super(TricirclePlugin, self).update_subnet(
             context, subnet_id, subnet)
 
     def create_port(self, context, port):
@@ -1123,10 +1123,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 context, router_id, interface_info)
             raise
 
-        # TODO(zhiyuan) improve reliability
-        # this is a casting rpc, so no guarantee that this operation will
-        # success, find out a way to improve reliability, like introducing
-        # job mechanism for async operations
         self.xjob_handler.configure_extra_routes(t_ctx, router_id)
         return return_info
 
@@ -1135,6 +1131,56 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return super(TricirclePlugin, self).create_floatingip(
             context, floatingip,
             initial_status=constants.FLOATINGIP_STATUS_DOWN)
+
+    def remove_router_interface(self, context, router_id, interface_info):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+
+        router = self._get_router(context, router_id)
+        project_id = router['tenant_id']
+        add_by_port, _ = self._validate_interface_info(interface_info,
+                                                       for_removal=True)
+        # make sure network not crosses pods
+        # TODO(zhiyuan) support cross-pod tenant network
+        az, t_net = self._judge_network_across_pods(
+            context, interface_info, add_by_port)
+        b_pod, b_az = az_ag.get_pod_by_az_tenant(t_ctx, az, project_id)
+
+        b_router_id = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, router_id, b_pod['pod_name'], t_constants.RT_ROUTER)
+        handle_bottom = b_router_id is not None
+
+        if add_by_port:
+            t_port_id = interface_info['port_id']
+            b_port_id = db_api.get_bottom_id_by_top_id_pod_name(
+                t_ctx, t_port_id, b_pod['pod_name'], t_constants.RT_PORT)
+            request_body = {'port_id': b_port_id}
+            handle_bottom = handle_bottom and (b_port_id is not None)
+        else:
+            t_subnet_id = interface_info['subnet_id']
+            b_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+                t_ctx, t_subnet_id, b_pod['pod_name'], t_constants.RT_SUBNET)
+            request_body = {'subnet_id': b_subnet_id}
+            handle_bottom = handle_bottom and (b_subnet_id is not None)
+
+        if handle_bottom:
+            b_client = self._get_client(b_pod['pod_name'])
+            try:
+                b_client.action_routers(t_ctx, 'remove_interface', b_router_id,
+                                        request_body)
+            except Exception as e:
+                if hasattr(e, 'status_code') and e.status_code == 404:
+                    # Note(zhiyuan) we get a 404 error from client, the
+                    # possible reason is that router/subnet/port doesn't exist
+                    # in bottom pod, in this case, no need to remove bottom
+                    # interface, we just continue to remove top interface.
+                    pass
+                else:
+                    raise
+        return_info = super(TricirclePlugin, self).remove_router_interface(
+            context, router_id, interface_info)
+        if handle_bottom:
+            self.xjob_handler.configure_extra_routes(t_ctx, router_id)
+        return return_info
 
     @staticmethod
     def _safe_create_bottom_floatingip(t_ctx, client, fip_net_id,
