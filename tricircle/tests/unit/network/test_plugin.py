@@ -17,6 +17,7 @@
 import copy
 import mock
 from mock import patch
+import netaddr
 import unittest
 
 from sqlalchemy.orm import attributes
@@ -67,19 +68,21 @@ BOTTOM1_SUBNETS = []
 BOTTOM1_PORTS = []
 BOTTOM1_ROUTERS = []
 BOTTOM1_SGS = []
+BOTTOM1_FIPS = []
 BOTTOM2_NETS = []
 BOTTOM2_SUBNETS = []
 BOTTOM2_PORTS = []
 BOTTOM2_ROUTERS = []
 BOTTOM2_SGS = []
+BOTTOM2_FIPS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_ROUTERS, TOP_ROUTERPORT,
             TOP_SUBNETPOOLS, TOP_SUBNETPOOLPREFIXES, TOP_IPALLOCATIONS,
             TOP_VLANALLOCATIONS, TOP_SEGMENTS, TOP_EXTNETS, TOP_FLOATINGIPS,
             TOP_SGS, TOP_SG_RULES,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_ROUTERS,
-            BOTTOM1_SGS,
+            BOTTOM1_SGS, BOTTOM1_FIPS,
             BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_ROUTERS,
-            BOTTOM2_SGS]
+            BOTTOM2_SGS, BOTTOM2_FIPS]
 RES_MAP = {'networks': TOP_NETS,
            'subnets': TOP_SUBNETS,
            'ports': TOP_PORTS,
@@ -155,12 +158,14 @@ class FakeClient(object):
                           'subnet': BOTTOM1_SUBNETS,
                           'port': BOTTOM1_PORTS,
                           'router': BOTTOM1_ROUTERS,
-                          'security_group': BOTTOM1_SGS},
+                          'security_group': BOTTOM1_SGS,
+                          'floatingip': BOTTOM1_FIPS},
                 'pod_2': {'network': BOTTOM2_NETS,
                           'subnet': BOTTOM2_SUBNETS,
                           'port': BOTTOM2_PORTS,
                           'router': BOTTOM2_ROUTERS,
-                          'security_group': BOTTOM2_SGS}}
+                          'security_group': BOTTOM2_SGS,
+                          'floatingip': BOTTOM2_FIPS}}
 
     def __init__(self, pod_name):
         self.pod_name = pod_name
@@ -191,10 +196,12 @@ class FakeClient(object):
                         fixed_ip['ip_address'])
             fixed_ips = body[_type].get('fixed_ips', [])
             for fixed_ip in fixed_ips:
-                # just skip ip address check when subnet_id not given
-                # currently test case doesn't need to cover such situation
-                if 'subnet_id' not in fixed_ip:
-                    continue
+                for subnet in self._res_map[self.pod_name]['subnet']:
+                    ip_range = netaddr.IPNetwork(subnet['cidr'])
+                    ip = netaddr.IPAddress(fixed_ip['ip_address'])
+                    if ip in ip_range:
+                        fixed_ip['subnet_id'] = subnet['id']
+                        break
                 if fixed_ip['ip_address'] in subnet_ips_map.get(
                         fixed_ip['subnet_id'], set()):
                     raise q_exceptions.IpAddressInUseClient()
@@ -249,7 +256,33 @@ class FakeClient(object):
             return self.add_gateway_routers(ctx, args, kwargs)
 
     def create_floatingips(self, ctx, body):
-        # only for mock purpose
+        fip = self.create_resources('floatingip', ctx, body)
+        for key in ['fixed_port_id']:
+            if key not in fip:
+                fip[key] = None
+        return fip
+
+    def list_floatingips(self, ctx, filters=None):
+        filters = filters or []
+        return_list = []
+        for fip in self._res_map[self.pod_name]['floatingip']:
+            is_skip = False
+            for filter in filters:
+                if filter['key'] not in fip:
+                    is_skip = True
+                    break
+                if fip[filter['key']] != filter['value']:
+                    is_skip = True
+                    break
+            if is_skip:
+                continue
+            return_list.append(copy.copy(fip))
+        return return_list
+
+    def update_floatingips(self, ctx, _id, body):
+        pass
+
+    def delete_floatingips(self, ctx, _id):
         pass
 
     def create_security_group_rules(self, ctx, body):
@@ -348,6 +381,25 @@ def unlink_models(res_list, model_dict, foreign_key, key, link_prop,
             if index != -1:
                 del instance[link_prop][index]
                 return
+
+
+def update_floatingip(self, context, _id, floatingip):
+    for fip in TOP_FLOATINGIPS:
+        if fip['id'] != _id:
+            continue
+        update_dict = floatingip['floatingip']
+        if not floatingip['floatingip']['port_id']:
+            update_dict['fixed_port_id'] = None
+            update_dict['fixed_ip_address'] = None
+            fip.update(update_dict)
+            return
+        for port in TOP_PORTS:
+            if port['id'] != floatingip['floatingip']['port_id']:
+                continue
+            update_dict['fixed_port_id'] = port['id']
+            update_dict[
+                'fixed_ip_address'] = port['fixed_ips'][0]['ip_address']
+        fip.update(update_dict)
 
 
 class FakeQuery(object):
@@ -1842,11 +1894,11 @@ class PluginTest(unittest.TestCase,
                   new=mock.Mock)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
                   new=mock.Mock)
-    @patch.object(FakePlugin, '_disassociate_floatingip')
+    @patch.object(FakePlugin, '_rollback_floatingip_data')
     @patch.object(FakeClient, 'create_floatingips')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_associate_floatingip_port_exception(
-            self, mock_context, mock_create, mock_disassociate):
+            self, mock_context, mock_create, mock_rollback):
         plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
         cfg.CONF.set_override('core_plugin', plugin_path)
 
@@ -1865,7 +1917,72 @@ class PluginTest(unittest.TestCase,
         self.assertRaises(q_exceptions.ConnectionFailed,
                           fake_plugin.update_floatingip, q_ctx, fip['id'],
                           {'floatingip': fip_body})
-        mock_disassociate.assert_called_once_with(q_ctx, fip['id'])
+        data = {'fixed_port_id': None,
+                'fixed_ip_address': None,
+                'router_id': None}
+        mock_rollback.assert_called_once_with(q_ctx, fip['id'], data)
+        # check the association information is cleared
+        self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
+        self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
+        self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
+
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_allocate_specific_ip', new=_allocate_specific_ip)
+    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
+                  '_generate_ip', new=fake_generate_ip)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
+                  new=mock.Mock)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakeClient, 'delete_floatingips')
+    @patch.object(FakeClient, 'update_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_disassociate_floatingip(self, mock_context, mock_update,
+                                     mock_delete):
+        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
+        cfg.CONF.set_override('core_plugin', plugin_path)
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        bridge_port_name = constants.ns_bridge_port_name % (
+            e_net['tenant_id'], None, b_port_id)
+        t_pod = db_api.get_top_pod(t_ctx)
+        mapping = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        # check routing for bridge port in top pod exists
+        self.assertIsNotNone(mapping)
+
+        # disassociate floating ip
+        fip_body = {'port_id': None}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        fip_id1 = BOTTOM1_FIPS[0]['id']
+        fip_id2 = BOTTOM2_FIPS[0]['id']
+        mock_update.assert_called_once_with(
+            t_ctx, fip_id2, {'floatingip': {'port_id': None}})
+        mock_delete.assert_called_once_with(t_ctx, fip_id1)
+        mapping = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        # check routing for bridge port in top pod is deleted
+        self.assertIsNone(mapping)
+
         # check the association information is cleared
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
