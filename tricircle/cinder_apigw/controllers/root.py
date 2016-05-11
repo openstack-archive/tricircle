@@ -18,6 +18,7 @@ import pecan
 import oslo_log.log as logging
 
 from tricircle.cinder_apigw.controllers import volume
+from tricircle.cinder_apigw.controllers import volume_type
 
 LOG = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class V2Controller(object):
 
         self.resource_controller = {
             'volumes': volume.VolumeController,
+            'types': volume_type.VolumeTypeController
         }
 
     @pecan.expose()

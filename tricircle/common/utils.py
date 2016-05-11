@@ -15,6 +15,8 @@
 
 import six
 
+import pecan
+
 import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 
@@ -116,3 +118,28 @@ def check_string_length(value, name=None, min_len=0, max_len=None):
 
 def get_bottom_network_name(network):
     return '%s#%s' % (network['id'], network['name'])
+
+
+def format_error(code, message, error_type=None):
+    error_type_map = {400: 'badRequest',
+                      403: 'forbidden',
+                      404: 'itemNotFound',
+                      409: 'conflictingRequest',
+                      500: 'internalServerError'}
+    pecan.response.status = code
+    if not error_type:
+        if code in error_type_map:
+            error_type = error_type_map[code]
+        else:
+            error_type = 'Error'
+    # format error message in this form so nova client can
+    # correctly parse it
+    return {error_type: {'message': message, 'code': code}}
+
+
+def format_nova_error(code, message, error_type=None):
+    return format_error(code, message, error_type)
+
+
+def format_cinder_error(code, message, error_type=None):
+    return format_error(code, message, error_type)

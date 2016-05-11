@@ -23,6 +23,9 @@ from oslo_db import exception as db_exc
 from oslo_log import log as logging
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
+from sqlalchemy import or_, and_
+from sqlalchemy.orm import joinedload
+from sqlalchemy.sql.expression import literal_column
 
 from tricircle.common import constants
 from tricircle.common.context import is_admin_context as _is_admin_context
@@ -378,6 +381,21 @@ def _retry_on_deadlock(f):
                 continue
     functools.update_wrapper(wrapped, f)
     return wrapped
+
+
+def handle_db_data_error(f):
+    def wrapper(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except db_exc.DBDataError:
+            msg = _('Error writing field to database')
+            LOG.exception(msg)
+            raise exceptions.Invalid(msg)
+        except Exception as e:
+            LOG.exception(str(e))
+            raise
+
+    return wrapper
 
 
 def model_query(context, *args, **kwargs):
@@ -904,3 +922,316 @@ def reservation_expire(context):
                     reservation.usage.save(session=context.session)
 
                 reservation.delete(session=context.session)
+
+
+def _dict_with_extra_specs_if_authorized(context, inst_type_query):
+    """Convert type query result to dict with extra_spec and rate_limit.
+
+    Takes a volume type query returned by sqlalchemy and returns it
+    as a dictionary, converting the extra_specs entry from a list
+    of dicts.
+
+    NOTE:
+    the contents of extra-specs are admin readable only.
+    If the context passed in for this request is not about admin,
+    we will return an empty extra-specs dict rather than
+    providing extra-specs details.
+
+    :param context: The request context, for access checks.
+    :param inst_type_query: list of extra-specs.
+    :returns dictionary of extra-specs.
+
+    Example of response of admin context:
+
+    'extra_specs' : [{'key': 'k1', 'value': 'v1', ...}, ...]
+    to a single dict:
+    'extra_specs' : {'k1': 'v1'}
+
+    """
+
+    inst_type_dict = dict(inst_type_query)
+    if not context.is_admin:
+        del (inst_type_dict['extra_specs'])
+    else:
+        extra_specs = {x['key']: x['value']
+                       for x in inst_type_query['extra_specs']}
+        inst_type_dict['extra_specs'] = extra_specs
+    return inst_type_dict
+
+
+@require_context
+def _volume_type_get_by_name(context, name, session=None):
+    result = model_query(context, models.VolumeTypes, session=session). \
+        options(joinedload('extra_specs')). \
+        filter_by(name=name). \
+        first()
+
+    if not result:
+        raise exceptions.VolumeTypeNotFoundByName(volume_type_name=name)
+
+    return _dict_with_extra_specs_if_authorized(context, result)
+
+
+@require_context
+def volume_type_get_by_name(context, name, session=None):
+    """Return a dict describing specific volume_type.
+
+    :param context: The request context, for access checks.
+    :param name: The name of volume type to be found.
+    :returns Volume type.
+    """
+    return _volume_type_get_by_name(context, name, session)
+
+
+def _volume_type_get_query(context, session=None, read_deleted='no'):
+    query = model_query(context, models.VolumeTypes,
+                        session=session,
+                        read_deleted=read_deleted). \
+        options(joinedload('extra_specs'))
+
+    if not context.is_admin:
+        is_public = True
+        the_filter = [models.VolumeTypes.is_public == is_public]
+        query.filter(or_(*the_filter))
+
+    return query
+
+
+def _volume_type_get_db_object(context, id, session=None, inactive=False):
+    read_deleted = "yes" if inactive else "no"
+    result = _volume_type_get_query(
+        context, session, read_deleted). \
+        filter_by(id=id). \
+        first()
+    return result
+
+
+@require_context
+def _volume_type_get(context, id, session=None, inactive=False):
+    result = _volume_type_get_db_object(context, id, session, inactive)
+
+    if not result:
+        raise exceptions.VolumeTypeNotFound(volume_type_id=id)
+
+    vtype = _dict_with_extra_specs_if_authorized(context, result)
+
+    return vtype
+
+
+@require_context
+def volume_type_get(context, id, inactive=False):
+    """Return a dict describing specific volume_type.
+
+    :param context: The request context, for access checks.
+    :param id: The id of volume type to be found.
+    :returns Volume type.
+    """
+
+    return _volume_type_get(context, id,
+                            session=None,
+                            inactive=inactive)
+
+
+@require_context
+def volume_type_delete(context, id, session):
+    """delete a volume_type by id.
+
+    :param context: The request context, for access checks.
+    :param id: The id of volume type to be deleted.
+    """
+    model_query(context, models.VolumeTypes, session=session, read_deleted="no").\
+        filter_by(id=id). \
+        update({'deleted': True,
+                'deleted_at': timeutils.utcnow(),
+                'updated_at': literal_column('updated_at')})
+
+    model_query(context, models.VolumeTypeExtraSpecs, session=session, read_deleted="no"). \
+        filter_by(volume_type_id=id). \
+        update({'deleted': True,
+                'deleted_at': timeutils.utcnow(),
+                'updated_at': literal_column('updated_at')})
+
+
+def is_valid_model_filters(model, filters):
+    """Return True if filter values exist on the model
+
+    :param model: a Cinder model
+    :param filters: dictionary of filters
+    """
+    for key in filters.keys():
+        if not hasattr(model, key):
+            return False
+    return True
+
+
+def _process_volume_types_filters(query, filters):
+    context = filters.pop('context', None)
+
+    if filters.get('is_public'):
+        the_filter = [models.VolumeTypes.is_public == filters['is_public']]
+
+        if filters['is_public'] and context.project_id is not None:
+            projects_attr = getattr(models.VolumeTypes, 'projects')
+            the_filter.append(
+                [projects_attr.any(project_id=context.project_id,
+                                   deleted=0)])
+
+        if len(the_filter) > 1:
+            query = query.filter(or_(*the_filter))
+        else:
+            query = query.filter(the_filter[0])
+
+    if 'is_public' in filters:
+        del filters['is_public']
+
+    if filters:
+        # Ensure that filters' keys exist on the model
+        if not is_valid_model_filters(models.VolumeTypes, filters):
+            return
+
+        if filters.get('extra_specs') is not None:
+            the_filter = []
+            searchdict = filters.get('extra_specs')
+            extra_specs = getattr(models.VolumeTypes, 'extra_specs')
+            for k, v in searchdict.items():
+                the_filter.append([extra_specs.any(key=k, value=v,
+                                                   deleted=False)])
+
+            if len(the_filter) > 1:
+                query = query.filter(and_(*the_filter))
+            else:
+                query = query.filter(the_filter[0])
+            del filters['extra_specs']
+        query = query.filter_by(**filters)
+    return query
+
+
+@require_context
+def volume_type_get_all(context, inactive=False, filters=None,
+                        list_result=False):
+    """Returns a dict describing all volume_types with name as key.
+
+    :param context: context to query under
+    :param inactive: Pass true as argument if you want deleted volume types
+                     returned also.
+    :param filters: dictionary of filters; values that are in lists, tuples,
+                    or sets cause an 'IN' operation, while exact matching
+                    is used for other values, see _process_volume_type_filters
+                    function for more information
+    :param list_result: For compatibility, if list_result = True, return
+                        a list instead of dict.
+    :returns: list/dict of matching volume types
+    """
+    read_deleted = 'yes' if inactive else 'no'
+    session = core.get_session()
+    with session.begin():
+        filters = filters or {}
+        filters['context'] = context
+        # Generate the query
+        query = _volume_type_get_query(context, session=session,
+                                       read_deleted=read_deleted)
+        query = _process_volume_types_filters(query, filters)
+
+        # No volume types would match, return empty dict or list
+        if query is None:
+            if list_result:
+                return []
+            return {}
+
+        rows = query.all()
+
+        if list_result:
+            result = [_dict_with_extra_specs_if_authorized(context, row)
+                      for row in rows]
+            return result
+        result = {row['name']: _dict_with_extra_specs_if_authorized(context,
+                                                                    row)
+                  for row in rows}
+        return result
+
+
+@require_context
+def _volume_type_ref_get(context, id, session=None, inactive=False):
+    read_deleted = "yes" if inactive else "no"
+    result = model_query(context,
+                         models.VolumeTypes,
+                         session=session,
+                         read_deleted=read_deleted).\
+        options(joinedload('extra_specs')).\
+        filter_by(id=id).\
+        first()
+
+    if not result:
+        raise exceptions.VolumeTypeNotFound(volume_type_id=id)
+
+    return result
+
+
+@handle_db_data_error
+@require_admin_context
+def volume_type_update(context, volume_type_id, values):
+    """Update volume type by volume_type_id.
+
+    :param volume_type_id: id of volume type to be updated
+    :param values: dictionary of values to be updated
+    :returns: updated volume type
+    """
+    session = core.get_session()
+    with session.begin():
+        try:
+            # Check it exists
+            volume_type_ref = _volume_type_ref_get(context,
+                                                   volume_type_id,
+                                                   session)
+            if not volume_type_ref:
+                raise exceptions.VolumeTypeNotFound(type_id=volume_type_id)
+
+            # No description change
+            if values['description'] is None:
+                del values['description']
+
+            # No is_public change
+            if values['is_public'] is None:
+                del values['is_public']
+
+            # No name change
+            if values['name'] is None:
+                del values['name']
+            else:
+                # Volume type name is unique. If change to a name that
+                # belongs to a different volume_type , it should be
+                # prevented.
+                check_vol_type = None
+                try:
+                    check_vol_type = \
+                        volume_type_get_by_name(context,
+                                                values['name'],
+                                                session=session)
+                except exceptions.VolumeTypeNotFoundByName:
+                    pass
+                else:
+                    if check_vol_type.get('id') != volume_type_id:
+                        raise exceptions.VolumeTypeExists(id=values['name'])
+
+            volume_type_ref.update(values)
+            volume_type_ref.save(session=session)
+        except Exception:
+            raise exceptions.VolumeTypeUpdateFailed(id=volume_type_id)
+
+        return _dict_with_extra_specs_if_authorized(context, volume_type_ref)
+
+
+@require_context
+def volume_type_project_query(context, session=None, inactive=False,
+                              filters=None):
+    """Get a query of volume type project.
+
+    :param context: context to query under
+    :param inactive: Pass true as argument if you want deleted
+           volume type projects returned also.
+    :param filters: dictionary of filters.
+    """
+    read_deleted = "yes" if inactive else "no"
+    filters = filters or {}
+    return model_query(context, models.VolumeTypeProjects, session=session,
+                       read_deleted=read_deleted).filter_by(**filters)

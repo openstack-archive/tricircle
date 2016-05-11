@@ -273,3 +273,29 @@ class ValidationError(TricircleException):
 class HTTPForbiddenError(TricircleException):
     message = _("%(msg)s")
     code = 403
+
+
+class VolumeTypeNotFound(NotFound):
+    message = _("Volume type %(volume_type_id)s could not be found.")
+
+
+class VolumeTypeNotFoundByName(VolumeTypeNotFound):
+    message = _("Volume type with name %(volume_type_name)s "
+                "could not be found.")
+
+
+class VolumeTypeExtraSpecsNotFound(NotFound):
+    message = _("Volume Type %(volume_type_id)s has no extra specs with "
+                "key %(extra_specs_key)s.")
+
+
+class Duplicate(TricircleException):
+    pass
+
+
+class VolumeTypeExists(Duplicate):
+    message = _("Volume Type %(id)s already exists.")
+
+
+class VolumeTypeUpdateFailed(TricircleException):
+    message = _("Cannot update volume_type %(id)s")

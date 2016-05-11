@@ -19,6 +19,7 @@ from pecan import request
 
 import oslo_context.context as oslo_ctx
 
+from tricircle.common.i18n import _
 from tricircle.db import core
 
 
@@ -70,9 +71,18 @@ def get_context_from_neutron_context(context):
 
 class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
-                 is_admin=False, request_id=None, overwrite=True,
-                 user_name=None, tenant_name=None, quota_class=None,
-                 **kwargs):
+                 is_admin=False, read_deleted="no", request_id=None,
+                 overwrite=True, user_name=None, tenant_name=None,
+                 quota_class=None, **kwargs):
+        """Initialize RequestContext.
+
+        :param read_deleted: 'no' indicates deleted records are hidden, 'yes'
+            indicates deleted records are visible, 'only' indicates that
+            *only* deleted records are visible.
+
+        :param overwrite: Set to False to ensure that the greenthread local
+            copy of the index is not overwritten.
+        """
         super(ContextBase, self).__init__(
             auth_token=auth_token,
             user=user_id or kwargs.get('user', None),
@@ -89,6 +99,22 @@ class ContextBase(oslo_ctx.RequestContext):
         self.user_name = user_name
         self.tenant_name = tenant_name
         self.quota_class = quota_class
+        self.read_deleted = read_deleted
+
+    def _get_read_deleted(self):
+        return self._read_deleted
+
+    def _set_read_deleted(self, read_deleted):
+        if read_deleted not in ('no', 'yes', 'only'):
+            raise ValueError(_("read_deleted can only be one of 'no', "
+                               "'yes' or 'only', not %r") % read_deleted)
+        self._read_deleted = read_deleted
+
+    def _del_read_deleted(self):
+        del self._read_deleted
+
+    read_deleted = property(_get_read_deleted, _set_read_deleted,
+                            _del_read_deleted)
 
     def to_dict(self):
         ctx_dict = super(ContextBase, self).to_dict()
