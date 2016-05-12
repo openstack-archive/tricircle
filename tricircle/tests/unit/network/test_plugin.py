@@ -19,6 +19,7 @@ import mock
 from mock import patch
 import unittest
 
+from sqlalchemy.orm import attributes
 from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
 
@@ -499,6 +500,8 @@ class FakeSession(object):
         return FakeSession.WithWrapper()
 
     def query(self, model):
+        if isinstance(model, attributes.InstrumentedAttribute):
+            model = model.class_
         if model.__tablename__ not in RES_MAP:
             return FakeQuery([], model.__tablename__)
         return FakeQuery(RES_MAP[model.__tablename__],
