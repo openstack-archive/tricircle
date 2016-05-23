@@ -59,11 +59,16 @@ class TricircleException(Exception):
                 # log the issue and the kwargs
                 exc_info = _('Exception class %s in string '
                              'format operation') % type(self).__name__
+                format_str = _('%(exception_info)s ; %(format_key)s : '
+                               '%(format_value)s')
                 for name, value in kwargs.items():
-                    exc_info = exc_info + _(' ; ') + \
-                        name + _(' : ') + six.text_type(value)
+                    exc_info = format_str % {
+                        'exception_info': exc_info,
+                        'format_key': name,
+                        'format_value': six.text_type(value)}
 
-                exc_info = self.message + _(' ; ') + exc_info
+                exc_info = _('%(message)s ; %(exception_info)s') % {
+                    'message': self.message, 'exception_info': exc_info}
                 LOG.exception(exc_info)
 
                 # no rerasie
