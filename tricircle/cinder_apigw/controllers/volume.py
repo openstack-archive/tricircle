@@ -68,15 +68,15 @@ class VolumeController(rest.RestController):
         t_pod = db_api.get_top_pod(context)
         if not t_pod:
             pecan.abort(500, _('Top Pod not configured'))
-            LOG.error(_LE("Top Po not configured"))
+            LOG.error(_LE("Top Pod not configured"))
             return
 
         # TODO(joehuang): get release from pod configuration,
         # to convert the content
         # b_release = pod['release']
         # t_release = t_pod['release']
-        t_release = 'Mitaka'
-        b_release = 'Mitaka'
+        t_release = cons.R_MITAKA
+        b_release = cons.R_MITAKA
 
         s_ctx = hclient.get_pod_service_ctx(
             context,
@@ -165,8 +165,8 @@ class VolumeController(rest.RestController):
             return {'volumes': self._get_all(context)}
 
         # TODO(joehuang): get the release of top and bottom
-        t_release = 'MITATA'
-        b_release = 'MITATA'
+        t_release = cons.R_MITAKA
+        b_release = cons.R_MITAKA
 
         b_headers = self._convert_header(t_release,
                                          b_release,
@@ -349,8 +349,8 @@ class VolumeController(rest.RestController):
         context = t_context.extract_context_from_environ()
 
         # TODO(joehuang): get the release of top and bottom
-        t_release = 'MITATA'
-        b_release = 'MITATA'
+        t_release = cons.R_MITAKA
+        b_release = cons.R_MITAKA
 
         s_ctx = self._get_res_routing_ref(context, _id, request.url)
         if not s_ctx:
