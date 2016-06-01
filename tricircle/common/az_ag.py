@@ -120,14 +120,27 @@ def get_pod_by_az_tenant(context, az_name, tenant_id):
         pod = core.get_resource(context,
                                 models.Pod,
                                 pod_b['pod_id'])
-        if pod['az_name'] == az_name:
+        if az_name and pod['az_name'] == az_name:
             return pod, pod['pod_az_name']
+        elif az_name == '' and pod['az_name'] != '':
+            # if the az_name is not specified, a defult bottom
+            # pod will be selected
+            return pod, pod['pod_az_name']
+        else:
+            pass
 
     # TODO(joehuang): schedule one dynamically in the future
-    filters = [{'key': 'az_name', 'comparator': 'eq', 'value': az_name}]
+    if az_name != '':
+        filters = [{'key': 'az_name', 'comparator': 'eq', 'value': az_name}]
+    else:
+        filters = None
+
+    # if az_name is valid, select a pod under this az_name
+    # if az_name is '', select the first valid bottom pod.
+    # change to dynamic schedluing in the future
     pods = db_api.list_pods(context, filters=filters)
     for pod in pods:
-        if pod['pod_name'] != '':
+        if pod['pod_name'] != '' and pod['az_name'] != '':
             try:
                 with context.session.begin():
                     core.create_resource(
