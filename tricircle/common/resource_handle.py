@@ -20,6 +20,7 @@ import glanceclient as g_client
 import glanceclient.exc as g_exceptions
 from neutronclient.common import exceptions as q_exceptions
 from neutronclient.neutron import client as q_client
+from novaclient import api_versions
 from novaclient import client as n_client
 from novaclient import exceptions as n_exceptions
 from oslo_config import cfg
@@ -214,7 +215,7 @@ class NovaResourceHandle(ResourceHandle):
                         'server_volume': ACTION}
 
     def _get_client(self, cxt):
-        cli = n_client.Client('2',
+        cli = n_client.Client(api_versions.APIVersion('2.1'),
                               auth_token=cxt.auth_token,
                               auth_url=self.auth_url,
                               timeout=cfg.CONF.client.nova_timeout)
