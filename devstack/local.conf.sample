@@ -31,7 +31,7 @@ Q_USE_SECGROUP=False
 LIBVIRT_FIREWALL_DRIVER=nova.virt.firewall.NoopFirewallDriver
 
 Q_ENABLE_TRICIRCLE=True
-enable_plugin tricircle https://github.com/openstack/tricircle/
+enable_plugin tricircle https://github.com/openstack/tricircle/ stable/mitaka
 
 # Tricircle Services
 enable_service t-api
