@@ -85,15 +85,15 @@ class VolumeController(rest.RestController):
             return utils.format_cinder_error(
                 500, _('Bottom Pod endpoint incorrect'))
 
-        b_headers = self._convert_header(t_release,
-                                         b_release,
-                                         request.headers)
+        b_headers = hclient.convert_header(t_release,
+                                           b_release,
+                                           request.headers)
 
         t_vol = kw['volume']
 
         # add or remove key-value in the request for diff. version
-        b_vol_req = self._convert_object(t_release, b_release, t_vol,
-                                         res_type=cons.RT_VOLUME)
+        b_vol_req = hclient.convert_object(t_release, b_release, t_vol,
+                                           res_type=cons.RT_VOLUME)
 
         # convert az to the configured one
         # remove the AZ parameter to bottom request for default one
@@ -142,9 +142,9 @@ class VolumeController(rest.RestController):
                     return utils.format_cinder_error(
                         500, _('Failed to create volume resource routing'))
 
-                ret_vol = self._convert_object(b_release, t_release,
-                                               b_vol_ret,
-                                               res_type=cons.RT_VOLUME)
+                ret_vol = hclient.convert_object(b_release, t_release,
+                                                 b_vol_ret,
+                                                 res_type=cons.RT_VOLUME)
 
                 ret_vol['availability_zone'] = pod['az_name']
 
@@ -163,11 +163,12 @@ class VolumeController(rest.RestController):
         t_release = cons.R_MITAKA
         b_release = cons.R_MITAKA
 
-        b_headers = self._convert_header(t_release,
-                                         b_release,
-                                         request.headers)
+        b_headers = hclient.convert_header(t_release,
+                                           b_release,
+                                           request.headers)
 
-        s_ctx = self._get_res_routing_ref(context, _id, request.url)
+        s_ctx = hclient.get_res_routing_ref(context, _id, request.url,
+                                            cons.ST_CINDER)
         if not s_ctx:
             return utils.format_cinder_error(
                 404, _('Volume %s could not be found.') % _id)
@@ -188,11 +189,11 @@ class VolumeController(rest.RestController):
         if b_status == 200:
             if b_ret_body.get('volume') is not None:
                 b_vol_ret = b_ret_body['volume']
-                ret_vol = self._convert_object(b_release, t_release,
-                                               b_vol_ret,
-                                               res_type=cons.RT_VOLUME)
+                ret_vol = hclient.convert_object(b_release, t_release,
+                                                 b_vol_ret,
+                                                 res_type=cons.RT_VOLUME)
 
-                pod = self._get_pod_by_top_id(context, _id)
+                pod = utils.get_pod_by_top_id(context, _id)
                 if pod:
                     ret_vol['availability_zone'] = pod['az_name']
 
@@ -288,7 +289,8 @@ class VolumeController(rest.RestController):
         t_release = cons.R_MITAKA
         b_release = cons.R_MITAKA
 
-        s_ctx = self._get_res_routing_ref(context, _id, request.url)
+        s_ctx = hclient.get_res_routing_ref(context, _id, request.url,
+                                            cons.ST_CINDER)
         if not s_ctx:
             return utils.format_cinder_error(
                 404, _('Volume %s could not be found.') % _id)
@@ -297,15 +299,15 @@ class VolumeController(rest.RestController):
             return utils.format_cinder_error(
                 404, _('Bottom Pod endpoint incorrect'))
 
-        b_headers = self._convert_header(t_release,
-                                         b_release,
-                                         request.headers)
+        b_headers = hclient.convert_header(t_release,
+                                           b_release,
+                                           request.headers)
 
         t_vol = kw['volume']
 
         # add or remove key-value in the request for diff. version
-        b_vol_req = self._convert_object(t_release, b_release, t_vol,
-                                         res_type=cons.RT_VOLUME)
+        b_vol_req = hclient.convert_object(t_release, b_release, t_vol,
+                                           res_type=cons.RT_VOLUME)
 
         b_body = jsonutils.dumps({'volume': b_vol_req})
 
@@ -321,11 +323,11 @@ class VolumeController(rest.RestController):
         if b_status == 200:
             if b_ret_body.get('volume') is not None:
                 b_vol_ret = b_ret_body['volume']
-                ret_vol = self._convert_object(b_release, t_release,
-                                               b_vol_ret,
-                                               res_type=cons.RT_VOLUME)
+                ret_vol = hclient.convert_object(b_release, t_release,
+                                                 b_vol_ret,
+                                                 res_type=cons.RT_VOLUME)
 
-                pod = self._get_pod_by_top_id(context, _id)
+                pod = utils.get_pod_by_top_id(context, _id)
                 if pod:
                     ret_vol['availability_zone'] = pod['az_name']
 
@@ -351,7 +353,8 @@ class VolumeController(rest.RestController):
         t_release = cons.R_MITAKA
         b_release = cons.R_MITAKA
 
-        s_ctx = self._get_res_routing_ref(context, _id, request.url)
+        s_ctx = hclient.get_res_routing_ref(context, _id, request.url,
+                                            cons.ST_CINDER)
         if not s_ctx:
             return utils.format_cinder_error(
                 404, _('Volume %s could not be found.') % _id)
@@ -360,9 +363,9 @@ class VolumeController(rest.RestController):
             return utils.format_cinder_error(
                 404, _('Bottom Pod endpoint incorrect'))
 
-        b_headers = self._convert_header(t_release,
-                                         b_release,
-                                         request.headers)
+        b_headers = hclient.convert_header(t_release,
+                                           b_release,
+                                           request.headers)
 
         resp = hclient.forward_req(context, 'DELETE',
                                    b_headers,
@@ -373,49 +376,5 @@ class VolumeController(rest.RestController):
 
         # don't remove the resource routing for delete is async. operation
         # remove the routing when query is executed but not find
-
         # No content in the resp actually
         return response
-
-    # move to common function if other modules need
-    def _get_res_routing_ref(self, context, _id, t_url):
-
-        pod = self._get_pod_by_top_id(context, _id)
-
-        if not pod:
-            return None
-
-        pod_name = pod['pod_name']
-
-        s_ctx = hclient.get_pod_service_ctx(
-            context,
-            t_url,
-            pod_name,
-            s_type=cons.ST_CINDER)
-
-        if s_ctx['b_url'] == '':
-            LOG.error(_LE("bottom pod endpoint incorrect %s") %
-                      pod_name)
-
-        return s_ctx
-
-    # move to common function if other modules need
-    def _get_pod_by_top_id(self, context, _id):
-
-        mappings = db_api.get_bottom_mappings_by_top_id(
-            context, _id,
-            cons.RT_VOLUME)
-
-        if not mappings or len(mappings) != 1:
-            return None
-
-        return mappings[0][0]
-
-    def _convert_header(self, from_release, to_release, header):
-
-        return header
-
-    def _convert_object(self, from_release, to_release, res_object,
-                        res_type=cons.RT_VOLUME):
-
-        return res_object

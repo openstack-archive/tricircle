@@ -18,7 +18,9 @@ import pecan
 import oslo_log.log as logging
 
 from tricircle.cinder_apigw.controllers import volume
+from tricircle.cinder_apigw.controllers import volume_metadata
 from tricircle.cinder_apigw.controllers import volume_type
+
 
 LOG = logging.getLogger(__name__)
 
@@ -69,6 +71,10 @@ class V2Controller(object):
             'types': volume_type.VolumeTypeController
         }
 
+        self.volumes_sub_controller = {
+            'metadata': volume_metadata.VolumeMetaDataController,
+        }
+
     @pecan.expose()
     def _lookup(self, tenant_id, *remainder):
         if not remainder:
@@ -78,6 +84,14 @@ class V2Controller(object):
         if resource not in self.resource_controller:
             pecan.abort(404)
             return
+        if resource == 'volumes' and len(remainder) >= 3:
+            volume_id = remainder[1]
+            sub_resource = remainder[2]
+            if sub_resource not in self.volumes_sub_controller:
+                pecan.abort(404)
+                return
+            return self.volumes_sub_controller[sub_resource](
+                tenant_id, volume_id), remainder[3:]
         return self.resource_controller[resource](tenant_id), remainder[1:]
 
     @pecan.expose(generic=True, template='json')
