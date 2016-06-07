@@ -1296,3 +1296,25 @@ def volume_type_project_query(context, session=None, inactive=False,
     filters = filters or {}
     return model_query(context, models.VolumeTypeProjects, session=session,
                        read_deleted=read_deleted).filter_by(**filters)
+
+
+@require_context
+def get_server_mappings_by_top_id(context, server_id):
+    server_mappings = \
+        get_bottom_mappings_by_top_id(context, server_id, constants.RT_SERVER)
+
+    if not server_mappings:
+        raise exceptions.ServerMappingsNotFound(server_id=server_id)
+
+    return server_mappings
+
+
+@require_context
+def get_volume_mappings_by_top_id(context, volume_id):
+    volume_mappings = \
+        get_bottom_mappings_by_top_id(context, volume_id, constants.RT_VOLUME)
+
+    if not volume_mappings:
+        raise exceptions.VolumeMappingsNotFound(volume_id=volume_id)
+
+    return volume_mappings

@@ -41,6 +41,25 @@ class FakeVolume(object):
         pass
 
 
+class FakeClient(object):
+    def post(self, url, body):
+        return FakeResponse(), FakeVolume()
+
+    def get(self, url):
+        return FakeResponse(), FakeVolume()
+
+    def put(self, url, body):
+        return FakeResponse(), FakeVolume()
+
+    def delete(self, url):
+        return FakeResponse(), None
+
+
+class FakeApi(object):
+    def __init__(self):
+        self.client = FakeClient()
+
+
 class VolumeTest(unittest.TestCase):
     def setUp(self):
         core.initialize()
@@ -70,13 +89,16 @@ class VolumeTest(unittest.TestCase):
     def _validate_error_code(self, res, code):
         self.assertEqual(code, res[res.keys()[0]]['code'])
 
-    @patch.object(pecan, 'response', new=FakeResponse)
-    @patch.object(client.Client, 'action_resources')
+    @patch.object(pecan, 'response')
+    @patch.object(FakeClient, 'post')
+    @patch.object(client.Client, 'get_native_client')
     @patch.object(context, 'extract_context_from_environ')
-    def test_attach_volume(self, mock_context, mock_action):
+    def test_attach_volume(self, mock_context, mock_api, mock_post,
+                           mock_response):
         mock_context.return_value = self.context
-        mock_action.return_value = FakeVolume()
-
+        mock_api.return_value = FakeApi()
+        mock_response = FakeResponse()
+        mock_response.status = 202
         t_pod, b_pods = self._prepare_pod(bottom_pod_num=2)
         b_pod1 = b_pods[0]
         b_pod2 = b_pods[1]
@@ -109,16 +131,18 @@ class VolumeTest(unittest.TestCase):
         self.controller.server_id = t_server_id
         body = {'volumeAttachment': {'volumeId': t_volume1_id}}
         self.controller.post(**body)
+        calls = [mock.call('server_volume', self.context)]
+        mock_api.assert_has_calls(calls)
+        url = "/servers/%s/os-volume_attachments" % t_server_id
+        calls = [mock.call(url, body=body)]
+        mock_post.assert_has_calls(calls)
         body = {'volumeAttachment': {'volumeId': t_volume1_id,
                                      'device': '/dev/vdb'}}
         self.controller.post(**body)
-        calls = [mock.call('server_volume', self.context,
-                           'create_server_volume',
-                           b_server_id, b_volume1_id, None),
-                 mock.call('server_volume', self.context,
-                           'create_server_volume',
-                           b_server_id, b_volume1_id, '/dev/vdb')]
-        mock_action.assert_has_calls(calls)
+        calls = [mock.call('server_volume', self.context)]
+        mock_api.assert_has_calls(calls)
+        calls = [mock.call(url, body=body)]
+        mock_post.assert_has_calls(calls)
 
         # failure case, bad request
         body = {'volumeAttachment': {'volumeId': t_volume2_id}}
@@ -157,5 +181,124 @@ class VolumeTest(unittest.TestCase):
 
         self.controller.server_id = 'fake_server_id'
         body = {'volumeAttachment': {'volumeId': t_volume1_id}}
+
         res = self.controller.post(**body)
         self._validate_error_code(res, 404)
+
+    @patch.object(pecan, 'response')
+    @patch.object(FakeClient, 'delete')
+    @patch.object(client.Client, 'get_native_client')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_detach_volume(self, mock_context, mock_api, mock_delete,
+                           mock_response):
+        mock_context.return_value = self.context
+        mock_api.return_value = FakeApi()
+        mock_response = FakeResponse()
+        mock_response.status = 202
+        t_pod, b_pods = self._prepare_pod(bottom_pod_num=1)
+        b_pod1 = b_pods
+        t_server_id = uuidutils.generate_uuid()
+        b_server_id = t_server_id
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_server_id, 'bottom_id': b_server_id,
+                 'pod_id': b_pod1['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_SERVER})
+
+        t_volume1_id = uuidutils.generate_uuid()
+        b_volume1_id = t_volume1_id
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_volume1_id, 'bottom_id': b_volume1_id,
+                 'pod_id': b_pod1['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_VOLUME})
+
+        # success case
+        self.controller.server_id = t_server_id
+        body = {'volumeAttachment': {'volumeId': t_volume1_id}}
+        self.controller.post(**body)
+        self.controller.delete(t_volume1_id)
+        calls = [mock.call('server_volume', self.context),
+                 mock.call('server_volume', self.context)]
+        mock_api.assert_has_calls(calls)
+        url = "/servers/%s/os-volume_attachments/%s" % (
+            t_server_id, t_volume1_id)
+        calls = [mock.call(url)]
+        mock_delete.assert_has_calls(calls)
+
+        # failure case, resource not found
+        body = {'volumeAttachment': {'volumeId': t_volume1_id}}
+        self.controller.post(**body)
+        self.controller.server_id = 'fake_server_id'
+        res = self.controller.delete(t_volume1_id)
+        self._validate_error_code(res, 404)
+
+    @patch.object(pecan, 'response')
+    @patch.object(FakeClient, 'get')
+    @patch.object(client.Client, 'get_native_client')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_get_volume_attachments(self, mock_context, mock_api,
+                                    mock_get, mock_response):
+        mock_context.return_value = self.context
+        mock_api.return_value = FakeApi()
+        mock_response = FakeResponse()
+        mock_response.status = 202
+        t_pod, b_pods = self._prepare_pod(bottom_pod_num=1)
+        b_pod1 = b_pods
+        t_server_id = uuidutils.generate_uuid()
+        b_server_id = t_server_id
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_server_id, 'bottom_id': b_server_id,
+                 'pod_id': b_pod1['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_SERVER})
+
+        t_volume1_id = uuidutils.generate_uuid()
+        b_volume1_id = t_volume1_id
+        t_volume2_id = uuidutils.generate_uuid()
+        b_volume2_id = t_volume2_id
+        with self.context.session.begin():
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_volume1_id, 'bottom_id': b_volume1_id,
+                 'pod_id': b_pod1['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_VOLUME})
+            core.create_resource(
+                self.context, models.ResourceRouting,
+                {'top_id': t_volume2_id, 'bottom_id': b_volume2_id,
+                 'pod_id': b_pod1['pod_id'], 'project_id': self.project_id,
+                 'resource_type': constants.RT_VOLUME})
+
+        # success case
+        self.controller.server_id = t_server_id
+        body = {'volumeAttachment': {'volumeId': t_volume1_id}}
+        self.controller.post(**body)
+        body = {'volumeAttachment': {'volumeId': t_volume2_id}}
+        self.controller.post(**body)
+        self.controller.get_one(t_volume1_id)
+        url = "/servers/%s/os-volume_attachments/%s" % (
+            t_server_id, t_volume1_id)
+        calls = [mock.call(url)]
+        mock_get.asset_has_calls(calls)
+        self.controller.get_all()
+        url = "/servers/%s/os-volume_attachments" % t_server_id
+        calls = [mock.call(calls)]
+        mock_get.asset_has_calls(calls)
+        calls = [mock.call('server_volume', self.context),
+                 mock.call('server_volume', self.context),
+                 mock.call('server_volume', self.context),
+                 mock.call('server_volume', self.context)]
+        mock_api.assert_has_calls(calls)
+
+        # failure case, resource not found
+        self.controller.server_id = 'fake_server_id'
+        res = self.controller.get_one(t_volume1_id)
+        self._validate_error_code(res, 404)
+        res = self.controller.get_all()
+        self._validate_error_code(res, 404)
+
+    def tearDown(self):
+        core.ModelBase.metadata.drop_all(core.get_engine())

@@ -45,6 +45,11 @@ TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers.ServersAdminTestJSO
 TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_invalid_state"
 TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_invalid_type"
 TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_nonexistent_server"
+TESTCASES="$TESTCASES|tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_detach_volume_shelved_or_offload_server"
+TESTCASES="$TESTCASES|tempest.api.compute.volumes.test_attach_volume.AttachVolumeTestJSON"
+TESTCASES="$TESTCASES|tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_get_volume_without_passing_volume_id"
+# add new test cases like following line for volume_type test
+# TESTCASES="$TESTCASES|tempest.api.volume.admin.test_volumes_type"
 TESTCASES="$TESTCASES)"
 ostestr --regex $TESTCASES
 
@@ -573,10 +578,10 @@ ostestr --regex $TESTCASES
 # **DONE** tempest.api.compute.test_versions.TestVersions.test_list_api_versions[id-6c0a0990-43b6-4529-9b61-5fd8daf7c55c]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_attach_detach_volume[id-52e9045a-e90d-4c0d-9087-79d657faffff]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_attach_volume_shelved_or_offload_server[id-13a940b6-3474-4c3c-b03f-29b89112bfee]
-# tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_detach_volume_shelved_or_offload_server[id-b54e86dd-a070-49c4-9c07-59ae6dae15aa]
+# **DONE** tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_detach_volume_shelved_or_offload_server[id-b54e86dd-a070-49c4-9c07-59ae6dae15aa]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_list_get_volume_attachments[id-7fa563fe-f0f7-43eb-9e22-a1ece036b513]
-# tempest.api.compute.volumes.test_attach_volume.AttachVolumeTestJSON.test_attach_detach_volume[id-52e9045a-e90d-4c0d-9087-79d657faffff]
-# tempest.api.compute.volumes.test_attach_volume.AttachVolumeTestJSON.test_list_get_volume_attachments[id-7fa563fe-f0f7-43eb-9e22-a1ece036b513]
+# **DONE** tempest.api.compute.volumes.test_attach_volume.AttachVolumeTestJSON.test_attach_detach_volume[id-52e9045a-e90d-4c0d-9087-79d657faffff]
+# **DONE** tempest.api.compute.volumes.test_attach_volume.AttachVolumeTestJSON.test_list_get_volume_attachments[id-7fa563fe-f0f7-43eb-9e22-a1ece036b513]
 # tempest.api.compute.volumes.test_volume_snapshots.VolumesSnapshotsTestJSON.test_volume_snapshot_create_get_list_delete[id-cd4ec87d-7825-450d-8040-6e2068f2da8f]
 # tempest.api.compute.volumes.test_volumes_get.VolumesGetTestJSON.test_volume_create_get_delete[id-f10f25eb-9775-4d9d-9cbe-1cf54dae9d5f]
 # tempest.api.compute.volumes.test_volumes_list.VolumesTestJSON.test_volume_list[id-bc2dd1a0-15af-48e5-9990-f2e75a48325d]
@@ -591,6 +596,6 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_delete_invalid_volume_id[id-62972737-124b-4513-b6cf-2f019f178494,negative]
 # tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_delete_volume_without_passing_volume_id[id-0d1417c5-4ae8-4c2c-adc5-5f0b864253e5,negative]
 # tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_get_invalid_volume_id[id-f01904f2-e975-4915-98ce-cb5fa27bde4f,negative]
-# tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_get_volume_without_passing_volume_id[id-62bab09a-4c03-4617-8cca-8572bc94af9b,negative]
+# **DONE** tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_get_volume_without_passing_volume_id[id-62bab09a-4c03-4617-8cca-8572bc94af9b,negative]
 # tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_volume_delete_nonexistent_volume_id[id-54a34226-d910-4b00-9ef8-8683e6c55846,negative]
 # tempest.api.compute.volumes.test_volumes_negative.VolumesNegativeTest.test_volume_get_nonexistent_volume_id[id-c03ea686-905b-41a2-8748-9635154b7c57,negative]
