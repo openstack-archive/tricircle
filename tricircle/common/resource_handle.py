@@ -122,7 +122,7 @@ class NeutronResourceHandle(ResourceHandle):
                         'router': LIST | CREATE | ACTION | UPDATE,
                         'security_group': LIST | CREATE | GET,
                         'security_group_rule': LIST | CREATE | DELETE,
-                        'floatingip': LIST | CREATE}
+                        'floatingip': LIST | CREATE | UPDATE | DELETE}
 
     def _get_client(self, cxt):
         return q_client.Client('2.0',
