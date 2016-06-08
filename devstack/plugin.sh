@@ -257,6 +257,8 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
         echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
+        setup_package $TRICIRCLE_DIR -e
+
         recreate_database tricircle
         python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_API_CONF"
 
