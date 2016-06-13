@@ -706,7 +706,7 @@ def fake_make_router_dict(self, router, fields=None, process_extensions=True):
 
 
 @staticmethod
-def fake_generate_ip(context, subnets):
+def fake_generate_ip(context, subnets, prefer_next=False):
     suffix = 1
     for allocation in TOP_IPALLOCATIONS:
         if allocation['subnet_id'] == subnets[0]['id']:
