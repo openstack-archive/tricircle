@@ -19,7 +19,7 @@ import os
 from tempest import config  # noqa
 from tempest.test_discover import plugins
 
-from tricircle.tests.tempestplugin import config as project_config  # noqa
+from tricircle.tempestplugin import config as project_config  # noqa
 
 
 class TricircleTempestPlugin(plugins.TempestPlugin):
