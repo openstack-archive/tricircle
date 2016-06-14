@@ -26,7 +26,6 @@ from oslo_utils import uuidutils
 from tricircle.common import constants
 from tricircle.common import context
 import tricircle.common.exceptions as t_exceptions
-from tricircle.common.i18n import _
 from tricircle.common import lock_handle
 from tricircle.common import xrpcapi
 from tricircle.db import api
@@ -319,6 +318,9 @@ class ServerTest(unittest.TestCase):
             b_pods.append(b_pod)
         return t_pod, b_pods
 
+    def _validate_error_code(self, res, code):
+        self.assertEqual(code, res[res.keys()[0]]['code'])
+
     def test_get_or_create_route(self):
         t_pod, b_pod = self._prepare_pod()
         route, is_own = self.controller._get_or_create_route(
@@ -378,7 +380,7 @@ class ServerTest(unittest.TestCase):
         t_pod, b_pod = self._prepare_pod()
         port = {'id': 'top_port_id'}
         body = {'port': {'name': 'top_port_id'}}
-        _, bottom_port_id = self.controller._prepare_neutron_element(
+        is_new, bottom_port_id = self.controller._prepare_neutron_element(
             self.context, b_pod, port, 'port', body)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
                                                      'top_port_id', 'port')
@@ -526,10 +528,9 @@ class ServerTest(unittest.TestCase):
         self._test_handle_network_dhcp_port('10.0.0.4')
 
     @patch.object(pecan, 'response', new=FakeResponse)
-    @patch.object(pecan, 'abort')
     @patch.object(FakeClient, 'create_servers')
     @patch.object(context, 'extract_context_from_environ')
-    def test_post_with_network_az(self, mock_ctx, mock_create, mock_abort):
+    def test_post_with_network_az(self, mock_ctx, mock_create):
         t_pod, b_pod = self._prepare_pod()
         top_net_id = 'top_net_id'
         top_subnet_id = 'top_subnet_id'
@@ -586,16 +587,13 @@ class ServerTest(unittest.TestCase):
 
         # update top net for test purpose, wrong az
         TOP_NETS[0]['availability_zone_hints'] = ['fake_az']
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
 
         # update top net for test purpose, correct az and wrong az
         TOP_NETS[0]['availability_zone_hints'] = ['b_az', 'fake_az']
-        self.controller.post(**body)
-
-        msg = 'Network and server not in the same availability zone'
-        # abort two times
-        calls = [mock.call(400, msg), mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(FakeClient, 'create_servers')
@@ -979,8 +977,8 @@ class ServerTest(unittest.TestCase):
                          res['Error']['message'])
         self.assertEqual(404, res['Error']['code'])
 
-    @patch.object(pecan, 'abort')
-    def test_process_injected_file_quota(self, mock_abort):
+    @patch.object(pecan, 'response', new=FakeResponse)
+    def test_process_injected_file_quota(self):
         ctx = self.context.elevated()
 
         def _update_default_quota(num1, len1, len2):
@@ -1017,11 +1015,8 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_injected_file_quota,
                           ctx, injected_files)
 
-        self.controller._process_injected_file_quota(ctx, t_server_dict)
-        msg = _('Quota exceeded %s') % \
-            t_exceptions.OnsetFileLimitExceeded.message
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_injected_file_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         _update_default_quota(len(injected_files),
                               max_path + 1,
@@ -1035,11 +1030,8 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_injected_file_quota,
                           ctx, injected_files)
 
-        self.controller._process_injected_file_quota(ctx, t_server_dict)
-        msg = _('Quota exceeded %s') % \
-            t_exceptions.OnsetFilePathLimitExceeded.message
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_injected_file_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         _update_default_quota(len(injected_files) + 1,
                               max_path,
@@ -1053,19 +1045,16 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_injected_file_quota,
                           ctx, injected_files)
 
-        self.controller._process_injected_file_quota(ctx, t_server_dict)
-        msg = _('Quota exceeded %s') % \
-            t_exceptions.OnsetFileContentLimitExceeded.message
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_injected_file_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         _update_default_quota(len(injected_files) + 1,
                               max_path + 1,
                               max_content)
         self.controller._check_injected_file_quota(ctx, injected_files)
 
-    @patch.object(pecan, 'abort')
-    def test_process_metadata_quota(self, mock_abort):
+    @patch.object(pecan, 'response', new=FakeResponse)
+    def test_process_metadata_quota(self):
         ctx = self.context.elevated()
 
         def _update_default_quota(num):
@@ -1092,10 +1081,8 @@ class ServerTest(unittest.TestCase):
         self.assertRaises(t_exceptions.InvalidMetadata,
                           self.controller._check_metadata_properties_quota,
                           ctx, meta_data_items)
-        self.controller._process_metadata_quota(ctx, t_server_dict)
-        msg = _('Invalid metadata')
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_metadata_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         meta_data_items['A'] = '1'
         _update_default_quota(len(meta_data_items))
@@ -1110,10 +1097,8 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_metadata_properties_quota,
                           ctx, meta_data_items)
 
-        self.controller._process_metadata_quota(ctx, t_server_dict)
-        msg = _('Quota exceeded in metadata')
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_metadata_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         _update_default_quota(len(meta_data_items) + 1)
 
@@ -1125,10 +1110,8 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_metadata_properties_quota,
                           ctx, meta_data_items)
 
-        self.controller._process_metadata_quota(ctx, t_server_dict)
-        msg = _('Invalid metadata size')
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_metadata_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
         meta_data_items['C'] = '3'
         meta_data_items[string_exceed_MAX_METADATA_LEGNGTH] = '4'
@@ -1136,10 +1119,8 @@ class ServerTest(unittest.TestCase):
                           self.controller._check_metadata_properties_quota,
                           ctx, meta_data_items)
 
-        self.controller._process_metadata_quota(ctx, t_server_dict)
-        msg = _('Invalid metadata size')
-        calls = [mock.call(400, msg)]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller._process_metadata_quota(ctx, t_server_dict)
+        self._validate_error_code(res, 400)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')

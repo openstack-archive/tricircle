@@ -20,6 +20,7 @@ from pecan import rest
 import oslo_db.exception as db_exc
 
 import tricircle.common.context as t_context
+from tricircle.common.i18n import _
 from tricircle.common import utils
 from tricircle.db import core
 from tricircle.db import models
@@ -37,15 +38,17 @@ class FlavorManageController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create flavors')
-            return
+            return utils.format_nova_error(
+                403, _("Policy doesn't allow os_compute_api:os-flavor-manage "
+                       "to be performed."))
 
         required_fields = ['name', 'ram', 'vcpus', 'disk']
         if 'flavor' not in kw:
-            pass
+            utils.format_nova_error(400, _('flavor is not set'))
         if not utils.validate_required_fields_set(kw['flavor'],
                                                   required_fields):
-            pass
+            utils.format_nova_error(
+                400, _('Invalid input for field/attribute flavor.'))
 
         flavor_dict = {
             'name': kw['flavor']['name'],
@@ -63,28 +66,36 @@ class FlavorManageController(rest.RestController):
             with context.session.begin():
                 flavor = core.create_resource(
                     context, models.InstanceTypes, flavor_dict)
-        except db_exc.DBDuplicateEntry:
-            pecan.abort(409, 'Flavor already exists')
-            return
+        except db_exc.DBDuplicateEntry as e:
+            if 'flavorid' in e.columns:
+                return utils.format_nova_error(
+                    409, _('Flavor with ID %s already '
+                           'exists.') % flavor_dict['flavorid'])
+            else:
+                return utils.format_nova_error(
+                    409, _('Flavor with name %s already '
+                           'exists.') % flavor_dict['name'])
         except Exception:
-            pecan.abort(500, 'Fail to create flavor')
-            return
+            return utils.format_nova_error(500, _('Failed to create flavor'))
 
         return {'flavor': flavor}
 
     @expose(generic=True, template='json')
     def delete(self, _id):
         context = t_context.extract_context_from_environ()
-        with context.session.begin():
-            flavors = core.query_resource(context, models.InstanceTypes,
-                                          [{'key': 'flavorid',
-                                            'comparator': 'eq',
-                                            'value': _id}], [])
-            if not flavors:
-                pecan.abort(404, 'Flavor not found')
-                return
-            core.delete_resource(context,
-                                 models.InstanceTypes, flavors[0]['id'])
+        try:
+            with context.session.begin():
+                flavors = core.query_resource(context, models.InstanceTypes,
+                                              [{'key': 'flavorid',
+                                                'comparator': 'eq',
+                                                'value': _id}], [])
+                if not flavors:
+                    return utils.format_nova_error(
+                        404, _('Flavor %s could not be found') % _id)
+                core.delete_resource(context, models.InstanceTypes,
+                                     flavors[0]['id'])
+        except Exception:
+            return utils.format_nova_error(500, _('Failed to delete flavor'))
         pecan.response.status = 202
         return
 
@@ -103,17 +114,17 @@ class FlavorController(rest.RestController):
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
         if not context.is_admin:
-            pecan.abort(400, 'Admin role required to create flavors')
-            return
+            return utils.format_nova_error(
+                403, _("Policy doesn't allow os_compute_api:os-flavor-manage "
+                       "to be performed."))
 
         required_fields = ['name', 'ram', 'vcpus', 'disk']
         if 'flavor' not in kw:
-            pecan.abort(400, 'Request body not found')
-            return
+            utils.format_nova_error(400, _('flavor is not set'))
         if not utils.validate_required_fields_set(kw['flavor'],
                                                   required_fields):
-            pecan.abort(400, 'Required field not set')
-            return
+            utils.format_nova_error(
+                400, _('Invalid input for field/attribute flavor.'))
 
         flavor_dict = {
             'name': kw['flavor']['name'],
@@ -131,12 +142,17 @@ class FlavorController(rest.RestController):
             with context.session.begin():
                 flavor = core.create_resource(
                     context, models.InstanceTypes, flavor_dict)
-        except db_exc.DBDuplicateEntry:
-            pecan.abort(409, 'Flavor already exists')
-            return
+        except db_exc.DBDuplicateEntry as e:
+            if 'flavorid' in e.columns:
+                return utils.format_nova_error(
+                    409, _('Flavor with ID %s already '
+                           'exists.') % flavor_dict['flavorid'])
+            else:
+                return utils.format_nova_error(
+                    409, _('Flavor with name %s already '
+                           'exists.') % flavor_dict['name'])
         except Exception:
-            pecan.abort(500, 'Fail to create flavor')
-            return
+            utils.format_nova_error(500, _('Failed to create flavor'))
 
         flavor['id'] = flavor['flavorid']
         del flavor['flavorid']
@@ -163,8 +179,8 @@ class FlavorController(rest.RestController):
                                                 'comparator': 'eq',
                                                 'value': _id}], [])
                 if not flavors:
-                    pecan.abort(404, 'Flavor not found')
-                    return
+                    return utils.format_nova_error(
+                        404, _('Flavor %s could not be found') % _id)
                 flavor = flavors[0]
                 flavor['id'] = flavor['flavorid']
                 del flavor['flavorid']
@@ -184,15 +200,18 @@ class FlavorController(rest.RestController):
     def delete(self, _id):
         # TODO(zhiyuan) handle foreign key constraint
         context = t_context.extract_context_from_environ()
-        with context.session.begin():
-            flavors = core.query_resource(context, models.InstanceTypes,
-                                          [{'key': 'flavorid',
-                                            'comparator': 'eq',
-                                            'value': _id}], [])
-            if not flavors:
-                pecan.abort(404, 'Flavor not found')
-                return
-            core.delete_resource(context,
-                                 models.InstanceTypes, flavors[0]['id'])
+        try:
+            with context.session.begin():
+                flavors = core.query_resource(context, models.InstanceTypes,
+                                              [{'key': 'flavorid',
+                                                'comparator': 'eq',
+                                                'value': _id}], [])
+                if not flavors:
+                    return utils.format_nova_error(
+                        404, _('Flavor %s could not be found') % _id)
+                core.delete_resource(context,
+                                     models.InstanceTypes, flavors[0]['id'])
+        except Exception:
+            return utils.format_nova_error(500, _('Failed to delete flavor'))
         pecan.response.status = 202
         return

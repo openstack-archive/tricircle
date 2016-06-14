@@ -23,6 +23,7 @@ import tricircle.common.client as t_client
 from tricircle.common import constants
 import tricircle.common.context as t_context
 from tricircle.common.i18n import _
+from tricircle.common import utils
 import tricircle.db.api as db_api
 
 LOG = logging.getLogger(__name__)
@@ -52,13 +53,6 @@ class ActionController(rest.RestController):
         client = self._get_client(pod_name)
         return client.action_servers(context, 'stop', self.server_id)
 
-    @staticmethod
-    def _format_error(code, message):
-        pecan.response.status = code
-        # format error message in this form so nova client can
-        # correctly parse it
-        return {'Error': {'message': message, 'code': code}}
-
     @expose(generic=True, template='json')
     def post(self, **kw):
         context = t_context.extract_context_from_environ()
@@ -70,12 +64,14 @@ class ActionController(rest.RestController):
                 action_handle = self.handle_map[_type]
                 action_type = _type
         if not action_handle:
-            return self._format_error(400, _('Server action not supported'))
+            return utils.format_nova_error(
+                400, _('Server action not supported'))
 
         server_mappings = db_api.get_bottom_mappings_by_top_id(
             context, self.server_id, constants.RT_SERVER)
         if not server_mappings:
-            return self._format_error(404, _('Server not found'))
+            return utils.format_nova_error(
+                404, _('Server %s could not be found') % self.server_id)
 
         pod_name = server_mappings[0][0]['pod_name']
         try:
@@ -96,4 +92,4 @@ class ActionController(rest.RestController):
             if ex_message:
                 message = ex_message
             LOG.error(message)
-            return self._format_error(code, message)
+            return utils.format_nova_error(code, message)

@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pecan
 from pecan import expose
 from pecan import rest
 import re
@@ -23,7 +22,9 @@ from oslo_log import log as logging
 import tricircle.common.client as t_client
 from tricircle.common import constants
 import tricircle.common.context as t_context
+from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
+from tricircle.common import utils
 import tricircle.db.api as db_api
 
 LOG = logging.getLogger(__name__)
@@ -46,23 +47,23 @@ class VolumeController(rest.RestController):
         context = t_context.extract_context_from_environ()
 
         if 'volumeAttachment' not in kw:
-            pecan.abort(400, 'Request body not found')
-            return
+            return utils.format_nova_error(
+                400, _('volumeAttachment is not set'))
         body = kw['volumeAttachment']
         if 'volumeId' not in body:
-            pecan.abort(400, 'Volume not set')
-            return
+            return utils.format_nova_error(
+                400, _('Invalid input for field/attribute volumeAttachment'))
 
         server_mappings = db_api.get_bottom_mappings_by_top_id(
             context, self.server_id, constants.RT_SERVER)
         if not server_mappings:
-            pecan.abort(404, 'Server not found')
-            return
+            return utils.format_nova_error(404, _('Instance %s could not be '
+                                                  'found.') % self.server_id)
         volume_mappings = db_api.get_bottom_mappings_by_top_id(
             context, body['volumeId'], constants.RT_VOLUME)
         if not volume_mappings:
-            pecan.abort(404, 'Volume not found')
-            return
+            return utils.format_nova_error(
+                404, _('Volume %s could not be found') % body['volumeId'])
 
         server_pod_name = server_mappings[0][0]['pod_name']
         volume_pod_name = volume_mappings[0][0]['pod_name']
@@ -74,8 +75,8 @@ class VolumeController(rest.RestController):
                        'server_pod': server_pod_name,
                        'volume': body['volumeId'],
                        'volume_pod': volume_pod_name})
-            pecan.abort(400, 'Server and volume not in the same pod')
-            return
+            return utils.format_nova_error(
+                400, _('Server and volume not in the same pod'))
 
         device = None
         if 'device' in body:
@@ -84,8 +85,9 @@ class VolumeController(rest.RestController):
             match = re.match('(^/dev/x{0,1}[a-z]{0,1}d{0,1})([a-z]+)[0-9]*$',
                              device)
             if not match:
-                pecan.abort(400, 'Invalid device path')
-                return
+                return utils.format_nova_error(
+                    400, _('The supplied device path (%s) is '
+                           'invalid.') % device)
 
         client = self._get_client(server_pod_name)
         volume = client.action_server_volumes(
