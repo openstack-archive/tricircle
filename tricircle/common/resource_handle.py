@@ -304,16 +304,16 @@ class NovaResourceHandle(ResourceHandle):
 
 class CinderResourceHandle(ResourceHandle):
     service_type = cons.ST_CINDER
-    support_resource = {'volume': GET | ACTION,
+    support_resource = {'volume': LIST | CREATE | DELETE | GET | ACTION,
                         'transfer': CREATE | ACTION}
 
     def _get_client(self, cxt):
         cli = c_client.Client('2',
-                              auth_token=cxt.auth_token,
                               auth_url=self.auth_url,
                               timeout=cfg.CONF.client.cinder_timeout)
-        cli.set_management_url(
+        cli.client.set_management_url(
             self.endpoint_url.replace('$(tenant_id)s', cxt.tenant))
+        cli.client.auth_token = cxt.auth_token
         return cli
 
     def handle_get(self, cxt, resource, resource_id):

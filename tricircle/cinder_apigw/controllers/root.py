@@ -18,6 +18,7 @@ import pecan
 import oslo_log.log as logging
 
 from tricircle.cinder_apigw.controllers import volume
+from tricircle.cinder_apigw.controllers import volume_actions
 from tricircle.cinder_apigw.controllers import volume_metadata
 from tricircle.cinder_apigw.controllers import volume_type
 
@@ -73,6 +74,7 @@ class V2Controller(object):
 
         self.volumes_sub_controller = {
             'metadata': volume_metadata.VolumeMetaDataController,
+            'action': volume_actions.VolumeActionController,
         }
 
     @pecan.expose()
