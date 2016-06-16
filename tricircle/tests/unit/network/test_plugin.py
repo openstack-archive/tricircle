@@ -731,6 +731,8 @@ class PluginTest(unittest.TestCase,
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         cfg.CONF.register_opts(q_config.core_opts)
+        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
+        cfg.CONF.set_override('core_plugin', plugin_path)
         self.context = context.Context()
         self.save_method = manager.NeutronManager._get_default_service_plugins
         manager.NeutronManager._get_default_service_plugins = mock.Mock()
@@ -1477,9 +1479,6 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network(self, mock_context):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -1535,9 +1534,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_set_gateway(self, mock_context, mock_action):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -1623,9 +1619,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_unset_gateway(self, mock_context, mock_action):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -1778,9 +1771,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(FakeClient, 'create_floatingips')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_associate_floatingip(self, mock_context, mock_create):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
@@ -1833,9 +1823,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(context, 'get_context_from_neutron_context')
     def test_associate_floatingip_port_not_bound(self, mock_context,
                                                  mock_create):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
@@ -1899,9 +1886,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(context, 'get_context_from_neutron_context')
     def test_associate_floatingip_port_exception(
             self, mock_context, mock_create, mock_rollback):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
@@ -1943,9 +1927,6 @@ class PluginTest(unittest.TestCase,
     @patch.object(context, 'get_context_from_neutron_context')
     def test_disassociate_floatingip(self, mock_context, mock_update,
                                      mock_delete):
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
-        cfg.CONF.set_override('core_plugin', plugin_path)
-
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
