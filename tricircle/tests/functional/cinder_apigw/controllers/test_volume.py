@@ -255,7 +255,7 @@ class TestVolumeController(CinderVolumeFunctionalTest):
                     "project_id": 'my_tenant_id',
                     "metadata": {}
                 },
-                "expected_error": 400
+                "expected_error": 202
             },
 
             # incorrect AZ parameter
@@ -575,7 +575,7 @@ class TestVolumeController(CinderVolumeFunctionalTest):
             elif test_vol.get('volume_xxx'):
                 response = self.app.post_json(
                     '/v2/' + tenant_id + '/volumes',
-                    dict(volume=test_vol['volume_xxx']),
+                    dict(volume_xxx=test_vol['volume_xxx']),
                     expect_errors=True)
             else:
                 return

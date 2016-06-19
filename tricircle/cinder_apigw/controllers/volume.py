@@ -52,13 +52,10 @@ class VolumeController(rest.RestController):
             pecan.abort(400, _('Volume not found in request body'))
             return
 
-        if 'availability_zone' not in kw['volume']:
-            pecan.abort(400, _('Availability zone not set in request'))
-            return
-
+        az = kw['volume'].get('availability_zone', '')
         pod, pod_az = az_ag.get_pod_by_az_tenant(
             context,
-            az_name=kw['volume']['availability_zone'],
+            az_name=az,
             tenant_id=self.tenant_id)
         if not pod:
             pecan.abort(500, _('Pod not configured or scheduling failure'))
