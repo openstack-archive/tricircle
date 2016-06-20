@@ -36,6 +36,7 @@ from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
+from neutron.extensions import providernet as provider
 from neutron.plugins.ml2.drivers import type_vlan
 import neutronclient.common.exceptions as q_cli_exceptions
 
@@ -56,14 +57,25 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.exceptions as t_network_exc
+from tricircle.network import managers
 from tricircle.network import security_groups
 
 
 tricircle_opts = [
     cfg.StrOpt('bridge_physical_network',
                default='',
-               help='name of l3 bridge physical network')
+               help='name of l3 bridge physical network'),
+    cfg.ListOpt('type_drivers',
+                default=['local'],
+                help=_('List of network type driver entry points to be loaded '
+                       'from the tricircle.network.type_drivers namespace.')),
+    cfg.ListOpt('tenant_network_types',
+                default=['local'],
+                help=_('Ordered list of network_types to allocate as tenant '
+                       'networks. The default value "local" is useful for '
+                       'single pod connectivity.'))
 ]
+
 tricircle_opt_group = cfg.OptGroup('tricircle')
 cfg.CONF.register_group(tricircle_opt_group)
 cfg.CONF.register_opts(tricircle_opts, group=tricircle_opt_group)
@@ -111,6 +123,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self.clients = {}
         self.xjob_handler = xrpcapi.XJobAPI()
         self._setup_rpc()
+        self.type_manager = managers.TricircleTypeManager()
         # use VlanTypeDriver to allocate VLAN for bridge network
         self.vlan_driver = TricircleVlanTypeDriver()
         self.vlan_driver.initialize()
@@ -220,7 +233,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return self
 
     def create_network(self, context, network):
-        net_data = network['network']
+        net_data = network[attributes.NETWORK]
+        tenant_id = net_data['tenant_id']
         is_external = self._ensure_az_set_for_external_network(net_data)
         if az_ext.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
@@ -228,6 +242,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                               is_external)
         with context.session.begin(subtransactions=True):
             res = super(TricirclePlugin, self).create_network(context, network)
+            net_data['id'] = res['id']
+            self.type_manager.create_network_segments(context, net_data,
+                                                      tenant_id)
+            self.type_manager.extend_network_dict_provider(context, res)
             if az_ext.AZ_HINTS in net_data:
                 az_hints = az_ext.convert_az_list_to_string(
                     net_data[az_ext.AZ_HINTS])
@@ -267,11 +285,34 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                   filters=[{'key': 'top_id',
                                             'comparator': 'eq',
                                             'value': network_id}])
-        super(TricirclePlugin, self).delete_network(context, network_id)
+
+        session = context.session
+        with session.begin(subtransactions=True):
+            self.type_manager.release_network_segments(session, network_id)
+            super(TricirclePlugin, self).delete_network(context, network_id)
 
     def update_network(self, context, network_id, network):
-        return super(TricirclePlugin, self).update_network(
+        net_data = network[attributes.NETWORK]
+        provider._raise_if_updates_provider_attributes(net_data)
+
+        net = super(TricirclePlugin, self).update_network(
             context, network_id, network)
+        self.type_manager.extend_network_dict_provider(context, net)
+        return net
+
+    def get_network(self, context, network_id, fields=None):
+        net = super(TricirclePlugin, self).get_network(context, network_id,
+                                                       fields)
+        self.type_manager.extend_network_dict_provider(context, net)
+        return net
+
+    def get_networks(self, context, filters=None, fields=None,
+                     sorts=None, limit=None, marker=None, page_reverse=False):
+        nets = super(TricirclePlugin,
+                     self).get_networks(context, filters, None, sorts,
+                                        limit, marker, page_reverse)
+        self.type_manager.extend_networks_dict_provider(context, nets)
+        return nets
 
     def create_subnet(self, context, subnet):
         subnet_data = subnet['subnet']

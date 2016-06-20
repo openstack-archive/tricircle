@@ -45,6 +45,8 @@ from tricircle.common import exceptions
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.network.drivers import type_local
+from tricircle.network import managers
 from tricircle.network import plugin
 from tricircle.tests.unit.network import test_security_groups
 
@@ -629,11 +631,23 @@ class FakeRPCAPI(object):
         pass
 
 
+class FakeExtension(object):
+    def __init__(self, ext_obj):
+        self.obj = ext_obj
+
+
+class FakeTypeManager(managers.TricircleTypeManager):
+    def _register_types(self):
+        driver = type_local.LocalTypeDriver()
+        self.drivers[constants.NT_LOCAL] = FakeExtension(driver)
+
+
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.set_ipam_backend()
         self.xjob_handler = FakeRPCAPI()
         self.vlan_driver = plugin.TricircleVlanTypeDriver()
+        self.type_manager = FakeTypeManager()
 
         phynet = 'bridge'
         cfg.CONF.set_override('bridge_physical_network', phynet,
@@ -912,7 +926,7 @@ class PluginTest(unittest.TestCase,
         mock_context.return_value = tricircle_context
 
         network = {'network': {
-            'id': 'net_id', 'name': 'net_az',
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': 'test_tenant_id',
             'availability_zone_hints': ['az_name_1', 'az_name_2']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         mock_update.return_value = network['network']
@@ -923,7 +937,7 @@ class PluginTest(unittest.TestCase,
                 'availability_zone_hints': '["az_name_1", "az_name_2"]'}})
 
         err_network = {'network': {
-            'id': 'net_id', 'name': 'net_az',
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': 'test_tenant_id',
             'availability_zone_hints': ['az_name_1', 'az_name_3']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         self.assertRaises(az_ext.AvailabilityZoneNotFound,
@@ -1490,6 +1504,7 @@ class PluginTest(unittest.TestCase,
         body = {
             'network': {
                 'router:external': True,
+                'tenant_id': 'test_tenant_id',
             }
         }
         self.assertRaises(exceptions.ExternalNetPodNotSpecify,
@@ -1498,6 +1513,7 @@ class PluginTest(unittest.TestCase,
         body = {
             'network': {
                 'router:external': True,
+                'tenant_id': 'test_tenant_id',
                 'availability_zone_hints': ['az_name_1']
             }
         }
