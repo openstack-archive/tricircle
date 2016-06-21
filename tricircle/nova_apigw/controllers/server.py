@@ -99,15 +99,14 @@ class ServerController(rest.RestController):
         mappings = db_api.get_bottom_mappings_by_top_id(
             context, _id, constants.RT_SERVER)
         if not mappings:
-            pecan.abort(404, 'Server not found')
-            return
+            return utils.format_nova_error(
+                404, _('Instance %s could not be found.') % _id)
         pod, bottom_id = mappings[0]
         client = self._get_client(pod['pod_name'])
         server = client.get_servers(context, bottom_id)
         if not server:
-            self._remove_stale_mapping(context, _id)
-            pecan.abort(404, 'Server not found')
-            return
+            return utils.format_nova_error(
+                404, _('Instance %s could not be found.') % _id)
         else:
             self._transform_network_name(server)
             return {'server': server}
@@ -123,18 +122,18 @@ class ServerController(rest.RestController):
         context = t_context.extract_context_from_environ()
 
         if 'server' not in kw:
-            pecan.abort(400, 'Request body not found')
-            return
+            return utils.format_nova_error(
+                400, _('server is not set'))
 
         if 'availability_zone' not in kw['server']:
-            pecan.abort(400, 'Availability zone not set')
-            return
+            return utils.format_nova_error(
+                400, _('availability zone is not set'))
 
         pod, b_az = az_ag.get_pod_by_az_tenant(
             context, kw['server']['availability_zone'], self.project_id)
         if not pod:
-            pecan.abort(400, 'No pod bound to availability zone')
-            return
+            return utils.format_nova_error(
+                500, _('Pod not configured or scheduling failure'))
 
         t_server_dict = kw['server']
         self._process_metadata_quota(context, t_server_dict)
@@ -155,12 +154,12 @@ class ServerController(rest.RestController):
             security_groups = []
             for sg in kw['server']['security_groups']:
                 if 'name' not in sg:
-                    pecan.abort(404, 'Security group name not specified')
-                    return
+                    return utils.format_nova_error(
+                        400, _('Invalid input for field/attribute'))
                 if sg['name'] not in top_sg_map:
-                    pecan.abort(404,
-                                'Security group %s not found' % sg['name'])
-                    return
+                    return utils.format_nova_error(
+                        400, _('Unable to find security_group with name or id '
+                               '%s') % sg['name'])
                 security_groups.append(sg['name'])
         t_sg_ids, b_sg_ids, is_news = self._handle_security_group(
             context, pod, top_sg_map, security_groups)
@@ -172,30 +171,32 @@ class ServerController(rest.RestController):
                     network = top_client.get_networks(context,
                                                       net_info['uuid'])
                     if not network:
-                        pecan.abort(400, 'Network not found')
-                        return
+                        return utils.format_nova_error(
+                            400, _('Network %s could not be '
+                                   'found') % net_info['uuid'])
 
                     if not self._check_network_server_the_same_az(
                             network, kw['server']['availability_zone']):
-                        pecan.abort(400, 'Network and server not in the same '
-                                         'availability zone')
-                        return
+                        return utils.format_nova_error(
+                            400, _('Network and server not in the same '
+                                   'availability zone'))
 
                     subnets = top_client.list_subnets(
                         context, [{'key': 'network_id',
                                    'comparator': 'eq',
                                    'value': network['id']}])
                     if not subnets:
-                        pecan.abort(400, 'Network not contain subnets')
-                        return
+                        return utils.format_nova_error(
+                            400, _('Network does not contain any subnets'))
                     t_port_id, b_port_id = self._handle_network(
                         context, pod, network, subnets,
                         top_sg_ids=t_sg_ids, bottom_sg_ids=b_sg_ids)
                 elif 'port' in net_info:
                     port = top_client.get_ports(context, net_info['port'])
                     if not port:
-                        pecan.abort(400, 'Port not found')
-                        return
+                        return utils.format_nova_error(
+                            400, _('Port %s could not be '
+                                   'found') % net_info['port'])
                     t_port_id, b_port_id = self._handle_port(
                         context, pod, port)
                 server_body['networks'].append({'port': b_port_id})
@@ -749,7 +750,7 @@ class ServerController(rest.RestController):
             msg = str(e)
             LOG.exception(_LE('Quota exceeded %(msg)s'),
                           {'msg': msg})
-            pecan.abort(400, _('Quota exceeded %s') % msg)
+            return utils.format_nova_error(400, _('Quota exceeded %s') % msg)
 
     def _check_injected_file_quota(self, context, injected_files):
         """Enforce quota limits on injected files.
@@ -796,15 +797,16 @@ class ServerController(rest.RestController):
         except t_exceptions.InvalidMetadata as e1:
             LOG.exception(_LE('Invalid metadata %(exception)s'),
                           {'exception': str(e1)})
-            pecan.abort(400, _('Invalid metadata'))
+            return utils.format_nova_error(400, _('Invalid metadata'))
         except t_exceptions.InvalidMetadataSize as e2:
             LOG.exception(_LE('Invalid metadata size %(exception)s'),
                           {'exception': str(e2)})
-            pecan.abort(400, _('Invalid metadata size'))
+            return utils.format_nova_error(400, _('Invalid metadata size'))
         except t_exceptions.MetadataLimitExceeded as e3:
             LOG.exception(_LE('Quota exceeded %(exception)s'),
                           {'exception': str(e3)})
-            pecan.abort(400, _('Quota exceeded in metadata'))
+            return utils.format_nova_error(400,
+                                           _('Quota exceeded in metadata'))
 
     def _check_metadata_properties_quota(self, context, metadata=None):
         """Enforce quota limits on metadata properties."""

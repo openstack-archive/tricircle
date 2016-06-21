@@ -29,6 +29,13 @@ from tricircle.db import models
 from tricircle.nova_apigw.controllers import volume
 
 
+class FakeResponse(object):
+    def __new__(cls, code=500):
+        cls.status = code
+        cls.status_code = code
+        return super(FakeResponse, cls).__new__(cls)
+
+
 class FakeVolume(object):
     def to_dict(self):
         pass
@@ -60,10 +67,13 @@ class VolumeTest(unittest.TestCase):
             b_pods.append(b_pod)
         return t_pod, b_pods
 
-    @patch.object(pecan, 'abort')
+    def _validate_error_code(self, res, code):
+        self.assertEqual(code, res[res.keys()[0]]['code'])
+
+    @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(client.Client, 'action_resources')
     @patch.object(context, 'extract_context_from_environ')
-    def test_attach_volume(self, mock_context, mock_action, mock_abort):
+    def test_attach_volume(self, mock_context, mock_action):
         mock_context.return_value = self.context
         mock_action.return_value = FakeVolume()
 
@@ -112,36 +122,40 @@ class VolumeTest(unittest.TestCase):
 
         # failure case, bad request
         body = {'volumeAttachment': {'volumeId': t_volume2_id}}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
+
         body = {'fakePara': ''}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
+
         body = {'volumeAttachment': {}}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
+
         # each part of path should not start with digit
         body = {'volumeAttachment': {'volumeId': t_volume1_id,
                                      'device': '/dev/001disk'}}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
+
         # the first part should be "dev", and only two parts are allowed
         body = {'volumeAttachment': {'volumeId': t_volume1_id,
                                      'device': '/dev/vdb/disk'}}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
+
         body = {'volumeAttachment': {'volumeId': t_volume1_id,
                                      'device': '/disk/vdb'}}
-        self.controller.post(**body)
-        calls = [mock.call(400, 'Server and volume not in the same pod'),
-                 mock.call(400, 'Request body not found'),
-                 mock.call(400, 'Volume not set'),
-                 mock.call(400, 'Invalid device path'),
-                 mock.call(400, 'Invalid device path'),
-                 mock.call(400, 'Invalid device path')]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 400)
 
         # failure case, resource not found
         body = {'volumeAttachment': {'volumeId': 'fake_volume_id'}}
-        self.controller.post(**body)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 404)
+
         self.controller.server_id = 'fake_server_id'
         body = {'volumeAttachment': {'volumeId': t_volume1_id}}
-        self.controller.post(**body)
-        calls = [mock.call(404, 'Volume not found'),
-                 mock.call(404, 'Server not found')]
-        mock_abort.assert_has_calls(calls)
+        res = self.controller.post(**body)
+        self._validate_error_code(res, 404)

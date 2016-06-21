@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pecan
 from pecan import expose
 from pecan import rest
 import re
@@ -22,6 +21,8 @@ import urlparse
 import tricircle.common.client as t_client
 from tricircle.common import constants
 import tricircle.common.context as t_context
+from tricircle.common.i18n import _
+from tricircle.common import utils
 import tricircle.db.api as db_api
 
 
@@ -141,8 +142,7 @@ class ImageController(rest.RestController):
         context = t_context.extract_context_from_environ()
         image = self.client.get_images(context, _id)
         if not image:
-            pecan.abort(404, 'Image not found')
-            return
+            return utils.format_nova_error(404, _('Image not found'))
         return {'image': self._construct_show_image_entry(context, image)}
 
     @expose(generic=True, template='json')

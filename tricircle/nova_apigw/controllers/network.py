@@ -13,12 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pecan
 from pecan import expose
 from pecan import rest
 
 import tricircle.common.client as t_client
 import tricircle.common.context as t_context
+from tricircle.common.i18n import _
+from tricircle.common import utils
 
 
 class NetworkController(rest.RestController):
@@ -38,8 +39,7 @@ class NetworkController(rest.RestController):
         context = t_context.extract_context_from_environ()
         network = self.client.get_networks(context, _id)
         if not network:
-            pecan.abort(404, 'Network not found')
-            return
+            return utils.format_nova_error(404, _('Network not found'))
         return {'network': self._construct_network_entry(network)}
 
     @expose(generic=True, template='json')

@@ -74,6 +74,9 @@ class ActionTest(unittest.TestCase):
                  'resource_type': constants.RT_SERVER})
         return t_server_id
 
+    def _validate_error_code(self, res, code):
+        self.assertEqual(code, res[res.keys()[0]]['code'])
+
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
     def test_action_not_supported(self, mock_context):
@@ -81,9 +84,7 @@ class ActionTest(unittest.TestCase):
 
         body = {'unsupported_action': ''}
         res = self.controller.post(**body)
-        self.assertEqual('Server action not supported',
-                         res['Error']['message'])
-        self.assertEqual(400, res['Error']['code'])
+        self._validate_error_code(res, 400)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
@@ -92,8 +93,7 @@ class ActionTest(unittest.TestCase):
 
         body = {'os-start': ''}
         res = self.controller.post(**body)
-        self.assertEqual('Server not found', res['Error']['message'])
-        self.assertEqual(404, res['Error']['code'])
+        self._validate_error_code(res, 404)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(client.Client, 'action_resources')
@@ -109,27 +109,17 @@ class ActionTest(unittest.TestCase):
             msg='Server operation forbidden')
         body = {'os-start': ''}
         res = self.controller.post(**body)
-        # this is the message of HTTPForbiddenError exception
-        self.assertEqual('Server operation forbidden', res['Error']['message'])
-        # this is the code of HTTPForbiddenError exception
-        self.assertEqual(403, res['Error']['code'])
+        self._validate_error_code(res, 403)
 
         mock_action.side_effect = exceptions.ServiceUnavailable
         body = {'os-start': ''}
         res = self.controller.post(**body)
-        # this is the message of ServiceUnavailable exception
-        self.assertEqual('The service is unavailable', res['Error']['message'])
-        # code is 500 by default
-        self.assertEqual(500, res['Error']['code'])
+        self._validate_error_code(res, 500)
 
         mock_action.side_effect = Exception
         body = {'os-start': ''}
         res = self.controller.post(**body)
-        # use default message if exception's message is empty
-        self.assertEqual('Action os-start on server %s fails' % t_server_id,
-                         res['Error']['message'])
-        # code is 500 by default
-        self.assertEqual(500, res['Error']['code'])
+        self._validate_error_code(res, 500)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(client.Client, 'action_resources')

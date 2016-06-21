@@ -15,11 +15,9 @@
 
 import urlparse
 
-import pecan
 from pecan import expose
 from pecan import request
 from pecan import response
-from pecan import Response
 from pecan import rest
 
 from oslo_log import log as logging
@@ -31,6 +29,7 @@ import tricircle.common.context as t_context
 from tricircle.common import httpclient as hclient
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
+from tricircle.common import utils
 
 import tricircle.db.api as db_api
 from tricircle.db import core
@@ -49,8 +48,8 @@ class VolumeController(rest.RestController):
         context = t_context.extract_context_from_environ()
 
         if 'volume' not in kw:
-            pecan.abort(400, _('Volume not found in request body'))
-            return
+            return utils.format_cinder_error(
+                400, _("Missing required element 'volume' in request body."))
 
         az = kw['volume'].get('availability_zone', '')
         pod, pod_az = az_ag.get_pod_by_az_tenant(
@@ -58,15 +57,14 @@ class VolumeController(rest.RestController):
             az_name=az,
             tenant_id=self.tenant_id)
         if not pod:
-            pecan.abort(500, _('Pod not configured or scheduling failure'))
             LOG.error(_LE("Pod not configured or scheduling failure"))
-            return
+            return utils.format_cinder_error(
+                500, _('Pod not configured or scheduling failure'))
 
         t_pod = db_api.get_top_pod(context)
         if not t_pod:
-            pecan.abort(500, _('Top Pod not configured'))
             LOG.error(_LE("Top Pod not configured"))
-            return
+            return utils.format_cinder_error(500, _('Top Pod not configured'))
 
         # TODO(joehuang): get release from pod configuration,
         # to convert the content
@@ -82,10 +80,10 @@ class VolumeController(rest.RestController):
             s_type=cons.ST_CINDER)
 
         if s_ctx['b_url'] == '':
-            pecan.abort(500, _('bottom pod endpoint incorrect'))
-            LOG.error(_LE("bottom pod endpoint incorrect %s") %
+            LOG.error(_LE("Bottom Pod endpoint incorrect %s") %
                       pod['pod_name'])
-            return
+            return utils.format_cinder_error(
+                500, _('Bottom Pod endpoint incorrect'))
 
         b_headers = self._convert_header(t_release,
                                          b_release,
@@ -141,8 +139,8 @@ class VolumeController(rest.RestController):
                                    'bottom_id': b_vol_ret['id'],
                                    'pod_id': pod['pod_id'],
                                    'exception': e})
-                    return Response(_('Failed to create volume '
-                                      'resource routing'), 500)
+                    return utils.format_cinder_error(
+                        500, _('Failed to create volume resource routing'))
 
                 ret_vol = self._convert_object(b_release, t_release,
                                                b_vol_ret,
@@ -152,7 +150,7 @@ class VolumeController(rest.RestController):
 
                 return {'volume': ret_vol}
 
-        return {'error': b_ret_body}
+        return b_ret_body
 
     @expose(generic=True, template='json')
     def get_one(self, _id):
@@ -171,10 +169,12 @@ class VolumeController(rest.RestController):
 
         s_ctx = self._get_res_routing_ref(context, _id, request.url)
         if not s_ctx:
-            return Response(_('Failed to find resource'), 404)
+            return utils.format_cinder_error(
+                404, _('Volume %s could not be found.') % _id)
 
         if s_ctx['b_url'] == '':
-            return Response(_('bottom pod endpoint incorrect'), 404)
+            return utils.format_cinder_error(
+                404, _('Bottom Pod endpoint incorrect'))
 
         resp = hclient.forward_req(context, 'GET',
                                    b_headers,
@@ -290,10 +290,12 @@ class VolumeController(rest.RestController):
 
         s_ctx = self._get_res_routing_ref(context, _id, request.url)
         if not s_ctx:
-            return Response(_('Resource not found'), 404)
+            return utils.format_cinder_error(
+                404, _('Volume %s could not be found.') % _id)
 
         if s_ctx['b_url'] == '':
-            return Response(_('Bottom pod endpoint incorrect'), 404)
+            return utils.format_cinder_error(
+                404, _('Bottom Pod endpoint incorrect'))
 
         b_headers = self._convert_header(t_release,
                                          b_release,
@@ -351,10 +353,12 @@ class VolumeController(rest.RestController):
 
         s_ctx = self._get_res_routing_ref(context, _id, request.url)
         if not s_ctx:
-            return Response(_('Failed to find resource'), 404)
+            return utils.format_cinder_error(
+                404, _('Volume %s could not be found.') % _id)
 
         if s_ctx['b_url'] == '':
-            return Response(_('bottom pod endpoint incorrect'), 404)
+            return utils.format_cinder_error(
+                404, _('Bottom Pod endpoint incorrect'))
 
         b_headers = self._convert_header(t_release,
                                          b_release,
