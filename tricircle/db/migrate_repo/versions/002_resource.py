@@ -190,6 +190,41 @@ def upgrade(migrate_engine):
         sql.Column('is_public', sql.Boolean, default=True),
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
+        sql.Column('deleted_at', sql.DateTime),
+        sql.Column('deleted', sql.Boolean),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8')
+
+    volume_type_extra_specs = sql.Table(
+        'volume_type_extra_specs', meta,
+        sql.Column('created_at', sql.DateTime),
+        sql.Column('updated_at', sql.DateTime),
+        sql.Column('deleted_at', sql.DateTime),
+        sql.Column('deleted', sql.Boolean),
+        sql.Column('id', sql.Integer, primary_key=True, nullable=False),
+        sql.Column('volume_type_id', sql.String(36),
+                   sql.ForeignKey('volume_types.id'),
+                   nullable=False),
+        sql.Column('key', sql.String(length=255)),
+        sql.Column('value', sql.String(length=255)),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8')
+
+    volume_type_projects = sql.Table(
+        'volume_type_projects', meta,
+        sql.Column('id', sql.Integer, primary_key=True, nullable=False),
+        sql.Column('created_at', sql.DateTime),
+        sql.Column('updated_at', sql.DateTime),
+        sql.Column('deleted_at', sql.DateTime),
+        sql.Column('volume_type_id', sql.String(36),
+                   sql.ForeignKey('volume_types.id'),
+                   nullable=False),
+        sql.Column('project_id', sql.String(length=255)),
+        sql.Column('deleted', sql.Boolean(create_constraint=True, name=None)),
+        migrate.UniqueConstraint(
+            'volume_type_id', 'project_id', 'deleted',
+            name='uniq_volume_type_projects0volume_type_id0project_id0deleted'
+        ),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
@@ -235,8 +270,8 @@ def upgrade(migrate_engine):
     tables = [aggregates, aggregate_metadata, instance_types,
               instance_type_projects, instance_type_extra_specs, key_pairs,
               quotas, quota_classes, quota_usages, reservations,
-              volume_types, job,
-              quality_of_service_specs, cascaded_pods_resource_routing]
+              volume_types, volume_type_extra_specs, volume_type_projects,
+              job, quality_of_service_specs, cascaded_pods_resource_routing]
     for table in tables:
         table.create()
 
@@ -250,6 +285,10 @@ def upgrade(migrate_engine):
               'references': [quota_usages.c.id]},
              {'columns': [volume_types.c.qos_specs_id],
               'references': [quality_of_service_specs.c.id]},
+             {'columns': [volume_type_extra_specs.c.volume_type_id],
+              'references': [volume_types.c.id]},
+             {'columns': [volume_type_projects.c.volume_type_id],
+              'references': [volume_types.c.id]},
              {'columns': [quality_of_service_specs.c.specs_id],
               'references': [quality_of_service_specs.c.id]},
              {'columns': [aggregate_metadata.c.aggregate_id],

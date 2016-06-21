@@ -260,11 +260,29 @@ class Reservation(core.ModelBase, QuotasBase):
                     'QuotaUsages.deleted == 0)')
 
 
-class VolumeTypes(core.ModelBase, core.DictBase, models.TimestampMixin):
+class VolumeTypeBase(models.ModelBase, core.DictBase,
+                     models.TimestampMixin, models.SoftDeleteMixin):
+    """VolumeTypeBase.
+
+    provide base class for volume type series tables. For it inherits from
+    models.ModelBase, this is different from other tables
+    """
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+
+    metadata = None
+
+    def delete(self, session):
+        """Delete this object."""
+        self.deleted = True
+        self.deleted_at = timeutils.utcnow()
+        self.save(session=session)
+
+
+class VolumeTypes(core.ModelBase, VolumeTypeBase):
     """Represent possible volume_types of volumes offered."""
-    __tablename__ = "volume_types"
+    __tablename__ = 'volume_types'
     attributes = ['id', 'name', 'description', 'qos_specs_id', 'is_public',
-                  'created_at', 'updated_at']
+                  'created_at', 'updated_at', 'deleted_at', 'deleted']
 
     id = sql.Column(sql.String(36), primary_key=True)
     name = sql.Column(sql.String(255), unique=True)
@@ -273,6 +291,53 @@ class VolumeTypes(core.ModelBase, core.DictBase, models.TimestampMixin):
     qos_specs_id = sql.Column(sql.String(36),
                               sql.ForeignKey('quality_of_service_specs.id'))
     is_public = sql.Column(sql.Boolean, default=True)
+
+
+class VolumeTypeProjects(core.ModelBase, VolumeTypeBase):
+    """Represent projects associated volume_types."""
+    __tablename__ = 'volume_type_projects'
+    __table_args__ = (schema.UniqueConstraint(
+        'volume_type_id', 'project_id', 'deleted',
+        name="uniq_volume_type_projects0volume_type_id0project_id0deleted"),
+    )
+    attributes = ['id', 'volume_type_id', 'project_id', 'created_at',
+                  'updated_at', 'deleted_at', 'deleted']
+    id = sql.Column(sql.Integer, primary_key=True)
+    volume_type_id = sql.Column(sql.String(36),
+                                sql.ForeignKey('volume_types.id'),
+                                nullable=False)
+    project_id = sql.Column(sql.String(255))
+    deleted = sql.Column(sql.Boolean, default=False)
+
+    volume_type = relationship(
+        VolumeTypes,
+        backref="projects",
+        foreign_keys=volume_type_id,
+        primaryjoin='and_('
+        'VolumeTypeProjects.volume_type_id == VolumeTypes.id,'
+        'VolumeTypeProjects.deleted == False)')
+
+
+class VolumeTypeExtraSpecs(core.ModelBase, VolumeTypeBase):
+    """Represents additional specs as key/value pairs for a volume_type."""
+    __tablename__ = 'volume_type_extra_specs'
+    attributes = ['id', 'key', 'value', 'volume_type_id', 'created_at',
+                  'updated_at', 'deleted', 'deleted_at']
+
+    id = sql.Column(sql.Integer, primary_key=True)
+    key = sql.Column(sql.String(255))
+    value = sql.Column(sql.String(255))
+    volume_type_id = sql.Column(sql.String(36),
+                                sql.ForeignKey('volume_types.id'),
+                                nullable=False)
+    volume_type = relationship(
+        VolumeTypes,
+        backref="extra_specs",
+        foreign_keys=volume_type_id,
+        primaryjoin='and_('
+                    'VolumeTypeExtraSpecs.volume_type_id == VolumeTypes.id,'
+                    'VolumeTypeExtraSpecs.deleted == False)'
+    )
 
 
 class QualityOfServiceSpecs(core.ModelBase, core.DictBase,
