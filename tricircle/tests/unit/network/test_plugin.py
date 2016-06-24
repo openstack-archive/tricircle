@@ -734,11 +734,6 @@ def fake_generate_ip(context, subnets, prefer_next=False):
     return {'ip_address': new_ip, 'subnet_id': subnets[0]['id']}
 
 
-@staticmethod
-def _allocate_specific_ip(context, subnet_id, ip_address):
-    pass
-
-
 class PluginTest(unittest.TestCase,
                  test_security_groups.TricircleSecurityGroupTestMixin):
     def setUp(self):
@@ -1063,8 +1058,6 @@ class PluginTest(unittest.TestCase,
         return t_net_id, t_subnet_id, t_router_id
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
@@ -1170,8 +1163,6 @@ class PluginTest(unittest.TestCase,
         mock_action.assert_has_calls(calls)
         self.assertEqual(mock_action.call_count, 3)
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -1355,8 +1346,6 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(mock_action.call_count, 7)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
@@ -1415,8 +1404,6 @@ class PluginTest(unittest.TestCase,
             self.assertEqual(entry_num + 3, len(entries))
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
@@ -1455,8 +1442,6 @@ class PluginTest(unittest.TestCase,
         # bottom interface and bridge port
         self.assertEqual(2, len(BOTTOM1_PORTS))
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -1537,8 +1522,6 @@ class PluginTest(unittest.TestCase,
             t_ctx, top_net['id'], constants.RT_NETWORK)
         self.assertEqual(mappings[0][1], bottom_net['id'])
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
@@ -1622,8 +1605,6 @@ class PluginTest(unittest.TestCase,
                            {'subnet_id': b_ns_bridge_subnet_id})]
         mock_action.assert_has_calls(calls)
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
@@ -1773,8 +1754,6 @@ class PluginTest(unittest.TestCase,
         return t_port_id, b_port_id, fip, e_net
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
@@ -1823,8 +1802,6 @@ class PluginTest(unittest.TestCase,
                                'port_id': b_port_id}})]
         mock_create.assert_has_calls(calls)
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
@@ -1886,8 +1863,6 @@ class PluginTest(unittest.TestCase,
         mock_create.assert_has_calls(calls)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
@@ -1926,8 +1901,6 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
 
-    @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_allocate_specific_ip', new=_allocate_specific_ip)
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
