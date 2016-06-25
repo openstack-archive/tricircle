@@ -26,6 +26,7 @@ ST_GLANCE = 'glance'
 # resource_type
 RT_SERVER = 'server'
 RT_VOLUME = 'volume'
+RT_VOl_METADATA = 'volume_metadata'
 RT_BACKUP = 'backup'
 RT_SNAPSHOT = 'snapshot'
 RT_NETWORK = 'network'

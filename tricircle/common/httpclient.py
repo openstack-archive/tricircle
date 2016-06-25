@@ -19,9 +19,16 @@ import urlparse
 from requests import Request
 from requests import Session
 
+from oslo_log import log as logging
+
 from tricircle.common import client
 from tricircle.common import constants as cons
+from tricircle.common.i18n import _LE
+from tricircle.common import utils
 from tricircle.db import api as db_api
+
+
+LOG = logging.getLogger(__name__)
 
 
 # the url could be endpoint registered in the keystone
@@ -147,3 +154,37 @@ def forward_req(context, action, b_headers, b_url, b_body):
                   timeout=60)
 
     return resp
+
+
+def get_res_routing_ref(context, _id, t_url, s_type):
+    """Get the service context according to resource routing.
+
+    :param _id: the top id of resource
+    :param t_url: request url
+    :param s_type: service type
+    :returns: service context
+    """
+    pod = utils.get_pod_by_top_id(context, _id)
+
+    if not pod:
+        return None
+
+    pod_name = pod['pod_name']
+
+    s_ctx = get_pod_service_ctx(context, t_url, pod_name,
+                                s_type=s_type)
+
+    if s_ctx['b_url'] == '':
+        LOG.error(_LE("bottom pod endpoint incorrect %s") %
+                  pod_name)
+
+    return s_ctx
+
+
+def convert_header(from_release, to_release, header):
+    return header
+
+
+def convert_object(from_release, to_release, res_object,
+                   res_type=cons.RT_VOLUME):
+    return res_object
