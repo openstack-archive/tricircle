@@ -16,7 +16,6 @@
 from oslo_config import cfg
 import oslo_log.helpers as log_helpers
 from oslo_log import log
-from oslo_utils import uuidutils
 
 from neutron.api.v2 import attributes
 from neutron.common import constants
@@ -31,13 +30,12 @@ from neutron.db import l3_agentschedulers_db  # noqa
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.db import segments_db
 from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
-from neutron.plugins.ml2.drivers import type_vlan
+import neutron.plugins.common.constants as p_constants
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
@@ -62,9 +60,6 @@ from tricircle.network import security_groups
 
 
 tricircle_opts = [
-    cfg.StrOpt('bridge_physical_network',
-               default='',
-               help='name of l3 bridge physical network'),
     cfg.ListOpt('type_drivers',
                 default=['local'],
                 help=_('List of network type driver entry points to be loaded '
@@ -73,7 +68,18 @@ tricircle_opts = [
                 default=['local'],
                 help=_('Ordered list of network_types to allocate as tenant '
                        'networks. The default value "local" is useful for '
-                       'single pod connectivity.'))
+                       'single pod connectivity.')),
+    cfg.ListOpt('network_vlan_ranges',
+                default=[],
+                help=_('List of <physical_network>:<vlan_min>:<vlan_max> or '
+                       '<physical_network> specifying physical_network names '
+                       'usable for VLAN provider and tenant networks, as '
+                       'well as ranges of VLAN tags on each available for '
+                       'allocation to tenant networks.')),
+    cfg.StrOpt('bridge_network_type',
+               default='',
+               help=_('Type of l3 bridge network, this type should be enabled '
+                      'in tenant_network_types and is not local type.'))
 ]
 
 tricircle_opt_group = cfg.OptGroup('tricircle')
@@ -81,15 +87,6 @@ cfg.CONF.register_group(tricircle_opt_group)
 cfg.CONF.register_opts(tricircle_opts, group=tricircle_opt_group)
 
 LOG = log.getLogger(__name__)
-
-
-class TricircleVlanTypeDriver(type_vlan.VlanTypeDriver):
-    def __init__(self):
-        super(TricircleVlanTypeDriver, self).__init__()
-
-    # dump method
-    def get_mtu(self, physical_network):
-        return 0
 
 
 class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
@@ -124,9 +121,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self.xjob_handler = xrpcapi.XJobAPI()
         self._setup_rpc()
         self.type_manager = managers.TricircleTypeManager()
-        # use VlanTypeDriver to allocate VLAN for bridge network
-        self.vlan_driver = TricircleVlanTypeDriver()
-        self.vlan_driver.initialize()
+        self.type_manager.initialize()
 
     def _setup_rpc(self):
         self.endpoints = []
@@ -679,8 +674,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                filters={'name': [ele_['id']]})
 
         def create_resources(t_ctx_, q_ctx_, pod_, body_, _type_):
-            return getattr(super(TricirclePlugin, self),
-                           'create_%s' % _type_)(q_ctx_, body_)
+            if _type_ == t_constants.RT_NETWORK:
+                # for network, we call TricirclePlugin's own create_network to
+                # handle network segment
+                return self.create_network(q_ctx_, body_)
+            else:
+                return getattr(super(TricirclePlugin, self),
+                               'create_%s' % _type_)(q_ctx_, body_)
 
         return t_lock.get_or_create_element(
             t_ctx, q_ctx,
@@ -746,31 +746,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         is_admin = q_ctx.is_admin
         q_ctx.is_admin = True
 
-        net_body = {'network': {'tenant_id': project_id,
-                                'name': net_name,
-                                'shared': False,
-                                'admin_state_up': True}}
+        net_body = {'network': {
+            'tenant_id': project_id,
+            'name': net_name,
+            'shared': False,
+            'admin_state_up': True,
+            provider.NETWORK_TYPE: cfg.CONF.tricircle.bridge_network_type}}
         _, net_id = self._prepare_top_element(
             t_ctx, q_ctx, project_id, pod, net_ele, 'network', net_body)
-
-        # allocate a VLAN id for bridge network
-        phy_net = cfg.CONF.tricircle.bridge_physical_network
-        with q_ctx.session.begin():
-            query = q_ctx.session.query(segments_db.NetworkSegment)
-            query = query.filter_by(network_id=net_id)
-            if not query.first():
-                segment = self.vlan_driver.reserve_provider_segment(
-                    q_ctx.session, {'physical_network': phy_net})
-                record = segments_db.NetworkSegment(
-                    id=uuidutils.generate_uuid(),
-                    network_id=net_id,
-                    network_type='vlan',
-                    physical_network=phy_net,
-                    segmentation_id=segment['segmentation_id'],
-                    segment_index=0,
-                    is_dynamic=False
-                )
-                q_ctx.session.add(record)
 
         subnet_body = {
             'subnet': {
@@ -864,22 +847,23 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             t_ctx, q_ctx, project_id, pod, port_ele, 'port', port_body)
         return super(TricirclePlugin, self).get_port(q_ctx, port_id)
 
+    @staticmethod
+    def _transfer_network_type(network_type):
+        network_type_map = {t_constants.NT_SHARED_VLAN: p_constants.TYPE_VLAN}
+        return network_type_map.get(network_type, network_type)
+
     def _get_bottom_bridge_elements(self, q_ctx, project_id,
                                     pod, t_net, is_external, t_subnet, t_port):
         t_ctx = t_context.get_context_from_neutron_context(q_ctx)
 
-        phy_net = cfg.CONF.tricircle.bridge_physical_network
-        with q_ctx.session.begin():
-            query = q_ctx.session.query(segments_db.NetworkSegment)
-            query = query.filter_by(network_id=t_net['id'])
-            vlan = query.first().segmentation_id
-
-        net_body = {'network': {'tenant_id': project_id,
-                                'name': t_net['id'],
-                                'provider:network_type': 'vlan',
-                                'provider:physical_network': phy_net,
-                                'provider:segmentation_id': vlan,
-                                'admin_state_up': True}}
+        net_body = {'network': {
+            'tenant_id': project_id,
+            'name': t_net['id'],
+            'provider:network_type': self._transfer_network_type(
+                t_net['provider:network_type']),
+            'provider:physical_network': t_net['provider:physical_network'],
+            'provider:segmentation_id': t_net['provider:segmentation_id'],
+            'admin_state_up': True}}
         if is_external:
             net_body['network'][external_net.EXTERNAL] = True
         _, b_net_id = self._prepare_bottom_element(

@@ -308,6 +308,13 @@ class ServerController(rest.RestController):
                 'admin_state_up': True
             }
         }
+        network_type = network.get('provider:network_type')
+        if network_type == constants.NT_SHARED_VLAN:
+            body['network']['provider:network_type'] = 'vlan'
+            body['network']['provider:physical_network'] = network[
+                'provider:physical_network']
+            body['network']['provider:segmentation_id'] = network[
+                'provider:segmentation_id']
         return body
 
     def _get_create_subnet_body(self, subnet, bottom_net_id):
@@ -382,17 +389,23 @@ class ServerController(rest.RestController):
             client = self._get_client(pod_['pod_name'])
             return client.create_resources(_type_, t_ctx, body_)
 
+        # we don't need neutron context, so pass None
         return t_lock.get_or_create_element(
-            context, None,  # we don't need neutron context, so pass None
-            self.project_id, pod, ele, _type, body,
+            context, None, self.project_id, pod, ele, _type, body,
             list_resources, create_resources)
 
     def _handle_network(self, context, pod, net, subnets, port=None,
                         top_sg_ids=None, bottom_sg_ids=None):
         # network
         net_body = self._get_create_network_body(net)
-        _, bottom_net_id = self._prepare_neutron_element(context, pod, net,
-                                                         'network', net_body)
+        if net_body['network'].get('provider:network_type'):
+            # if network type specified, we need to switch to admin account
+            admin_context = t_context.get_admin_context()
+            _, bottom_net_id = self._prepare_neutron_element(
+                admin_context, pod, net, 'network', net_body)
+        else:
+            _, bottom_net_id = self._prepare_neutron_element(
+                context, pod, net, 'network', net_body)
 
         # subnet
         subnet_map = {}

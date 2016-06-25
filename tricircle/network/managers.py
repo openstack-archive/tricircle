@@ -20,6 +20,7 @@ from neutron.api.v2 import attributes
 from neutron.extensions import external_net
 from neutron.plugins.ml2 import managers
 
+from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
 
 LOG = log.getLogger(__name__)
@@ -42,6 +43,22 @@ class TricircleTypeManager(managers.TypeManager):
         self._register_types()
         self._check_tenant_network_types(
             cfg.CONF.tricircle.tenant_network_types)
+        self._check_bridge_network_type(
+            cfg.CONF.tricircle.bridge_network_type)
+
+    def _check_bridge_network_type(self, bridge_network_type):
+        if not bridge_network_type:
+            return
+        if bridge_network_type == 'local':
+            LOG.error(_LE("Local is not a valid bridge network type. "
+                          "Service terminated!"), bridge_network_type)
+            raise SystemExit(1)
+
+        type_set = set(self.tenant_network_types)
+        if bridge_network_type not in type_set:
+            LOG.error(_LE("Bridge network type %s is not registered. "
+                          "Service terminated!"), bridge_network_type)
+            raise SystemExit(1)
 
     def _register_types(self):
         for ext in self:

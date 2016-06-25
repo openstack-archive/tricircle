@@ -46,6 +46,7 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 from tricircle.network.drivers import type_local
+from tricircle.network.drivers import type_shared_vlan
 from tricircle.network import managers
 from tricircle.network import plugin
 from tricircle.tests.unit.network import test_security_groups
@@ -638,24 +639,17 @@ class FakeExtension(object):
 
 class FakeTypeManager(managers.TricircleTypeManager):
     def _register_types(self):
-        driver = type_local.LocalTypeDriver()
-        self.drivers[constants.NT_LOCAL] = FakeExtension(driver)
+        local_driver = type_local.LocalTypeDriver()
+        self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
+        vlan_driver = type_shared_vlan.SharedVLANTypeDriver()
+        self.drivers[constants.NT_SHARED_VLAN] = FakeExtension(vlan_driver)
 
 
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.set_ipam_backend()
         self.xjob_handler = FakeRPCAPI()
-        self.vlan_driver = plugin.TricircleVlanTypeDriver()
         self.type_manager = FakeTypeManager()
-
-        phynet = 'bridge'
-        cfg.CONF.set_override('bridge_physical_network', phynet,
-                              group='tricircle')
-        for vlan in (2000, 2001):
-            TOP_VLANALLOCATIONS.append(
-                DotDict({'physical_network': phynet,
-                         'vlan_id': vlan, 'allocated': False}))
 
     def _get_client(self, pod_name):
         return FakeClient(pod_name)
@@ -746,6 +740,23 @@ class PluginTest(unittest.TestCase,
         self.save_method = manager.NeutronManager._get_default_service_plugins
         manager.NeutronManager._get_default_service_plugins = mock.Mock()
         manager.NeutronManager._get_default_service_plugins.return_value = []
+
+        phynet = 'bridge'
+        vlan_min = 2000
+        vlan_max = 2001
+        cfg.CONF.set_override('type_drivers', ['local', 'shared_vlan'],
+                              group='tricircle')
+        cfg.CONF.set_override('tenant_network_types', ['local', 'shared_vlan'],
+                              group='tricircle')
+        cfg.CONF.set_override('network_vlan_ranges',
+                              ['%s:%d:%d' % (phynet, vlan_min, vlan_max)],
+                              group='tricircle')
+        cfg.CONF.set_override('bridge_network_type', 'shared_vlan',
+                              group='tricircle')
+        for vlan in (vlan_min, vlan_max):
+            TOP_VLANALLOCATIONS.append(
+                DotDict({'physical_network': phynet,
+                         'vlan_id': vlan, 'allocated': False}))
 
     def _basic_pod_route_setup(self):
         pod1 = {'pod_id': 'pod_id_1',

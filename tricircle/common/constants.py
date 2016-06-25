@@ -75,3 +75,4 @@ JT_PORT_DELETE = 'port_delete'
 
 # network type
 NT_LOCAL = 'local'
+NT_SHARED_VLAN = 'shared_vlan'

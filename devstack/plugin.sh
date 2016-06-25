@@ -274,7 +274,12 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
             iniset $NEUTRON_CONF client auto_refresh_endpoint True
             iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
 
-            iniset $NEUTRON_CONF tricircle bridge_physical_network `echo $OVS_BRIDGE_MAPPINGS | awk -F: '{print $1}'`
+            if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
+                iniset $NEUTRON_CONF tricircle type_drivers local,shared_vlan
+                iniset $NEUTRON_CONF tricircle tenant_network_types local,shared_vlan
+                iniset $NEUTRON_CONF tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
+                iniset $NEUTRON_CONF tricircle bridge_network_type shared_vlan
+            fi
         fi
 
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
