@@ -14,32 +14,46 @@
 
 # This script is executed inside post_test_hook function in devstack gate.
 
-export DEST=${DEST:-/opt/stack/new}
+export DEST=$BASE/new
 export DEVSTACK_DIR=$DEST/tricircle/devstack
 export TRICIRCLE_DIR=$DEST/tricircle
+export TRICIRCLE_TEMPEST_PLUGIN_DIR=$TRICIRCLE_DIR/tricircle/tempestplugin
 export TEMPEST_DIR=$DEST/tempest
-export TEMPEST_CONF=$TEMPEST_DIR/etc/tempest.conf
 
 # use admin role to create Tricircle top Pod and Pod1
 source $DEVSTACK_DIR/admin-openrc.sh
+
 token=$(openstack token issue | awk 'NR==5 {print $4}')
 echo $token
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+
+curl -X POST http://127.0.0.1:19999/v1.0/pods \
+    -H "Content-Type: application/json" \
     -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
-curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
+
+curl -X POST http://127.0.0.1:19999/v1.0/pods \
+    -H "Content-Type: application/json" \
+    -H "X-Auth-Token: $token" \
+    -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
 
 # preparation for the tests
 cd $TEMPEST_DIR
+if [ -d .testrepository ]; then
+  sudo rm -r .testrepository
+fi
 testr init
 
-# change the configruation to test Tricircle Cinder-APIGW
-iniset $TEMPEST_CONF volume region RegionOne
-iniset $TEMPEST_CONF volume catalog_type volumev2
-iniset $TEMPEST_CONF volume endpoint_type publicURL
-iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
+# Run the Compute Tempest tests
+# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+# sudo BASE=$BASE ./tempest_compute.sh
 
-# Run functional test
-echo "Running Tricircle functional test suite..."
-ostestr --regex tempest.api.volume.test_volumes_list
-ostestr --regex tempest.api.volume.test_volumes_get
+# Run the Volume Tempest tests
+cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+sudo BASE=$BASE ./tempest_volume.sh
+
+# Run the Network Tempest tests
+# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+# sudo BASE=$BASE ./tempest_network.sh
+
+# Run the Scenario Tempest tests
+# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+# sudo BASE=$BASE ./tempest_scenario.sh
