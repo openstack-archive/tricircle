@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = tricircle
+omit = tricircle/tests/*, tricircle/tempestplugin/*
+
+[report]
+ignore_errors = True
