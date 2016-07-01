@@ -71,6 +71,7 @@ TOP = 'top'
 
 # job type
 JT_ROUTER = 'router'
+JT_ROUTER_SETUP = 'router_setup'
 JT_PORT_DELETE = 'port_delete'
 
 # network type

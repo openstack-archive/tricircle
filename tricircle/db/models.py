@@ -468,5 +468,5 @@ class Job(core.ModelBase, core.DictBase):
     timestamp = sql.Column('timestamp', sql.TIMESTAMP,
                            server_default=sql.text('CURRENT_TIMESTAMP'))
     status = sql.Column('status', sql.String(length=36))
-    resource_id = sql.Column('resource_id', sql.String(length=36))
+    resource_id = sql.Column('resource_id', sql.String(length=127))
     extra_id = sql.Column('extra_id', sql.String(length=36))

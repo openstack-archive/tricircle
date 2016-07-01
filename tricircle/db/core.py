@@ -152,6 +152,12 @@ def update_resource(context, model, pk_value, update_dict):
     return res_obj.to_dict()
 
 
+def update_resources(context, model, filters, update_dict):
+    query = context.session.query(model)
+    query = _filter_query(model, query, filters)
+    query.update(update_dict, synchronize_session=False)
+
+
 class DictBase(object):
     attributes = []
 

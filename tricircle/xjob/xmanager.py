@@ -30,17 +30,32 @@ from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
 from tricircle.common.i18n import _LW
+from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
+from tricircle.db import core
+from tricircle.db import models
+from tricircle.network import helper
 
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+
+IN_TEST = False
+AZ_HINTS = 'availability_zone_hints'
 
 
 def _job_handle(job_type):
     def handle_func(func):
         @six.wraps(func)
         def handle_args(*args, **kwargs):
+            if IN_TEST:
+                # NOTE(zhiyuan) job mechanism will cause some unpredictable
+                # result in unit test so we would like to bypass it. However
+                # we have problem mocking a decorator which decorates member
+                # functions, that's why we use this label, not an elegant
+                # way though.
+                func(*args, **kwargs)
+                return
             ctx = args[1]
             payload = kwargs['payload']
 
@@ -129,7 +144,12 @@ class XManager(PeriodicTasks):
         # self.notifier = rpc.get_notifier(self.service_name, self.host)
         self.additional_endpoints = []
         self.clients = {constants.TOP: client.Client()}
-        self.job_handles = {constants.JT_ROUTER: self.configure_extra_routes}
+        self.job_handles = {
+            constants.JT_ROUTER: self.configure_extra_routes,
+            constants.JT_ROUTER_SETUP: self.setup_bottom_router,
+            constants.JT_PORT_DELETE: self.delete_server_port}
+        self.helper = helper.NetworkHelper()
+        self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
 
     def _get_client(self, pod_name=None):
@@ -207,6 +227,20 @@ class XManager(PeriodicTasks):
 
         return info_text
 
+    @staticmethod
+    def _get_resource_by_name(cli, cxt, _type, name):
+        return cli.list_resources(_type, cxt, filters=[{'key': 'name',
+                                                        'comparator': 'eq',
+                                                        'value': name}])[0]
+
+    @staticmethod
+    def _get_router_interfaces(cli, cxt, router_id, net_id):
+        return cli.list_ports(
+            cxt, filters=[{'key': 'network_id', 'comparator': 'eq',
+                           'value': net_id},
+                          {'key': 'device_id', 'comparator': 'eq',
+                           'value': router_id}])
+
     @periodic_task.periodic_task
     def redo_failed_job(self, ctx):
         failed_jobs = db_api.get_latest_failed_jobs(ctx)
@@ -224,6 +258,156 @@ class XManager(PeriodicTasks):
                   {'resource_id': failed_job['resource_id'],
                    'job_type': job_type})
         self.job_handles[job_type](ctx, payload=payload)
+
+    @_job_handle(constants.JT_ROUTER_SETUP)
+    def setup_bottom_router(self, ctx, payload):
+        (b_pod_id,
+         t_router_id, t_net_id) = payload[constants.JT_ROUTER_SETUP].split('#')
+
+        t_client = self._get_client()
+        t_pod = db_api.get_top_pod(ctx)
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_client = self._get_client(b_pod['pod_name'])
+        b_az = b_pod['az_name']
+
+        t_router = t_client.get_routers(ctx, t_router_id)
+        if not t_router:
+            # we just end this job if top router no longer exists
+            return
+        router_body = {'router': {'name': t_router_id,
+                                  'distributed': False}}
+        project_id = t_router['tenant_id']
+
+        # create bottom router in target bottom pod
+        _, b_router_id = self.helper.prepare_bottom_element(
+            ctx, project_id, b_pod, t_router, 'router', router_body)
+
+        # create top E-W bridge port
+        t_bridge_net_name = constants.ew_bridge_net_name % project_id
+        t_bridge_subnet_name = constants.ew_bridge_subnet_name % project_id
+        t_bridge_net = self._get_resource_by_name(t_client, ctx, 'network',
+                                                  t_bridge_net_name)
+        t_bridge_subnet = self._get_resource_by_name(t_client, ctx, 'subnet',
+                                                     t_bridge_subnet_name)
+        q_cxt = None  # no need to pass neutron context when using client
+        t_bridge_port_id = self.helper.get_bridge_interface(
+            ctx, q_cxt, project_id, t_pod, t_bridge_net['id'],
+            b_router_id, None, True)
+
+        # create bottom E-W bridge port
+        t_bridge_port = t_client.get_ports(ctx, t_bridge_port_id)
+        (is_new, b_bridge_port_id,
+         _, _) = self.helper.get_bottom_bridge_elements(
+            ctx, project_id, b_pod, t_bridge_net, False, t_bridge_subnet,
+            t_bridge_port)
+
+        # attach bottom E-W bridge port to bottom router
+        if is_new:
+            # only attach bridge port the first time
+            b_client.action_routers(ctx, 'add_interface', b_router_id,
+                                    {'port_id': b_bridge_port_id})
+        else:
+            # still need to check if the bridge port is bound
+            port = b_client.get_ports(ctx, b_bridge_port_id)
+            if not port.get('device_id'):
+                b_client.action_routers(ctx, 'add_interface', b_router_id,
+                                        {'port_id': b_bridge_port_id})
+
+        # handle N-S networking
+        ext_nets = t_client.list_networks(ctx,
+                                          filters=[{'key': 'router:external',
+                                                    'comparator': 'eq',
+                                                    'value': True}])
+        if not ext_nets:
+            need_ns_bridge = False
+        else:
+            ext_net_pod_names = set(
+                [ext_net[AZ_HINTS][0] for ext_net in ext_nets])
+            if b_pod['pod_name'] in ext_net_pod_names:
+                need_ns_bridge = False
+            else:
+                need_ns_bridge = True
+        if need_ns_bridge:
+            t_bridge_net_name = constants.ns_bridge_net_name % project_id
+            t_bridge_subnet_name = constants.ns_bridge_subnet_name % project_id
+            t_bridge_net = self._get_resource_by_name(
+                t_client, ctx, 'network', t_bridge_net_name)
+            t_bridge_subnet = self._get_resource_by_name(
+                t_client, ctx, 'subnet', t_bridge_subnet_name)
+            # create bottom N-S bridge network and subnet
+            (_, _, b_bridge_subnet_id,
+             b_bridge_net_id) = self.helper.get_bottom_bridge_elements(
+                ctx, project_id, b_pod, t_bridge_net, True,
+                t_bridge_subnet, None)
+            # create top N-S bridge port
+            ns_bridge_port_id = self.helper.get_bridge_interface(
+                ctx, q_cxt, project_id, t_pod, t_bridge_net['id'],
+                b_router_id, None, False)
+            ns_bridge_port = t_client.get_ports(ctx, ns_bridge_port_id)
+            # add external gateway for bottom router
+            # add gateway is update operation, can run multiple times
+            gateway_ip = ns_bridge_port['fixed_ips'][0]['ip_address']
+            b_client.action_routers(
+                ctx, 'add_gateway', b_router_id,
+                {'network_id': b_bridge_net_id,
+                 'external_fixed_ips': [{'subnet_id': b_bridge_subnet_id,
+                                         'ip_address': gateway_ip}]})
+
+        # attach internal port to bottom router
+        t_net = t_client.get_networks(ctx, t_net_id)
+        if not t_net:
+            # we just end this job if top network no longer exists
+            return
+        net_azs = t_net.get(AZ_HINTS, [])
+        if net_azs and b_az not in net_azs:
+            return
+        t_ports = self._get_router_interfaces(t_client, ctx, t_router_id,
+                                              t_net_id)
+        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+            ctx, t_net_id, b_pod['pod_name'], constants.RT_NETWORK)
+        if b_net_id:
+            b_ports = self._get_router_interfaces(b_client, ctx, b_router_id,
+                                                  b_net_id)
+        else:
+            b_ports = []
+        if not t_ports and b_ports:
+            # remove redundant bottom interface
+            b_port = b_ports[0]
+            request_body = {'port_id': b_port['id']}
+            b_client.action_routers(ctx, 'remove_interface', b_router_id,
+                                    request_body)
+            with ctx.session.begin():
+                core.delete_resources(ctx, models.ResourceRouting,
+                                      filters=[{'key': 'bottom_id',
+                                                'comparator': 'eq',
+                                                'value': b_port['id']}])
+        elif t_ports and not b_ports:
+            # create new bottom interface
+            t_port = t_ports[0]
+            # only consider ipv4 address currently
+            t_subnet_id = t_port['fixed_ips'][0]['subnet_id']
+            t_subnet = t_client.get_subnets(ctx, t_subnet_id)
+            b_port_id = self.helper.get_bottom_elements(
+                ctx, project_id, b_pod, t_net, t_subnet, t_port)
+            b_client.action_routers(ctx, 'add_interface', b_router_id,
+                                    {'port_id': b_port_id})
+        elif t_ports and b_ports:
+            # when users remove the interface again, it's possible that top
+            # interface is removed but deletion of bottom interface fails.
+            # if users add the interface again during the retry of the job,
+            # we have top and bottom interfaces exist but the id mapping
+            # in the routing entry is incorrect, so we update it here
+            t_port = t_ports[0]
+            b_port = b_ports[0]
+            with ctx.session.begin():
+                core.update_resources(ctx, models.ResourceRouting,
+                                      [{'key': 'bottom_id', 'comparator': 'eq',
+                                        'value': b_port['id']},
+                                       {'key': 'pod_id', 'comparator': 'eq',
+                                        'value': b_pod_id}
+                                       ], {'top_id': t_port['id']})
+
+        self.xjob_handler.configure_extra_routes(ctx, t_router_id)
 
     @_job_handle(constants.JT_ROUTER)
     def configure_extra_routes(self, ctx, payload):

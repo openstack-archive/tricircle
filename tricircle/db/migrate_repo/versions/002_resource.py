@@ -259,7 +259,7 @@ def upgrade(migrate_engine):
         sql.Column('timestamp', sql.TIMESTAMP,
                    server_default=sql.text('CURRENT_TIMESTAMP')),
         sql.Column('status', sql.String(length=36)),
-        sql.Column('resource_id', sql.String(length=36)),
+        sql.Column('resource_id', sql.String(length=127)),
         sql.Column('extra_id', sql.String(length=36)),
         migrate.UniqueConstraint(
             'type', 'status', 'resource_id', 'extra_id',

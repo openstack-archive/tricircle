@@ -39,6 +39,7 @@ from oslo_config import cfg
 from oslo_serialization import jsonutils
 from oslo_utils import uuidutils
 
+from tricircle.common import client
 from tricircle.common import constants
 from tricircle.common import context
 from tricircle.common import exceptions
@@ -47,9 +48,11 @@ from tricircle.db import core
 from tricircle.db import models
 from tricircle.network.drivers import type_local
 from tricircle.network.drivers import type_shared_vlan
+from tricircle.network import helper
 from tricircle.network import managers
 from tricircle.network import plugin
 from tricircle.tests.unit.network import test_security_groups
+from tricircle.xjob import xmanager
 
 
 TOP_NETS = []
@@ -102,6 +105,16 @@ RES_MAP = {'networks': TOP_NETS,
            'securitygrouprules': TOP_SG_RULES}
 
 
+def _transform_az(network):
+    az_hints_key = 'availability_zone_hints'
+    if az_hints_key in network:
+        ret = DotDict(network)
+        az_str = network[az_hints_key]
+        ret[az_hints_key] = jsonutils.loads(az_str) if az_str else []
+        return ret
+    return network
+
+
 class DotDict(dict):
     def __init__(self, normal_dict=None):
         if normal_dict:
@@ -114,7 +127,8 @@ class DotDict(dict):
 
 class FakeNeutronClient(object):
 
-    _res_map = {'pod_1': {'port': BOTTOM1_PORTS},
+    _res_map = {'top': {'port': TOP_PORTS},
+                'pod_1': {'port': BOTTOM1_PORTS},
                 'pod_2': {'port': BOTTOM2_PORTS}}
 
     def __init__(self, pod_name):
@@ -145,11 +159,13 @@ class FakeNeutronClient(object):
         return {'ports': port_list}
 
     def get(self, path, params=None):
-        if self.pod_name == 'pod_1' or self.pod_name == 'pod_2':
+        if self.pod_name in ['pod_1', 'pod_2', 'top']:
             res_list = self._get(params)['ports']
             return_list = []
             for res in res_list:
-                return_list.append(copy.copy(res))
+                if self.pod_name != 'top':
+                    res = copy.copy(res)
+                return_list.append(res)
             return {'ports': return_list}
         else:
             raise Exception()
@@ -157,7 +173,8 @@ class FakeNeutronClient(object):
 
 class FakeClient(object):
 
-    _res_map = {'pod_1': {'network': BOTTOM1_NETS,
+    _res_map = {'top': RES_MAP,
+                'pod_1': {'network': BOTTOM1_NETS,
                           'subnet': BOTTOM1_SUBNETS,
                           'port': BOTTOM1_PORTS,
                           'router': BOTTOM1_ROUTERS,
@@ -171,7 +188,10 @@ class FakeClient(object):
                           'floatingip': BOTTOM2_FIPS}}
 
     def __init__(self, pod_name):
-        self.pod_name = pod_name
+        if not pod_name:
+            self.pod_name = 'top'
+        else:
+            self.pod_name = pod_name
         self.client = FakeNeutronClient(self.pod_name)
 
     def get_native_client(self, resource, ctx):
@@ -219,6 +239,44 @@ class FakeClient(object):
         res_list.append(res)
         return res
 
+    def list_resources(self, _type, ctx, filters=None):
+        if self.pod_name == 'top':
+            res_list = self._res_map[self.pod_name][_type + 's']
+        else:
+            res_list = self._res_map[self.pod_name][_type]
+        ret_list = []
+        for res in res_list:
+            is_selected = True
+            for _filter in filters:
+                if _filter['key'] not in res:
+                    is_selected = False
+                    break
+                if _filter['value'] != res[_filter['key']]:
+                    is_selected = False
+                    break
+            if is_selected:
+                ret_list.append(res)
+        return ret_list
+
+    def list_networks(self, ctx, filters=None):
+        networks = self.list_resources('network', ctx, filters)
+        if self.pod_name != 'top':
+            return networks
+        ret_list = []
+        for network in networks:
+            ret_list.append(_transform_az(network))
+        return ret_list
+
+    def get_networks(self, ctx, net_id):
+        return self.list_networks(ctx, [{'key': 'id',
+                                         'comparator': 'eq',
+                                         'value': net_id}])[0]
+
+    def get_subnets(self, ctx, subnet_id):
+        return self.list_resources('subnet', ctx, [{'key': 'id',
+                                                    'comparator': 'eq',
+                                                    'value': subnet_id}])[0]
+
     def create_ports(self, ctx, body):
         return self.create_resources('port', ctx, body)
 
@@ -251,6 +309,11 @@ class FakeClient(object):
         # only for mock purpose
         pass
 
+    def get_routers(self, ctx, router_id):
+        return self.list_resources('router', ctx, [{'key': 'id',
+                                                    'comparator': 'eq',
+                                                    'value': router_id}])[0]
+
     def action_routers(self, ctx, action, *args, **kwargs):
         # divide into two functions for test purpose
         if action == 'add_interface':
@@ -266,21 +329,7 @@ class FakeClient(object):
         return fip
 
     def list_floatingips(self, ctx, filters=None):
-        filters = filters or []
-        return_list = []
-        for fip in self._res_map[self.pod_name]['floatingip']:
-            is_skip = False
-            for filter in filters:
-                if filter['key'] not in fip:
-                    is_skip = True
-                    break
-                if fip[filter['key']] != filter['value']:
-                    is_skip = True
-                    break
-            if is_skip:
-                continue
-            return_list.append(copy.copy(fip))
-        return return_list
+        return self.list_resources('floatingip', ctx, filters)
 
     def update_floatingips(self, ctx, _id, body):
         pass
@@ -627,14 +676,50 @@ class FakeSession(object):
         pass
 
 
-class FakeRPCAPI(object):
-    def configure_extra_routes(self, context, router_id):
+class FakeXManager(xmanager.XManager):
+    def __init__(self, fake_plugin):
+        self.clients = {constants.TOP: client.Client()}
+        self.job_handles = {
+            constants.JT_ROUTER: self.configure_extra_routes,
+            constants.JT_ROUTER_SETUP: self.setup_bottom_router,
+            constants.JT_PORT_DELETE: self.delete_server_port}
+        self.helper = FakeHelper(fake_plugin)
+        self.xjob_handler = FakeBaseRPCAPI()
+
+    def _get_client(self, pod_name=None):
+        return FakeClient(pod_name)
+
+
+class FakeBaseRPCAPI(object):
+    def configure_extra_routes(self, ctxt, router_id):
         pass
+
+
+class FakeRPCAPI(FakeBaseRPCAPI):
+    def __init__(self, fake_plugin):
+        self.xmanager = FakeXManager(fake_plugin)
+
+    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
+        combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
+        self.xmanager.setup_bottom_router(
+            ctxt, payload={constants.JT_ROUTER_SETUP: combine_id})
 
 
 class FakeExtension(object):
     def __init__(self, ext_obj):
         self.obj = ext_obj
+
+
+class FakeHelper(helper.NetworkHelper):
+    def _get_client(self, pod_name=None):
+        return FakeClient(pod_name)
+
+    def _prepare_top_element_by_call(self, t_ctx, q_ctx,
+                                     project_id, pod, ele, _type, body):
+        if not q_ctx:
+            q_ctx = FakeNeutronContext()
+        return super(FakeHelper, self)._prepare_top_element_by_call(
+            t_ctx, q_ctx, project_id, pod, ele, _type, body)
 
 
 class FakeTypeManager(managers.TricircleTypeManager):
@@ -644,11 +729,28 @@ class FakeTypeManager(managers.TricircleTypeManager):
         vlan_driver = type_shared_vlan.SharedVLANTypeDriver()
         self.drivers[constants.NT_SHARED_VLAN] = FakeExtension(vlan_driver)
 
+    def extend_network_dict_provider(self, cxt, net):
+        target_net = None
+        for t_net in TOP_NETS:
+            if t_net['id'] == net['id']:
+                target_net = t_net
+        if not target_net:
+            return
+        for segment in TOP_SEGMENTS:
+            if target_net['id'] == segment['network_id']:
+                target_net['provider:network_type'] = segment['network_type']
+                target_net[
+                    'provider:physical_network'] = segment['physical_network']
+                target_net[
+                    'provider:segmentation_id'] = segment['segmentation_id']
+                break
+
 
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.set_ipam_backend()
-        self.xjob_handler = FakeRPCAPI()
+        self.helper = FakeHelper(self)
+        self.xjob_handler = FakeRPCAPI(self)
         self.type_manager = FakeTypeManager()
 
     def _get_client(self, pod_name):
@@ -656,13 +758,7 @@ class FakePlugin(plugin.TricirclePlugin):
 
     def _make_network_dict(self, network, fields=None,
                            process_extensions=True, context=None):
-        az_hints_key = 'availability_zone_hints'
-        if az_hints_key in network:
-            ret = DotDict(network)
-            az_str = network[az_hints_key]
-            ret[az_hints_key] = jsonutils.loads(az_str) if az_str else []
-            return ret
-        return network
+        return _transform_az(network)
 
     def _make_subnet_dict(self, subnet, fields=None, context=None):
         return subnet
@@ -740,6 +836,7 @@ class PluginTest(unittest.TestCase,
         self.save_method = manager.NeutronManager._get_default_service_plugins
         manager.NeutronManager._get_default_service_plugins = mock.Mock()
         manager.NeutronManager._get_default_service_plugins.return_value = []
+        xmanager.IN_TEST = True
 
         phynet = 'bridge'
         vlan_min = 2000
@@ -1074,7 +1171,7 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
-    @patch.object(FakeRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface(self, mock_context, mock_action, mock_rpc):
@@ -1180,7 +1277,7 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
-    @patch.object(FakeRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_with_external_network(self, mock_context,
@@ -1291,13 +1388,13 @@ class PluginTest(unittest.TestCase,
         # add_router_interface is called, bottom router is already attached
         # to E-W bridge network, only need to attach internal network to
         # bottom router
-        calls = [mock.call(t_ctx, 'add_gateway', b_router_id,
+        calls = [mock.call(t_ctx, 'add_interface', b_router_id,
+                           {'port_id': b_bridge_port_id}),
+                 mock.call(t_ctx, 'add_gateway', b_router_id,
                            {'network_id': b_ns_bridge_net_id,
                             'external_fixed_ips': [
                                 {'subnet_id': b_ns_bridge_subnet_id,
                                  'ip_address': '100.128.0.2'}]}),
-                 mock.call(t_ctx, 'add_interface', b_router_id,
-                           {'port_id': b_bridge_port_id}),
                  mock.call(t_ctx, 'add_interface', b_router_id,
                            {'port_id': b_port['id']}),
                  mock.call(t_ctx, 'add_gateway', b_router_id,
@@ -1348,10 +1445,10 @@ class PluginTest(unittest.TestCase,
         # to create N-S bridge network when attaching router interface(N-S
         # bridge network is created when setting router external gateway), so
         # add_gateway is not called.
-        calls = [mock.call(t_ctx, 'add_interface', b_router_id,
-                           {'port_id': b_bridge_port_id}),
-                 mock.call(t_ctx, 'add_interface', b_router_id,
-                           {'port_id': another_b_port_id})]
+        calls.extend([mock.call(t_ctx, 'add_interface', b_router_id,
+                                {'port_id': b_bridge_port_id}),
+                      mock.call(t_ctx, 'add_interface', b_router_id,
+                                {'port_id': another_b_port_id})])
         mock_action.assert_has_calls(calls)
         # all together 7 times calling
         self.assertEqual(mock_action.call_count, 7)
@@ -1420,7 +1517,7 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
-    @patch.object(FakeRPCAPI, 'configure_extra_routes', new=mock.Mock)
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes', new=mock.Mock)
     @patch.object(FakeClient, 'delete_ports')
     @patch.object(FakeClient, 'add_interface_routers')
     @patch.object(context, 'get_context_from_neutron_context')
@@ -1441,15 +1538,14 @@ class PluginTest(unittest.TestCase,
         self.assertRaises(q_exceptions.ConnectionFailed,
                           fake_plugin.add_router_interface,
                           q_ctx, t_router_id, {'subnet_id': t_subnet_id})
-        # fail to delete bottom interface, so top interface is also there
-        self.assertEqual(1, len(TOP_ROUTERS[0]['attached_ports']))
+        # top interface is removed
+        self.assertEqual(0, len(TOP_ROUTERS[0]['attached_ports']))
 
         mock_action.side_effect = None
         mock_delete.side_effect = None
-        t_port_id = TOP_ROUTERS[0]['attached_ports'][0]['port_id']
-        # test that we can reuse the left interface to attach
+        # test that we can success when bottom pod comes back
         fake_plugin.add_router_interface(
-            q_ctx, t_router_id, {'port_id': t_port_id})
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})
         # bottom interface and bridge port
         self.assertEqual(2, len(BOTTOM1_PORTS))
 
@@ -1459,7 +1555,7 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
                   new=mock.Mock)
-    @patch.object(FakeRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_remove_interface(self, mock_context, mock_action, mock_rpc):
@@ -2056,4 +2152,4 @@ class PluginTest(unittest.TestCase,
         for res in RES_LIST:
             del res[:]
         cfg.CONF.unregister_opts(q_config.core_opts)
-        manager.NeutronManager._get_default_service_plugins = self.save_method
+        xmanager.IN_TEST = False

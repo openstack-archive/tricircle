@@ -75,6 +75,12 @@ class XJobAPI(object):
     def test_rpc(self, ctxt, payload):
         return self.client.call(ctxt, 'test_rpc', payload=payload)
 
+    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
+        combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
+        self.client.prepare(exchange='openstack').cast(
+            ctxt, 'setup_bottom_router',
+            payload={constants.JT_ROUTER_SETUP: combine_id})
+
     def configure_extra_routes(self, ctxt, router_id):
         # NOTE(zhiyuan) this RPC is called by plugin in Neutron server, whose
         # control exchange is "neutron", however, we starts xjob without

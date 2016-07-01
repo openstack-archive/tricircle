@@ -120,7 +120,7 @@ class NeutronResourceHandle(ResourceHandle):
     support_resource = {'network': LIST | CREATE | DELETE | GET,
                         'subnet': LIST | CREATE | DELETE | GET,
                         'port': LIST | CREATE | DELETE | GET,
-                        'router': LIST | CREATE | ACTION | UPDATE,
+                        'router': LIST | CREATE | ACTION | GET | UPDATE,
                         'security_group': LIST | CREATE | GET,
                         'security_group_rule': LIST | CREATE | DELETE,
                         'floatingip': LIST | CREATE | UPDATE | DELETE}

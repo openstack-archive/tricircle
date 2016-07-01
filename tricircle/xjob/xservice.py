@@ -44,8 +44,6 @@ _TIMER_INTERVAL = 30
 _TIMER_INTERVAL_MAX = 60
 
 common_opts = [
-    cfg.StrOpt('host', default='tricircle.xhost',
-               help=_("The host name for RPC server")),
     cfg.IntOpt('workers', default=1,
                help=_("Number of workers")),
     cfg.IntOpt('worker_handle_timeout', default=1800,
