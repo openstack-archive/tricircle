@@ -30,8 +30,8 @@ specific bottom OpenStack instances in one or multiple AZs automatically.
 * Free software: Apache license
 * Design documentation: `Tricircle Design Blueprint <https://docs.google.com/document/d/18kZZ1snMOCD9IQvUKI5NVDzSASpw-QKj7l2zNqMEd3g/>`_
 * Wiki: https://wiki.openstack.org/wiki/tricircle
-* Installation with DevStack: https://github.com/openstack/tricircle/doc/source/installation.rst
-* Documentation: http://docs.openstack.org/developer/tricircle
+* Installation with DevStack: https://github.com/openstack/tricircle/blob/master/doc/source/installation.rst
+* Documentation: TBD
 * Source: https://github.com/openstack/tricircle
 * Bugs: http://bugs.launchpad.net/tricircle
 * Blueprints: https://launchpad.net/tricircle
