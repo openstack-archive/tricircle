@@ -160,12 +160,6 @@ function configure_tricircle_nova_apigw {
 
         init_common_tricircle_conf $TRICIRCLE_NOVA_APIGW_CONF
 
-        iniset $NEUTRON_CONF client admin_username admin
-        iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
-        iniset $NEUTRON_CONF client admin_tenant demo
-        iniset $NEUTRON_CONF client auto_refresh_endpoint True
-        iniset $NEUTRON_CONF client top_pod_name $REGION_NAME
-
         setup_colorized_logging $TRICIRCLE_NOVA_APIGW_CONF DEFAULT tenant_name
 
         if is_service_enabled keystone; then

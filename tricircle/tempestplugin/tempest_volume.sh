@@ -25,6 +25,15 @@ cd $TEMPEST_DIR
 # Import functions needed for the below workaround
 source $DEST/devstack/functions
 
+# add account information to configuration
+source $BASE/new/devstack/openrc admin admin
+env | grep OS_
+iniset $TEMPEST_CONF auth admin_username admin
+iniset $TEMPEST_CONF auth admin_project_name admin
+iniset $TEMPEST_CONF auth admin_password $OS_PASSWORD
+iniset $TEMPEST_CONF identity uri $OS_AUTH_URL
+iniset $TEMPEST_CONF identity-feature-enabled api_v3 false
+
 # change the configruation to test Tricircle Cinder-APIGW
 iniset $TEMPEST_CONF volume region RegionOne
 iniset $TEMPEST_CONF volume catalog_type volumev2

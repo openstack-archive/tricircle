@@ -21,7 +21,7 @@ export TRICIRCLE_TEMPEST_PLUGIN_DIR=$TRICIRCLE_DIR/tricircle/tempestplugin
 export TEMPEST_DIR=$DEST/tempest
 
 # use admin role to create Tricircle top Pod and Pod1
-source $DEVSTACK_DIR/admin-openrc.sh
+source $BASE/new/devstack/openrc admin admin
 
 token=$(openstack token issue | awk 'NR==5 {print $4}')
 echo $token
@@ -40,7 +40,7 @@ cd $TEMPEST_DIR
 if [ -d .testrepository ]; then
   sudo rm -r .testrepository
 fi
-testr init
+# sudo -H -u jenkins testr init
 
 # Run the Compute Tempest tests
 # cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
