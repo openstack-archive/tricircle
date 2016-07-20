@@ -72,11 +72,11 @@ class TricircleTypeManager(managers.TypeManager):
                 for segment_index, segment in enumerate(segments):
                     segment = self.reserve_provider_segment(
                         session, segment)
-                    self._add_network_segment(session, network_id, segment,
+                    self._add_network_segment(context, network_id, segment,
                                               mtu, segment_index)
             else:
                 segment = self._allocate_tenant_net_segment(session)
-                self._add_network_segment(session, network_id, segment, mtu)
+                self._add_network_segment(context, network_id, segment, mtu)
 
     def extend_networks_dict_provider(self, context, networks):
         internal_networks = []
