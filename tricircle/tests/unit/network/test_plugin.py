@@ -1501,15 +1501,16 @@ class PluginTest(unittest.TestCase,
         mock_action.side_effect = None
         fake_plugin.add_router_interface(q_ctx, t_router_id,
                                          {'subnet_id': t_subnet_id})
-        # bottom interface and bridge port
-        self.assertEqual(2, len(BOTTOM1_PORTS))
+        # bottom dhcp port, bottom interface and bridge port
+        self.assertEqual(3, len(BOTTOM1_PORTS))
         with t_ctx.session.begin():
             entries = core.query_resource(t_ctx, models.ResourceRouting,
                                           [{'key': 'resource_type',
                                             'comparator': 'eq',
                                             'value': 'port'}], [])
-            # one more entry, for bottom interface
-            self.assertEqual(entry_num + 3, len(entries))
+            # three more entries, for top and bottom dhcp ports and
+            # bottom interface
+            self.assertEqual(entry_num + 5, len(entries))
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)
@@ -1546,8 +1547,8 @@ class PluginTest(unittest.TestCase,
         # test that we can success when bottom pod comes back
         fake_plugin.add_router_interface(
             q_ctx, t_router_id, {'subnet_id': t_subnet_id})
-        # bottom interface and bridge port
-        self.assertEqual(2, len(BOTTOM1_PORTS))
+        # bottom dhcp port, bottom interface and bridge port
+        self.assertEqual(3, len(BOTTOM1_PORTS))
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
                   '_generate_ip', new=fake_generate_ip)

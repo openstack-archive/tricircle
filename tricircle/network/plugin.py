@@ -767,11 +767,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         return net, subnet
 
-    def _get_bottom_elements(self, t_ctx, project_id, pod,
-                             t_net, t_subnet, t_port):
-        return self.helper.get_bottom_elements(
-            t_ctx, project_id, pod, t_net, t_subnet, t_port)
-
     def _get_bridge_interface(self, t_ctx, q_ctx, project_id, pod,
                               t_net_id, b_router_id, b_port_id, is_ew):
         port_id = self.helper.get_bridge_interface(t_ctx, q_ctx, project_id,

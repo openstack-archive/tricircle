@@ -387,8 +387,14 @@ class XManager(PeriodicTasks):
             # only consider ipv4 address currently
             t_subnet_id = t_port['fixed_ips'][0]['subnet_id']
             t_subnet = t_client.get_subnets(ctx, t_subnet_id)
-            b_port_id = self.helper.get_bottom_elements(
-                ctx, project_id, b_pod, t_net, t_subnet, t_port)
+
+            (b_net_id,
+             subnet_map) = self.helper.prepare_bottom_network_subnets(
+                ctx, project_id, b_pod, t_net, [t_subnet])
+            port_body = self.helper.get_create_port_body(
+                project_id, t_port, subnet_map, b_net_id)
+            _, b_port_id = self.helper.prepare_bottom_element(
+                ctx, project_id, b_pod, t_port, constants.RT_PORT, port_body)
             b_client.action_routers(ctx, 'add_interface', b_router_id,
                                     {'port_id': b_port_id})
         elif t_ports and b_ports:

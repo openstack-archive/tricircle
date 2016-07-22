@@ -37,6 +37,7 @@ from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.network import helper
 
 LOG = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class ServerController(rest.RestController):
     def __init__(self, project_id):
         self.project_id = project_id
         self.clients = {constants.TOP: t_client.Client()}
+        self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
 
     def _get_client(self, pod_name=constants.TOP):
@@ -300,234 +302,30 @@ class ServerController(rest.RestController):
                                           self.project_id, pod, {'id': _id},
                                           _type, list_resources)
 
-    def _get_create_network_body(self, network):
-        body = {
-            'network': {
-                'tenant_id': self.project_id,
-                'name': utils.get_bottom_network_name(network),
-                'admin_state_up': True
-            }
-        }
-        network_type = network.get('provider:network_type')
-        if network_type == constants.NT_SHARED_VLAN:
-            body['network']['provider:network_type'] = 'vlan'
-            body['network']['provider:physical_network'] = network[
-                'provider:physical_network']
-            body['network']['provider:segmentation_id'] = network[
-                'provider:segmentation_id']
-        return body
-
-    def _get_create_subnet_body(self, subnet, bottom_net_id):
-        body = {
-            'subnet': {
-                'network_id': bottom_net_id,
-                'name': subnet['id'],
-                'ip_version': subnet['ip_version'],
-                'cidr': subnet['cidr'],
-                'gateway_ip': subnet['gateway_ip'],
-                'allocation_pools': subnet['allocation_pools'],
-                'enable_dhcp': subnet['enable_dhcp'],
-                'tenant_id': self.project_id
-            }
-        }
-        return body
-
-    def _get_create_port_body(self, port, subnet_map, bottom_net_id,
-                              security_group_ids=None):
-        bottom_fixed_ips = []
-        for ip in port['fixed_ips']:
-            bottom_ip = {'subnet_id': subnet_map[ip['subnet_id']],
-                         'ip_address': ip['ip_address']}
-            bottom_fixed_ips.append(bottom_ip)
-        body = {
-            'port': {
-                'tenant_id': self.project_id,
-                'admin_state_up': True,
-                'name': port['id'],
-                'network_id': bottom_net_id,
-                'mac_address': port['mac_address'],
-                'fixed_ips': bottom_fixed_ips
-            }
-        }
-        if security_group_ids:
-            body['port']['security_groups'] = security_group_ids
-        return body
-
-    def _get_create_dhcp_port_body(self, port, bottom_subnet_id,
-                                   bottom_net_id):
-        body = {
-            'port': {
-                'tenant_id': self.project_id,
-                'admin_state_up': True,
-                'name': port['id'],
-                'network_id': bottom_net_id,
-                'fixed_ips': [
-                    {'subnet_id': bottom_subnet_id,
-                     'ip_address': port['fixed_ips'][0]['ip_address']}
-                ],
-                'mac_address': port['mac_address'],
-                'binding:profile': {},
-                'device_id': 'reserved_dhcp_port',
-                'device_owner': 'network:dhcp',
-            }
-        }
-        return body
-
-    def _prepare_neutron_element(self, context, pod, ele, _type, body):
-        def list_resources(t_ctx, q_ctx, pod_, ele_, _type_):
-            client = self._get_client(pod_['pod_name'])
-            if _type_ == constants.RT_NETWORK:
-                value = utils.get_bottom_network_name(ele_)
-            else:
-                value = ele_['id']
-            return client.list_resources(
-                _type_, t_ctx,
-                [{'key': 'name', 'comparator': 'eq',
-                  'value': value}])
-
-        def create_resources(t_ctx, q_ctx, pod_, body_, _type_):
-            client = self._get_client(pod_['pod_name'])
-            return client.create_resources(_type_, t_ctx, body_)
-
-        # we don't need neutron context, so pass None
-        return t_lock.get_or_create_element(
-            context, None, self.project_id, pod, ele, _type, body,
-            list_resources, create_resources)
-
     def _handle_network(self, context, pod, net, subnets, port=None,
                         top_sg_ids=None, bottom_sg_ids=None):
-        # network
-        net_body = self._get_create_network_body(net)
-        if net_body['network'].get('provider:network_type'):
-            # if network type specified, we need to switch to admin account
-            admin_context = t_context.get_admin_context()
-            _, bottom_net_id = self._prepare_neutron_element(
-                admin_context, pod, net, 'network', net_body)
-        else:
-            _, bottom_net_id = self._prepare_neutron_element(
-                context, pod, net, 'network', net_body)
+        (bottom_net_id,
+         subnet_map) = self.helper.prepare_bottom_network_subnets(
+            context, self.project_id, pod, net, subnets)
 
-        # subnet
-        subnet_map = {}
-        for subnet in subnets:
-            subnet_body = self._get_create_subnet_body(subnet, bottom_net_id)
-            _, bottom_subnet_id = self._prepare_neutron_element(
-                context, pod, subnet, 'subnet', subnet_body)
-            subnet_map[subnet['id']] = bottom_subnet_id
         top_client = self._get_client()
         top_port_body = {'port': {'network_id': net['id'],
                                   'admin_state_up': True}}
         if top_sg_ids:
             top_port_body['port']['security_groups'] = top_sg_ids
 
-        # dhcp port
-        client = self._get_client(pod['pod_name'])
-        t_dhcp_port_filters = [
-            {'key': 'device_owner', 'comparator': 'eq',
-             'value': 'network:dhcp'},
-            {'key': 'network_id', 'comparator': 'eq',
-             'value': net['id']},
-        ]
-        b_dhcp_port_filters = [
-            {'key': 'device_owner', 'comparator': 'eq',
-             'value': 'network:dhcp'},
-            {'key': 'network_id', 'comparator': 'eq',
-             'value': bottom_net_id},
-        ]
-        top_dhcp_port_body = {
-            'port': {
-                'tenant_id': self.project_id,
-                'admin_state_up': True,
-                'name': 'dhcp_port',
-                'network_id': net['id'],
-                'binding:profile': {},
-                'device_id': 'reserved_dhcp_port',
-                'device_owner': 'network:dhcp',
-            }
-        }
-        t_dhcp_ports = top_client.list_ports(context, t_dhcp_port_filters)
-        t_subnet_dhcp_map = {}
-        for dhcp_port in t_dhcp_ports:
-            subnet_id = dhcp_port['fixed_ips'][0]['subnet_id']
-            t_subnet_dhcp_map[subnet_id] = dhcp_port
-        for t_subnet_id, b_subnet_id in subnet_map.iteritems():
-            if t_subnet_id in t_subnet_dhcp_map:
-                t_dhcp_port = t_subnet_dhcp_map[t_subnet_id]
-            else:
-                t_dhcp_port = top_client.create_ports(context,
-                                                      top_dhcp_port_body)
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                context, t_dhcp_port['id'], constants.RT_PORT)
-            pod_list = [mapping[0]['pod_id'] for mapping in mappings]
-            if pod['pod_id'] in pod_list:
-                # mapping exists, skip this subnet
-                continue
-
-            dhcp_port_body = self._get_create_dhcp_port_body(
-                t_dhcp_port, b_subnet_id, bottom_net_id)
-            t_dhcp_ip = t_dhcp_port['fixed_ips'][0]['ip_address']
-
-            b_dhcp_port = None
-            try:
-                b_dhcp_port = client.create_ports(context, dhcp_port_body)
-            except Exception:
-                # examine if we conflicted with a dhcp port which was
-                # automatically created by bottom pod
-                b_dhcp_ports = client.list_ports(context,
-                                                 b_dhcp_port_filters)
-                dhcp_port_match = False
-                for dhcp_port in b_dhcp_ports:
-                    subnet_id = dhcp_port['fixed_ips'][0]['subnet_id']
-                    ip = dhcp_port['fixed_ips'][0]['ip_address']
-                    if b_subnet_id == subnet_id and t_dhcp_ip == ip:
-                        with context.session.begin():
-                            core.create_resource(
-                                context, models.ResourceRouting,
-                                {'top_id': t_dhcp_port['id'],
-                                 'bottom_id': dhcp_port['id'],
-                                 'pod_id': pod['pod_id'],
-                                 'project_id': self.project_id,
-                                 'resource_type': constants.RT_PORT})
-                        dhcp_port_match = True
-                        break
-                if not dhcp_port_match:
-                    # so we didn't conflict with a dhcp port, raise exception
-                    raise
-
-            if b_dhcp_port:
-                with context.session.begin():
-                    core.create_resource(context, models.ResourceRouting,
-                                         {'top_id': t_dhcp_port['id'],
-                                          'bottom_id': b_dhcp_port['id'],
-                                          'pod_id': pod['pod_id'],
-                                          'project_id': self.project_id,
-                                          'resource_type': constants.RT_PORT})
-                # there is still one thing to do, there may be other dhcp ports
-                # created by bottom pod, we need to delete them
-                b_dhcp_ports = client.list_ports(context,
-                                                 b_dhcp_port_filters)
-                remove_port_list = []
-                for dhcp_port in b_dhcp_ports:
-                    subnet_id = dhcp_port['fixed_ips'][0]['subnet_id']
-                    ip = dhcp_port['fixed_ips'][0]['ip_address']
-                    if b_subnet_id == subnet_id and t_dhcp_ip != ip:
-                        remove_port_list.append(dhcp_port['id'])
-                for dhcp_port_id in remove_port_list:
-                    # NOTE(zhiyuan) dhcp agent will receive this port-delete
-                    # notification and re-configure dhcp so our newly created
-                    # dhcp port can be used
-                    client.delete_ports(context, dhcp_port_id)
-
         # port
         if not port:
             port = top_client.create_ports(context, top_port_body)
-            port_body = self._get_create_port_body(
-                port, subnet_map, bottom_net_id, bottom_sg_ids)
+            port_body = self.helper.get_create_port_body(
+                self.project_id, port, subnet_map, bottom_net_id,
+                bottom_sg_ids)
         else:
-            port_body = self._get_create_port_body(port, subnet_map,
-                                                   bottom_net_id)
-        _, bottom_port_id = self._prepare_neutron_element(context, pod, port,
-                                                          'port', port_body)
+            port_body = self.helper.get_create_port_body(
+                self.project_id, port, subnet_map, bottom_net_id)
+        _, bottom_port_id = self.helper.prepare_bottom_element(
+            context, self.project_id, pod, port, constants.RT_PORT, port_body)
+
         return port['id'], bottom_port_id
 
     def _handle_port(self, context, pod, port):
@@ -571,8 +369,8 @@ class ServerController(rest.RestController):
                 'security_group': {
                     'name': t_sg['id'],
                     'description': t_sg['description']}}
-            is_new, b_sg_id = self._prepare_neutron_element(
-                context, pod, t_sg, constants.RT_SG, sg_body)
+            is_new, b_sg_id = self.helper.prepare_bottom_element(
+                context, self.project_id, pod, t_sg, constants.RT_SG, sg_body)
             t_sg_ids.append(t_sg['id'])
             is_news.append(is_new)
             b_sg_ids.append(b_sg_id)

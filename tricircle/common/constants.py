@@ -57,6 +57,8 @@ ns_bridge_subnet_name = 'ns_bridge_subnet_%s'  # project_id
 # for floating ip port: project_id None b_internal_port_id
 ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
 
+dhcp_port_name = 'dhcp_port_%s'  # subnet_id
+
 MAX_INT = 0x7FFFFFFF
 expire_time = datetime.datetime(2000, 1, 1)
 

@@ -31,6 +31,7 @@ from tricircle.common import xrpcapi
 from tricircle.db import api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.network import helper
 from tricircle.nova_apigw.controllers import server
 
 
@@ -70,6 +71,7 @@ class FakeServerController(server.ServerController):
     def __init__(self, project_id):
         self.clients = {'t_region': FakeClient('t_region')}
         self.project_id = project_id
+        self.helper = FakeHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
 
     def _get_client(self, pod_name=None):
@@ -79,6 +81,11 @@ class FakeServerController(server.ServerController):
             if pod_name not in self.clients:
                 self.clients[pod_name] = FakeClient(pod_name)
         return self.clients[pod_name]
+
+
+class FakeHelper(helper.NetworkHelper):
+    def _get_client(self, pod_name=None):
+        return FakeClient(pod_name)
 
 
 class FakeClient(object):
@@ -98,6 +105,8 @@ class FakeClient(object):
                             'security_group': BOTTOM2_SGS}}
 
     def __init__(self, pod_name):
+        if not pod_name:
+            pod_name = 't_region'
         self.pod_name = pod_name
         self.ip_suffix_gen = self._get_ip_suffix()
 
@@ -122,6 +131,25 @@ class FakeClient(object):
     def create_resources(self, _type, ctx, body):
         if 'id' not in body[_type]:
             body[_type]['id'] = uuidutils.generate_uuid()
+        if _type == 'port' and 'fixed_ips' not in body[_type]:
+            net_id = body['port']['network_id']
+            subnets = self._get_res_list('subnet')
+            fixed_ip_list = []
+            for subnet in subnets:
+                if subnet['network_id'] == net_id:
+                    cidr = subnet['cidr']
+                    ip_prefix = cidr[:cidr.rindex('.') + 1]
+                    mac_prefix = 'fa:16:3e:96:41:0'
+                    if 'device_owner' in body['port']:
+                        ip = ip_prefix + '2'
+                        body['port']['mac_address'] = mac_prefix + '2'
+                    else:
+                        suffix = self.ip_suffix_gen.next()
+                        ip = ip_prefix + suffix
+                        body['port']['mac_address'] = mac_prefix + suffix
+                    fixed_ip_list.append({'ip_address': ip,
+                                          'subnet_id': subnet['id']})
+            body['port']['fixed_ips'] = fixed_ip_list
         if _type == 'port' and 'fixed_ips' in body[_type]:
             ip_dict = body[_type]['fixed_ips'][0]
             self._check_port_ip_conflict(ip_dict['subnet_id'],
@@ -177,26 +205,6 @@ class FakeClient(object):
             index %= 3
 
     def create_ports(self, ctx, body):
-        if 'fixed_ips' in body['port']:
-            return self.create_resources('port', ctx, body)
-        net_id = body['port']['network_id']
-        subnets = self._get_res_list('subnet')
-        fixed_ip_list = []
-        for subnet in subnets:
-            if subnet['network_id'] == net_id:
-                cidr = subnet['cidr']
-                ip_prefix = cidr[:cidr.rindex('.') + 1]
-                mac_prefix = 'fa:16:3e:96:41:0'
-                if 'device_owner' in body['port']:
-                    ip = ip_prefix + '2'
-                    body['port']['mac_address'] = mac_prefix + '2'
-                else:
-                    suffix = self.ip_suffix_gen.next()
-                    ip = ip_prefix + suffix
-                    body['port']['mac_address'] = mac_prefix + suffix
-                fixed_ip_list.append({'ip_address': ip,
-                                      'subnet_id': subnet['id']})
-        body['port']['fixed_ips'] = fixed_ip_list
         return self.create_resources('port', ctx, body)
 
     def list_ports(self, ctx, filters):
@@ -224,6 +232,11 @@ class FakeClient(object):
         return self.list_resources(
             'subnet', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
+
+    def get_ports(self, ctx, port_id):
+        return self.list_resources(
+            'port', ctx,
+            [{'key': 'id', 'comparator': 'eq', 'value': port_id}])[0]
 
     def create_servers(self, ctx, **body):
         body['id'] = uuidutils.generate_uuid()
@@ -378,25 +391,26 @@ class ServerTest(unittest.TestCase):
 
     def test_prepare_neutron_element(self):
         t_pod, b_pod = self._prepare_pod()
-        port = {'id': 'top_port_id'}
-        body = {'port': {'name': 'top_port_id'}}
-        is_new, bottom_port_id = self.controller._prepare_neutron_element(
-            self.context, b_pod, port, 'port', body)
+        net = {'id': 'top_net_id'}
+        body = {'network': {'name': 'top_net_id'}}
+        is_new, bottom_port_id = self.controller.helper.prepare_bottom_element(
+            self.context, self.project_id, b_pod, net, 'network', body)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
-                                                     'top_port_id', 'port')
+                                                     'top_net_id', 'network')
         self.assertEqual(bottom_port_id, mappings[0][1])
 
     @patch.object(FakeClient, 'create_resources')
     def test_prepare_neutron_element_create_res_exception(self, mock_method):
         mock_method.side_effect = FakeException()
         t_pod, b_pod = self._prepare_pod()
-        port = {'id': 'top_port_id'}
-        body = {'port': {'name': 'top_port_id'}}
+        net = {'id': 'top_net_id'}
+        body = {'network': {'name': 'top_net_id'}}
         self.assertRaises(FakeException,
-                          self.controller._prepare_neutron_element,
-                          self.context, b_pod, port, 'port', body)
+                          self.controller.helper.prepare_bottom_element,
+                          self.context, self.project_id, b_pod, net,
+                          'network', body)
         mappings = api.get_bottom_mappings_by_top_id(self.context,
-                                                     'top_port_id', 'port')
+                                                     'top_net_id', 'network')
         self.assertEqual(0, len(mappings))
 
     def _check_routes(self):
@@ -408,8 +422,10 @@ class ServerTest(unittest.TestCase):
         with self.context.session.begin():
             routes = core.query_resource(self.context,
                                          models.ResourceRouting, [], [])
-        self.assertEqual(4, len(routes))
-        actual = [[], [], [], []]
+        # bottom network, bottom subnet, bottom port, top dhcp, bottom dhcp
+        self.assertEqual(5, len(routes))
+        actual = [[], [], [], [], []]
+        actual[4].append(constants.dhcp_port_name % TOP_SUBNETS[0]['id'])
         for region in ('t_region', 'b_region'):
             actual[0].append(self.controller._get_client(
                 region).list_resources('network', self.context, [])[0]['id'])
@@ -420,9 +436,14 @@ class ServerTest(unittest.TestCase):
             if 'device_id' in t_ports[0]:
                 actual[2].append(t_ports[0]['id'])
                 actual[3].append(t_ports[1]['id'])
+                if region == 't_region':
+                    actual[4].append(t_ports[0]['id'])
             else:
                 actual[2].append(t_ports[1]['id'])
                 actual[3].append(t_ports[0]['id'])
+                if region == 't_region':
+                    actual[4].append(t_ports[1]['id'])
+
         expect = [[route['top_id'], route['bottom_id']] for route in routes]
         self.assertItemsEqual(expect, actual)
 
