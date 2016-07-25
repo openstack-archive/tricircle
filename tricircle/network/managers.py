@@ -82,7 +82,6 @@ class TricircleTypeManager(managers.TypeManager):
             return
         segments = self._process_provider_create(network)
         session = context.session
-        mtu = []
         with session.begin(subtransactions=True):
             network_id = network['id']
             if segments:
@@ -90,10 +89,10 @@ class TricircleTypeManager(managers.TypeManager):
                     segment = self.reserve_provider_segment(
                         session, segment)
                     self._add_network_segment(context, network_id, segment,
-                                              mtu, segment_index)
+                                              segment_index)
             else:
                 segment = self._allocate_tenant_net_segment(session)
-                self._add_network_segment(context, network_id, segment, mtu)
+                self._add_network_segment(context, network_id, segment)
 
     def extend_networks_dict_provider(self, context, networks):
         internal_networks = []
