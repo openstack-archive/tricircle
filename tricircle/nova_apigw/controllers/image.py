@@ -140,6 +140,8 @@ class ImageController(rest.RestController):
     @expose(generic=True, template='json')
     def get_one(self, _id):
         context = t_context.extract_context_from_environ()
+        if _id == 'detail':
+            return self.get_all()
         image = self.client.get_images(context, _id)
         if not image:
             return utils.format_nova_error(404, _('Image not found'))

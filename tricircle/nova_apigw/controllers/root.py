@@ -125,7 +125,17 @@ class V21Controller(object):
         if project_id == 'testrpc':
             return TestRPCController(), remainder
         else:
-            return self._get_resource_controller(project_id, remainder)
+            # If the last charater of the url path is '/', then
+            # last remainder element is ''. Since pecan can't
+            # handle the url properly, '' element must be removed.
+            # Otherwise pecan will crashed for routing the request
+            # with incorrect parameter
+            num = len(remainder)
+            if num >= 1 and remainder[num - 1] == '':
+                new_remainder = remainder[:num - 1]
+            else:
+                new_remainder = remainder
+            return self._get_resource_controller(project_id, new_remainder)
 
     @pecan.expose(generic=True, template='json')
     def index(self):

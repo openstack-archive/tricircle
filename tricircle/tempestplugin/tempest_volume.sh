@@ -12,45 +12,25 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+
 export DEST=$BASE/new
-export DEVSTACK_DIR=$DEST/tricircle/devstack
-export TRICIRCLE_DIR=$DEST/tricircle
 export TEMPEST_DIR=$DEST/tempest
 export TEMPEST_CONF=$TEMPEST_DIR/etc/tempest.conf
 
-
 # preparation for the tests
 cd $TEMPEST_DIR
-
-# Import functions needed for the below workaround
-source $DEST/devstack/functions
-
-# add account information to configuration
-source $BASE/new/devstack/openrc admin admin
-env | grep OS_
-iniset $TEMPEST_CONF auth admin_username admin
-iniset $TEMPEST_CONF auth admin_project_name admin
-iniset $TEMPEST_CONF auth admin_password $OS_PASSWORD
-iniset $TEMPEST_CONF identity uri $OS_AUTH_URL
-iniset $TEMPEST_CONF identity-feature-enabled api_v3 false
-
-# change the configruation to test Tricircle Cinder-APIGW
-iniset $TEMPEST_CONF volume region RegionOne
-iniset $TEMPEST_CONF volume catalog_type volumev2
-iniset $TEMPEST_CONF volume endpoint_type publicURL
-iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
 
 # Run functional test
 echo "Running Tricircle functional test suite..."
 
 # all test cases with following prefix
-ostestr --regex '(tempest.api.volume.test_volumes_list|\
-tempest.api.volume.test_volumes_get)'
+TESTCASES="(tempest.api.volume.test_volumes_list"
+TESTCASES="$TESTCASES|tempest.api.volume.test_volumes_get"
+# add new test cases like following line for volume_type test
+# TESTCASES="$TESTCASES|tempest.api.volume.admin.test_volumes_type"
+TESTCASES="$TESTCASES)"
 
-# add test_volume_type like this for volume_type test
-# ostestr --regex '(tempest.api.volume.test_volumes_list|\
-# tempest.api.volume.test_volumes_get|\
-# tempest.api.volume.admin.test_volume_type)'
+ostestr --regex $TESTCASES
 
 # --------------------- IMPORTANT begin -------------------- #
 # all following test cases are from Cinder tempest test cases,
