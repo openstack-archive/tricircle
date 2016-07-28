@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from neutron.common import exceptions
+from neutron_lib import exceptions
 
 from tricircle.common.i18n import _
 

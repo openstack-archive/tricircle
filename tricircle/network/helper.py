@@ -13,7 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import netaddr
+
 from neutron_lib import constants
+import neutronclient.common.exceptions as q_cli_exceptions
 
 from tricircle.common import client
 import tricircle.common.constants as t_constants
@@ -21,9 +24,12 @@ import tricircle.common.context as t_context
 import tricircle.common.lock_handle as t_lock
 from tricircle.common import utils
 import tricircle.db.api as db_api
+import tricircle.network.exceptions as t_network_exc
 
 
 # manually define these constants to avoid depending on neutron repos
+# neutron.extensions.availability_zone.AZ_HINTS
+AZ_HINTS = 'availability_zone_hints'
 EXTERNAL = 'router:external'  # neutron.extensions.external_net.EXTERNAL
 TYPE_VLAN = 'vlan'  # neutron.plugins.common.constants.TYPE_VLAN
 
@@ -210,22 +216,44 @@ class NetworkHelper(object):
         return body
 
     @staticmethod
-    def get_create_subnet_body(project_id, t_subnet, b_net_id):
+    def get_create_subnet_body(project_id, t_subnet, b_net_id, gateway_ip):
         """Get request body to create bottom subnet
 
         :param project_id: project id
         :param t_subnet: top subnet dict
         :param b_net_id: bottom network id
+        :param gateway_ip: bottom gateway ip
         :return: request body to create bottom subnet
         """
+        pools = t_subnet['allocation_pools']
+        new_pools = []
+        g_ip = netaddr.IPAddress(gateway_ip)
+        ip_found = False
+        for pool in pools:
+            if ip_found:
+                new_pools.append({'start': pool['start'],
+                                  'end': pool['end']})
+                continue
+            ip_range = netaddr.IPRange(pool['start'], pool['end'])
+            ip_num = len(ip_range)
+            for i, ip in enumerate(ip_range):
+                if g_ip == ip:
+                    ip_found = True
+                    if i > 0:
+                        new_pools.append({'start': ip_range[0].format(),
+                                          'end': ip_range[i - 1].format()})
+                    if i < ip_num - 1:
+                        new_pools.append(
+                            {'start': ip_range[i + 1].format(),
+                             'end': ip_range[ip_num - 1].format()})
         body = {
             'subnet': {
                 'network_id': b_net_id,
                 'name': t_subnet['id'],
                 'ip_version': t_subnet['ip_version'],
                 'cidr': t_subnet['cidr'],
-                'gateway_ip': t_subnet['gateway_ip'],
-                'allocation_pools': t_subnet['allocation_pools'],
+                'gateway_ip': gateway_ip,
+                'allocation_pools': new_pools,
                 'enable_dhcp': False,
                 'tenant_id': project_id
             }
@@ -264,11 +292,40 @@ class NetworkHelper(object):
             body['port']['security_groups'] = b_security_group_ids
         return body
 
-    def prepare_bottom_network_subnets(self, t_ctx, project_id, pod,
+    def get_create_interface_body(self, project_id, t_net_id, b_pod_id,
+                                  t_subnet_id):
+        """Get request body to create top interface
+
+        :param project_id: project id
+        :param t_net_id: top network id
+        :param b_pod_id: bottom pod id
+        :param t_subnet_id: top subnet id
+        :return:
+        """
+        t_interface_name = t_constants.interface_port_name % (b_pod_id,
+                                                              t_subnet_id)
+        t_interface_body = {
+            'port': {
+                'tenant_id': project_id,
+                'admin_state_up': True,
+                'name': t_interface_name,
+                'network_id': t_net_id,
+                'device_id': '',
+                'device_owner': 'network:router_interface',
+            }
+        }
+        if self.call_obj:
+            t_interface_body['port'].update(
+                {'mac_address': constants.ATTR_NOT_SPECIFIED,
+                 'fixed_ips': constants.ATTR_NOT_SPECIFIED})
+        return t_interface_body
+
+    def prepare_bottom_network_subnets(self, t_ctx, q_ctx, project_id, pod,
                                        t_net, t_subnets):
         """Get or create bottom network, subnet and dhcp port
 
         :param t_ctx: tricircle context
+        :param q_ctx: neutron context
         :param project_id: project id
         :param pod: dict of bottom pod
         :param t_net: dict of top network
@@ -295,8 +352,22 @@ class NetworkHelper(object):
         subnet_dhcp_map = {}
 
         for subnet in t_subnets:
+            # gateway
+            t_interface_name = t_constants.interface_port_name % (
+                pod['pod_id'], subnet['id'])
+
+            t_interface_body = self.get_create_interface_body(
+                project_id, t_net['id'], pod['pod_id'], subnet['id'])
+
+            _, t_interface_id = self.prepare_top_element(
+                t_ctx, q_ctx, project_id, pod, {'id': t_interface_name},
+                t_constants.RT_PORT, t_interface_body)
+            t_interface = self._get_top_element(
+                t_ctx, q_ctx, t_constants.RT_PORT, t_interface_id)
+            gateway_ip = t_interface['fixed_ips'][0]['ip_address']
+
             subnet_body = self.get_create_subnet_body(
-                project_id, subnet, b_net_id)
+                project_id, subnet, b_net_id, gateway_ip)
             _, b_subnet_id = self.prepare_bottom_element(
                 t_ctx, project_id, pod, subnet, t_constants.RT_SUBNET,
                 subnet_body)
@@ -445,3 +516,40 @@ class NetworkHelper(object):
             project_id, t_dhcp_port, b_subnet_id, b_net_id)
         self.prepare_bottom_element(ctx, project_id, b_pod, t_dhcp_port,
                                     t_constants.RT_PORT, dhcp_port_body)
+
+    @staticmethod
+    def _safe_create_bottom_floatingip(t_ctx, pod, client, fip_net_id,
+                                       fip_address, port_id):
+        try:
+            client.create_floatingips(
+                t_ctx, {'floatingip': {'floating_network_id': fip_net_id,
+                                       'floating_ip_address': fip_address,
+                                       'port_id': port_id}})
+        except q_cli_exceptions.IpAddressInUseClient:
+            fips = client.list_floatingips(t_ctx,
+                                           [{'key': 'floating_ip_address',
+                                             'comparator': 'eq',
+                                             'value': fip_address}])
+            if not fips:
+                # this is rare case that we got IpAddressInUseClient exception
+                # a second ago but now the floating ip is missing
+                raise t_network_exc.BottomPodOperationFailure(
+                    resource='floating ip', pod_name=pod['pod_name'])
+            associated_port_id = fips[0].get('port_id')
+            if associated_port_id == port_id:
+                # the internal port associated with the existing fip is what
+                # we expect, just ignore this exception
+                pass
+            elif not associated_port_id:
+                # the existing fip is not associated with any internal port,
+                # update the fip to add association
+                client.update_floatingips(t_ctx, fips[0]['id'],
+                                          {'floatingip': {'port_id': port_id}})
+            else:
+                raise
+
+    def _get_top_element(self, t_ctx, q_ctx, _type, _id):
+        if self.call_obj:
+            return getattr(self.call_obj, 'get_%s' % _type)(q_ctx, _id)
+        else:
+            return getattr(self._get_client(), 'get_%ss' % _type)(t_ctx, _id)

@@ -138,6 +138,13 @@ class XManagerTest(unittest.TestCase):
                 'fixed_ips': [{'subnet_id': subnet['id'],
                                'ip_address': subnet['gateway_ip']}]
             }
+            vm_port = {
+                'network_id': network['id'],
+                'device_id': 'vm%d_id' % i,
+                'device_owner': 'compute:None',
+                'fixed_ips': [{'subnet_id': subnet['id'],
+                               'ip_address': '10.0.%d.3' % i}]
+            }
             bridge_port = {
                 'network_id': bridge_network['id'],
                 'device_id': router['id'],
@@ -151,6 +158,7 @@ class XManagerTest(unittest.TestCase):
             RES_MAP[pod_name]['subnet'].append(subnet)
             RES_MAP[pod_name]['subnet'].append(bridge_subnet)
             RES_MAP[pod_name]['port'].append(port)
+            RES_MAP[pod_name]['port'].append(vm_port)
             RES_MAP[pod_name]['port'].append(bridge_port)
             RES_MAP[pod_name]['router'].append(router)
 
@@ -169,20 +177,35 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'network:router_interface',
                              'fixed_ips': [{'subnet_id': 'subnet_3_id',
                                             'ip_address': '10.0.3.1'}]})
+        BOTTOM1_PORT.append({'network_id': 'network_3_id',
+                             'device_id': 'vm3_id',
+                             'device_owner': 'compute:None',
+                             'fixed_ips': [{'subnet_id': 'subnet_3_id',
+                                            'ip_address': '10.0.3.3'}]})
 
         self.xmanager.configure_extra_routes(self.context,
                                              payload={'router': top_router_id})
         calls = [mock.call(self.context, 'router_1_id',
                            {'router': {
                                'routes': [{'nexthop': '100.0.1.2',
-                                           'destination': '10.0.2.0/24'}]}}),
+                                           'destination': '10.0.2.3/32'}]}}),
                  mock.call(self.context, 'router_2_id',
                            {'router': {
                                'routes': [{'nexthop': '100.0.1.1',
-                                           'destination': '10.0.1.0/24'},
+                                           'destination': '10.0.1.3/32'},
                                           {'nexthop': '100.0.1.1',
-                                           'destination': '10.0.3.0/24'}]}})]
-        mock_update.assert_has_calls(calls)
+                                           'destination': '10.0.3.3/32'}]}}),
+                 mock.call(self.context, 'router_2_id',
+                           {'router': {
+                               'routes': [{'nexthop': '100.0.1.1',
+                                           'destination': '10.0.3.3/32'},
+                                          {'nexthop': '100.0.1.1',
+                                           'destination': '10.0.1.3/32'}]}})]
+
+        called = mock_update.call_args_list[1] == calls[1]
+        called = called or (mock_update.call_args_list[1] == calls[2])
+        called = called and (mock_update.call_args_list[0] == calls[0])
+        self.assertTrue(called)
 
     def test_job_handle(self):
         @xmanager._job_handle('fake_resource')

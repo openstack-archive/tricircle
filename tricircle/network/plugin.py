@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
+
 from oslo_config import cfg
 import oslo_log.helpers as log_helpers
 from oslo_log import log
@@ -34,7 +36,6 @@ from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
-import neutron.plugins.common.constants as p_constants
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
 
@@ -403,6 +404,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             bottom_port_id = mappings[0][1]
             port = self._get_client(pod_name).get_ports(
                 t_ctx, bottom_port_id)
+            # TODO(zhiyuan) handle the case that bottom port does not exist
             port['id'] = port_id
             if fields:
                 port = dict(
@@ -679,20 +681,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def delete_router(self, context, _id):
         super(TricirclePlugin, self).delete_router(context, _id)
 
-    def _judge_network_across_pods(self, context, interface, add_by_port):
-        if add_by_port:
-            port = self.get_port(context, interface['port_id'])
-            net_id = port['network_id']
-        else:
-            subnet = self.get_subnet(context, interface['subnet_id'])
-            net_id = subnet['network_id']
-        network = self.get_network(context, net_id)
-        if len(network.get(az_ext.AZ_HINTS, [])) != 1:
-            # Currently not support cross pods l3 networking so
-            # raise an exception here
-            raise Exception('Cross pods L3 networking not support')
-        return network[az_ext.AZ_HINTS][0], network
-
     def _prepare_top_element(self, t_ctx, q_ctx,
                              project_id, pod, ele, _type, body):
         return self.helper.prepare_top_element(
@@ -783,16 +771,23 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                    b_port_id, is_ew)
         return super(TricirclePlugin, self).get_port(q_ctx, port_id)
 
-    @staticmethod
-    def _transfer_network_type(network_type):
-        network_type_map = {t_constants.NT_SHARED_VLAN: p_constants.TYPE_VLAN}
-        return network_type_map.get(network_type, network_type)
-
     def _get_bottom_bridge_elements(self, q_ctx, project_id,
                                     pod, t_net, is_external, t_subnet, t_port):
         t_ctx = t_context.get_context_from_neutron_context(q_ctx)
         return self.helper.get_bottom_bridge_elements(
             t_ctx, project_id, pod, t_net, is_external, t_subnet, t_port)
+
+    def _get_net_pods_by_interface_info(self, t_ctx, q_ctx, add_by_port,
+                                        interface_info):
+        if add_by_port:
+            port = self.get_port(q_ctx, interface_info['port_id'])
+            net_id = port['network_id']
+        else:
+            subnet = self.get_subnet(q_ctx, interface_info['subnet_id'])
+            net_id = subnet['network_id']
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, net_id, t_constants.RT_NETWORK)
+        return net_id, [mapping[0] for mapping in mappings]
 
     # NOTE(zhiyuan) the origin implementation in l3_db uses port returned from
     # get_port in core plugin to check, change it to base plugin, since only
@@ -807,14 +802,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             msg = _('Router port must have at least one fixed IP')
             raise exceptions.BadRequest(resource='router', msg=msg)
         return port
-
-    def _unbound_top_interface(self, context, router_id, port_id):
-        super(TricirclePlugin, self).update_port(
-            context, port_id, {'port': {'device_id': '',
-                                        'device_owner': ''}})
-        with context.session.begin():
-            query = context.session.query(l3_db.RouterPort)
-            query.filter_by(port_id=port_id, router_id=router_id).delete()
 
     def _add_router_gateway(self, context, router_id, router_data):
         # get top external network information
@@ -918,15 +905,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         b_client = self._get_client(pod_name)
         b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
 
-    def _update_bottom_router_gateway(self, context, router_id, router_data):
-        ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
-        if ext_net_id:
-            self._add_router_gateway(context, router_id, router_data)
-        else:
-            self._remove_router_gateway(context, router_id)
-
     def update_router(self, context, router_id, router):
-        router_data = router['router']
+        # TODO(zhiyuan) handle the case that SNAT is disabled
+        # and check if bridge network solution works with IPv6
+        router_data = copy.deepcopy(router['router'])
+        need_update_bottom = False
+        is_add = False
+        if attributes.is_attr_set(router_data.get(l3.EXTERNAL_GW_INFO)):
+            need_update_bottom = True
+            ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
+            if ext_net_id:
+                is_add = True
         # TODO(zhiyuan) solve ip address conflict issue
         # if user creates floating ip before set router gateway, we may trigger
         # ip address conflict here. let's say external cidr is 163.3.124.0/24,
@@ -938,10 +927,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         #
         # before this issue is solved, user should set router gateway before
         # create floating ip.
-        if attributes.is_attr_set(router_data.get(l3.EXTERNAL_GW_INFO)):
-            self._update_bottom_router_gateway(context, router_id, router_data)
-        return super(TricirclePlugin, self).update_router(context, router_id,
-                                                          router)
+        if not need_update_bottom:
+            return super(TricirclePlugin, self).update_router(
+                context, router_id, router)
+        if is_add:
+            ret = super(TricirclePlugin, self).update_router(
+                context, router_id, router)
+            router_data[l3.EXTERNAL_GW_INFO].update(ret[l3.EXTERNAL_GW_INFO])
+            self._add_router_gateway(context, router_id, router_data)
+            return ret
+        else:
+            self._remove_router_gateway(context, router_id)
+            return super(TricirclePlugin, self).update_router(
+                context, router_id, router)
 
     def add_router_interface(self, context, router_id, interface_info):
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -949,11 +947,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         router = self._get_router(context, router_id)
         project_id = router['tenant_id']
         add_by_port, _ = self._validate_interface_info(interface_info)
-        # make sure network not crosses pods
-        # TODO(zhiyuan) support cross-pod tenant network
-        az, t_net = self._judge_network_across_pods(
-            context, interface_info, add_by_port)
-        b_pod, b_az = az_ag.get_pod_by_az_tenant(t_ctx, az, project_id)
+
+        net_id, b_pods = self._get_net_pods_by_interface_info(
+            t_ctx, context, add_by_port, interface_info)
         t_pod = db_api.get_top_pod(t_ctx)
         assert t_pod
 
@@ -970,10 +966,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         else:
             ext_net_pod_names = set(
                 [ext_net[az_ext.AZ_HINTS][0] for ext_net in ext_nets])
-            if b_pod['pod_name'] in ext_net_pod_names:
-                need_ns_bridge = False
-            else:
-                need_ns_bridge = True
+            need_ns_bridge = False
+            for b_pod in b_pods:
+                if b_pod['pod_name'] not in ext_net_pod_names:
+                    need_ns_bridge = True
+                    break
         if need_ns_bridge:
             pool_id = self._get_bridge_subnet_pool_id(
                 t_ctx, context, None, t_pod, False)
@@ -982,9 +979,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         return_info = super(TricirclePlugin, self).add_router_interface(
             context, router_id, interface_info)
+        if not b_pods:
+            return return_info
         try:
-            self.xjob_handler.setup_bottom_router(
-                t_ctx, t_net['id'], router_id, b_pod['pod_id'])
+            if len(b_pods) == 1:
+                self.xjob_handler.setup_bottom_router(
+                    t_ctx, net_id, router_id, b_pods[0]['pod_id'])
+            else:
+                self.xjob_handler.setup_bottom_router(
+                    t_ctx, net_id, router_id, t_constants.POD_NOT_SPECIFIED)
         except Exception:
             # NOTE(zhiyuan) we fail to submit the job, so bottom router
             # operations are not started, it's safe for us to remove the top
@@ -1003,32 +1006,35 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def remove_router_interface(self, context, router_id, interface_info):
         t_ctx = t_context.get_context_from_neutron_context(context)
 
-        router = self._get_router(context, router_id)
-        project_id = router['tenant_id']
         add_by_port, _ = self._validate_interface_info(interface_info,
                                                        for_removal=True)
-        # make sure network not crosses pods
-        # TODO(zhiyuan) support cross-pod tenant network
-        az, t_net = self._judge_network_across_pods(
-            context, interface_info, add_by_port)
-        b_pod, b_az = az_ag.get_pod_by_az_tenant(t_ctx, az, project_id)
+        net_id, b_pods = self._get_net_pods_by_interface_info(
+            t_ctx, context, add_by_port, interface_info)
 
         return_info = super(TricirclePlugin, self).remove_router_interface(
             context, router_id, interface_info)
+        if not b_pods:
+            return return_info
         try:
-            self.xjob_handler.setup_bottom_router(
-                t_ctx, t_net['id'], router_id, b_pod['pod_id'])
+            if len(b_pods) == 1:
+                self.xjob_handler.setup_bottom_router(
+                    t_ctx, net_id, router_id, b_pods[0]['pod_id'])
+            else:
+                self.xjob_handler.setup_bottom_router(
+                    t_ctx, net_id, router_id, t_constants.POD_NOT_SPECIFIED)
         except Exception:
             # NOTE(zhiyuan) we fail to submit the job, so if bottom router
             # interface exists, it would not be deleted, then after we add
-            # the top interface again, the relation of top and bottom router
-            # interfaces are not updated in the resource routing entry. this
-            # inconsistency would not cause problem because:
-            # (1) when querying interface port, top port information is
-            #     returned, not rely on routing entry
-            # (2) when setting up bottom router, xjob directly queries top
-            #     and bottom interfaces, not rely on routing entry neither
-            # we may need some routing entry clean up process`
+            # the top interface again, the bottom router setup job will reuse
+            # the existing bottom interface.
+            #
+            # we don't create a routing entry between top interface and bottom
+            # interface, instead, when we create bottom subnet, we specify the
+            # ip of the top interface as the gateway ip of the bottom subnet.
+            # later when we attach the bottom subnet to bottom router, neutron
+            # server in bottom pod will create the bottom interface using the
+            # gateway ip automatically.
+            interface_info = {'subnet_id': return_info['subnet_id']}
             super(TricirclePlugin, self).add_router_interface(
                 context, router_id, interface_info)
             raise
@@ -1125,96 +1131,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         fip = floatingip['floatingip']
         floatingip_db = self._get_floatingip(context, _id)
         int_port_id = fip['port_id']
-        project_id = floatingip_db['tenant_id']
-        fip_address = floatingip_db['floating_ip_address']
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, int_port_id, t_constants.RT_PORT)
         if not mappings:
-            int_port = self.get_port(context, int_port_id)
-            int_network = self.get_network(context, int_port['network_id'])
-            if az_ext.AZ_HINTS not in int_network:
-                raise Exception('Cross pods L3 networking not support')
-            self._validate_availability_zones(
-                context, int_network[az_ext.AZ_HINTS], False)
-            int_net_pod, _ = az_ag.get_pod_by_az_tenant(
-                t_ctx, int_network[az_ext.AZ_HINTS][0], project_id)
-            b_int_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-                t_ctx, int_network['id'], int_net_pod['pod_name'],
-                t_constants.RT_NETWORK)
-            b_int_port_body = {
-                'port': {
-                    'tenant_id': project_id,
-                    'admin_state_up': True,
-                    'name': int_port['id'],
-                    'network_id': b_int_net_id,
-                    'mac_address': int_port['mac_address'],
-                    'fixed_ips': [{'ip_address': int_port['fixed_ips'][0][
-                        'ip_address']}]
-                }
-            }
-            # TODO(zhiyuan) handle DHCP port ip address conflict problem
-            _, b_int_port_id = self._prepare_bottom_element(
-                t_ctx, project_id, int_net_pod, int_port,
-                t_constants.RT_PORT, b_int_port_body)
-        else:
-            int_net_pod, b_int_port_id = mappings[0]
-        ext_net_id = floatingip_db['floating_network_id']
-        ext_net = self.get_network(context, ext_net_id)
-        ext_net_pod = db_api.get_pod_by_name(t_ctx,
-                                             ext_net[az_ext.AZ_HINTS][0])
-
-        # external network and internal network are in the same pod, no
-        # need to use bridge network.
-        if int_net_pod['pod_name'] == ext_net_pod['pod_name']:
-            client = self._get_client(int_net_pod['pod_name'])
-            b_ext_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-                t_ctx, ext_net_id, ext_net_pod['pod_name'],
-                t_constants.RT_NETWORK)
-            self._safe_create_bottom_floatingip(
-                t_ctx, int_net_pod, client, b_ext_net_id, fip_address,
-                b_int_port_id)
+            # mapping does not exist, meaning that the bottom port has not
+            # been created, we just return and leave the work to setup bottom
+            # floating ip to nova api gateway
             return
 
-        # below handle the case that external network and internal network
-        # are in different pods
-        int_client = self._get_client(int_net_pod['pod_name'])
-        ext_client = self._get_client(ext_net_pod['pod_name'])
-        ns_bridge_net_name = t_constants.ns_bridge_net_name % project_id
-        ns_bridge_net = self.get_networks(
-            context, {'name': [ns_bridge_net_name]})[0]
-        int_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, ns_bridge_net['id'], int_net_pod['pod_name'],
-            t_constants.RT_NETWORK)
-        ext_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, ns_bridge_net['id'], ext_net_pod['pod_name'],
-            t_constants.RT_NETWORK)
-
-        t_pod = db_api.get_top_pod(t_ctx)
-        t_ns_bridge_port = self._get_bridge_interface(
-            t_ctx, context, project_id, t_pod, ns_bridge_net['id'],
-            None, b_int_port_id, False)
-        port_body = {
-            'port': {
-                'tenant_id': project_id,
-                'admin_state_up': True,
-                'name': 'ns_bridge_port',
-                'network_id': ext_bridge_net_id,
-                'fixed_ips': [{'ip_address': t_ns_bridge_port[
-                    'fixed_ips'][0]['ip_address']}]
-            }
-        }
-        _, b_ns_bridge_port_id = self._prepare_bottom_element(
-            t_ctx, project_id, ext_net_pod, t_ns_bridge_port,
-            t_constants.RT_PORT, port_body)
-        b_ext_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, ext_net_id, ext_net_pod['pod_name'],
-            t_constants.RT_NETWORK)
-        self._safe_create_bottom_floatingip(
-            t_ctx, ext_net_pod, ext_client, b_ext_net_id, fip_address,
-            b_ns_bridge_port_id)
-        self._safe_create_bottom_floatingip(
-            t_ctx, int_net_pod, int_client, int_bridge_net_id,
-            t_ns_bridge_port['fixed_ips'][0]['ip_address'], b_int_port_id)
+        int_net_pod, b_int_port_id = mappings[0]
+        int_port = self.get_port(context, int_port_id)
+        net_id = int_port['network_id']
+        self.xjob_handler.setup_bottom_router(
+            t_ctx, net_id, floatingip_db['router_id'], int_net_pod['pod_id'])
 
     def _disassociate_floatingip(self, context, ori_floatingip_db):
         if not ori_floatingip_db['port_id']:
@@ -1223,7 +1152,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             return
 
         t_ctx = t_context.get_context_from_neutron_context(context)
-        project_id = ori_floatingip_db['tenant_id']
 
         t_int_port_id = ori_floatingip_db['port_id']
         mappings = db_api.get_bottom_mappings_by_top_id(
@@ -1238,80 +1166,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             return
 
         b_int_net_pod, b_int_port_id = mappings[0]
-        t_ext_net_id = ori_floatingip_db['floating_network_id']
-        t_ext_net = self.get_network(context, t_ext_net_id)
-        b_ext_net_pod = db_api.get_pod_by_name(t_ctx,
-                                               t_ext_net[az_ext.AZ_HINTS][0])
-        b_ext_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, t_ext_net_id, b_ext_net_pod['pod_name'],
-            t_constants.RT_NETWORK)
-
-        # external network and internal network are in the same pod, so
-        # bridge network is not created in this pod
-        if b_int_net_pod['pod_name'] == b_ext_net_pod['pod_name']:
-            b_client = self._get_client(b_int_net_pod['pod_name'])
-            b_fips = b_client.list_floatingips(
-                t_ctx,
-                [{'key': 'floating_ip_address',
-                  'comparator': 'eq',
-                  'value': ori_floatingip_db['floating_ip_address']},
-                 {'key': 'floating_network_id',
-                  'comparator': 'eq',
-                  'value': b_ext_net_id}])
-            if not b_fips:
-                return
-            b_client.update_floatingips(t_ctx, b_fips[0]['id'],
-                                        {'floatingip': {'port_id': None}})
-            return
-
-        # below handle the case that external network and internal network
-        # are in different pods
-        b_int_client = self._get_client(b_int_net_pod['pod_name'])
-        b_ext_client = self._get_client(b_ext_net_pod['pod_name'])
-        ns_bridge_net_name = t_constants.ns_bridge_net_name % project_id
-        t_ns_bridge_net = self.get_networks(
-            context, {'name': [ns_bridge_net_name]})[0]
-        b_int_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, t_ns_bridge_net['id'], b_int_net_pod['pod_name'],
-            t_constants.RT_NETWORK)
-        t_pod = db_api.get_top_pod(t_ctx)
-        t_ns_bridge_port = self._get_bridge_interface(
-            t_ctx, context, project_id, t_pod, t_ns_bridge_net['id'],
-            None, b_int_port_id, False)
-
-        b_int_fips = b_int_client.list_floatingips(
-            t_ctx,
-            [{'key': 'floating_ip_address',
-              'comparator': 'eq',
-              'value': t_ns_bridge_port['fixed_ips'][0]['ip_address']},
-             {'key': 'floating_network_id',
-              'comparator': 'eq',
-              'value': b_int_bridge_net_id}])
-        b_ext_fips = b_ext_client.list_floatingips(
-            t_ctx,
-            [{'key': 'floating_ip_address',
-              'comparator': 'eq',
-              'value': ori_floatingip_db['floating_ip_address']},
-             {'key': 'floating_network_id',
-              'comparator': 'eq',
-              'value': b_ext_net_id}])
-
-        if b_int_fips:
-            b_int_client.delete_floatingips(
-                t_ctx, b_int_fips[0]['id'])
-        if b_ext_fips:
-            b_ext_client.update_floatingips(
-                t_ctx, b_ext_fips[0]['id'],
-                {'floatingip': {'port_id': None}})
-        # delete bridge port
-        self.delete_port(context, t_ns_bridge_port['id'], l3_port_check=False)
-        # for bridge port, we have two resource routing entries, one for bridge
-        # port in top pod, another for bridge port in bottom pod. calling
-        # delete_port above will delete bridge port in bottom pod as well as
-        # routing entry for it, but we also need to remove routing entry for
-        # bridge port in top pod
-        # bridge network will be deleted when deleting router
-        with t_ctx.session.begin():
-            core.delete_resources(t_ctx, models.ResourceRouting,
-                                  [{'key': 'top_id', 'comparator': 'eq',
-                                    'value': t_ns_bridge_port['name']}])
+        int_port = self.get_port(context, t_int_port_id)
+        net_id = int_port['network_id']
+        self.xjob_handler.setup_bottom_router(
+            t_ctx, net_id, ori_floatingip_db['router_id'],
+            b_int_net_pod['pod_id'])

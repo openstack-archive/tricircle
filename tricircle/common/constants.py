@@ -58,6 +58,7 @@ ns_bridge_subnet_name = 'ns_bridge_subnet_%s'  # project_id
 ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
 
 dhcp_port_name = 'dhcp_port_%s'  # subnet_id
+interface_port_name = 'interface_%s_%s'  # b_pod_id t_subnet_id
 
 MAX_INT = 0x7FFFFFFF
 expire_time = datetime.datetime(2000, 1, 1)
@@ -70,6 +71,7 @@ JS_Fail = 'Fail'
 
 SP_EXTRA_ID = '00000000-0000-0000-0000-000000000000'
 TOP = 'top'
+POD_NOT_SPECIFIED = 'not_specified_pod'
 
 # job type
 JT_ROUTER = 'router'

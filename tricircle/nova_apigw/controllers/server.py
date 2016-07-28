@@ -175,8 +175,9 @@ class ServerController(rest.RestController):
                             400, _('Network %s could not be '
                                    'found') % net_info['uuid'])
 
-                    if not self._check_network_server_the_same_az(
-                            network, kw['server']['availability_zone']):
+                    if not self._check_network_server_az_match(
+                            context, network,
+                            kw['server']['availability_zone']):
                         return utils.format_nova_error(
                             400, _('Network and server not in the same '
                                    'availability zone'))
@@ -300,11 +301,29 @@ class ServerController(rest.RestController):
                                           self.project_id, pod, {'id': _id},
                                           _type, list_resources)
 
+    def _handle_router(self, context, pod, net):
+        top_client = self._get_client()
+
+        interfaces = top_client.list_ports(
+            context, filters=[{'key': 'network_id',
+                               'comparator': 'eq',
+                               'value': net['id']},
+                              {'key': 'device_owner',
+                               'comparator': 'eq',
+                               'value': 'network:router_interface'}])
+        interfaces = [inf for inf in interfaces if inf['device_id']]
+        if not interfaces:
+            return
+        # TODO(zhiyuan) change xjob invoking from "cast" to "call" to guarantee
+        # the job can be successfully registered
+        self.xjob_handler.setup_bottom_router(
+            context, net['id'], interfaces[0]['device_id'], pod['pod_id'])
+
     def _handle_network(self, context, pod, net, subnets, port=None,
                         top_sg_ids=None, bottom_sg_ids=None):
         (bottom_net_id,
          subnet_map) = self.helper.prepare_bottom_network_subnets(
-            context, self.project_id, pod, net, subnets)
+            context, None, self.project_id, pod, net, subnets)
 
         top_client = self._get_client()
         top_port_body = {'port': {'network_id': net['id'],
@@ -323,6 +342,8 @@ class ServerController(rest.RestController):
                 self.project_id, port, subnet_map, bottom_net_id)
         _, bottom_port_id = self.helper.prepare_bottom_element(
             context, self.project_id, pod, port, constants.RT_PORT, port_body)
+
+        self._handle_router(context, pod, net)
 
         return port['id'], bottom_port_id
 
@@ -535,15 +556,25 @@ class ServerController(rest.RestController):
                                   filters)
 
     @staticmethod
-    def _check_network_server_the_same_az(network, server_az):
+    def _check_network_server_az_match(context, network, server_az):
         az_hints = 'availability_zone_hints'
+        network_type = 'provider:network_type'
+
+        # for local type network, we make sure it's created in only one az
+
+        # NOTE(zhiyuan) race condition exists when creating vms in the same
+        # local type network but different azs at the same time
+        if network.get(network_type) == constants.NT_LOCAL:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                context, network['id'], constants.RT_NETWORK)
+            if mappings:
+                pod, _ = mappings[0]
+                if pod['az_name'] != server_az:
+                    return False
         # if neutron az not assigned, server az is used
         if not network.get(az_hints):
             return True
-        # temporally not support cross-pod network
-        if len(network[az_hints]) > 1:
-            return False
-        if network[az_hints][0] == server_az:
+        if server_az in network[az_hints]:
             return True
         else:
             return False
