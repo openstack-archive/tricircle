@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from neutron.common import config
+from neutron.conf import common as n_conf
 from oslo_config import cfg
 from oslotest import base
 
@@ -32,7 +32,7 @@ class TestCase(base.BaseTestCase):
         # "bind_port"  and "bind_host"which conflicts with tricircle
         # configuration option, so unregister this option before
         # running tricircle tests
-        for opt in config.core_opts:
+        for opt in n_conf.core_opts:
             if opt.name in CONFLICT_OPT_NAMES:
                 cfg.CONF.unregister_opt(opt)
         super(TestCase, self).setUp()

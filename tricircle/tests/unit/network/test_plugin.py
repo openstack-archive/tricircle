@@ -24,7 +24,7 @@ from sqlalchemy.orm import attributes
 from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
 
-import neutron.common.config as q_config
+import neutron.conf.common as q_config
 from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
 from neutron.db import ipam_non_pluggable_backend
