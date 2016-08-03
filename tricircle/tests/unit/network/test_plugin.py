@@ -277,6 +277,9 @@ class FakeClient(object):
                                                     'comparator': 'eq',
                                                     'value': subnet_id}])[0]
 
+    def update_subnets(self, ctx, subnet_id, body):
+        pass
+
     def create_ports(self, ctx, body):
         return self.create_resources('port', ctx, body)
 
@@ -615,6 +618,8 @@ class FakeSession(object):
         if model_obj.__tablename__ not in RES_MAP:
             return
         model_dict = DotDict(model_obj._as_dict())
+        if 'project_id' in model_dict:
+            model_dict['tenant_id'] = model_dict['project_id']
 
         if model_obj.__tablename__ == 'networks':
             model_dict['subnets'] = []
@@ -758,7 +763,10 @@ class FakePlugin(plugin.TricirclePlugin):
 
     def _make_network_dict(self, network, fields=None,
                            process_extensions=True, context=None):
-        return _transform_az(network)
+        network = _transform_az(network)
+        if 'project_id' in network:
+            network['tenant_id'] = network['project_id']
+        return network
 
     def _make_subnet_dict(self, subnet, fields=None, context=None):
         return subnet
@@ -781,7 +789,11 @@ class FakePlugin(plugin.TricirclePlugin):
                                      'ip_address': allocation['ip_address']}]
                     else:
                         ret[key] = value
+                if 'project_id' in ret:
+                    ret['tenant_id'] = ret['project_id']
                 return ret
+        if 'project_id' in port:
+            port['tenant_id'] = port['project_id']
         return port
 
     def _make_security_group_dict(self, security_group, fields=None):

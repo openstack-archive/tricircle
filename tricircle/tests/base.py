@@ -21,7 +21,9 @@ from oslotest import base
 CONFLICT_OPT_NAMES = [
     'api_extensions_path',
     'bind_port',
-    'bind_host'
+    'bind_host',
+    'allow_pagination',
+    'allow_sorting'
 ]
 
 

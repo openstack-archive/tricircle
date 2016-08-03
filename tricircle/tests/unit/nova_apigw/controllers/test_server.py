@@ -233,6 +233,11 @@ class FakeClient(object):
             'subnet', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
 
+    def update_subnets(self, ctx, subnet_id, body):
+        subnet = self.get_subnets(ctx, subnet_id)
+        for key, value in body['subnet'].iteritems():
+            subnet[key] = value
+
     def get_ports(self, ctx, port_id):
         return self.list_resources(
             'port', ctx,
@@ -416,33 +421,48 @@ class ServerTest(unittest.TestCase):
     def _check_routes(self):
         for res in (TOP_NETS, TOP_SUBNETS, BOTTOM_NETS, BOTTOM_SUBNETS):
             self.assertEqual(1, len(res))
-        self.assertEqual(2, len(TOP_PORTS))
-        self.assertEqual(2, len(BOTTOM_PORTS))
+        enable_dhcp = TOP_SUBNETS[0]['enable_dhcp']
+        self.assertEqual(enable_dhcp, BOTTOM_SUBNETS[0]['enable_dhcp'])
+        port_num = 2 if enable_dhcp else 1
+        self.assertEqual(port_num, len(TOP_PORTS))
+        self.assertEqual(port_num, len(BOTTOM_PORTS))
 
         with self.context.session.begin():
             routes = core.query_resource(self.context,
                                          models.ResourceRouting, [], [])
-        # bottom network, bottom subnet, bottom port, top dhcp, bottom dhcp
-        self.assertEqual(5, len(routes))
-        actual = [[], [], [], [], []]
-        actual[4].append(constants.dhcp_port_name % TOP_SUBNETS[0]['id'])
+        # bottom network, bottom subnet, bottom port, no top dhcp and bottom
+        # dhcp if dhcp disabled
+        entry_num = 5 if enable_dhcp else 3
+        self.assertEqual(entry_num, len(routes))
+        actual = [[], [], []]
+        if entry_num > 3:
+            actual.extend([[], []])
+
         for region in ('t_region', 'b_region'):
             actual[0].append(self.controller._get_client(
                 region).list_resources('network', self.context, [])[0]['id'])
             actual[1].append(self.controller._get_client(
                 region).list_resources('subnet', self.context, [])[0]['id'])
-            t_ports = self.controller._get_client(
+            ports = self.controller._get_client(
                 region).list_resources('port', self.context, [])
-            if 'device_id' in t_ports[0]:
-                actual[2].append(t_ports[0]['id'])
-                actual[3].append(t_ports[1]['id'])
-                if region == 't_region':
-                    actual[4].append(t_ports[0]['id'])
+            if 'device_id' not in ports[0]:
+                actual[2].append(ports[0]['id'])
             else:
-                actual[2].append(t_ports[1]['id'])
-                actual[3].append(t_ports[0]['id'])
-                if region == 't_region':
-                    actual[4].append(t_ports[1]['id'])
+                actual[2].append(ports[1]['id'])
+
+        if entry_num > 3:
+            actual[4].append(constants.dhcp_port_name % TOP_SUBNETS[0]['id'])
+            for region in ('t_region', 'b_region'):
+                ports = self.controller._get_client(
+                    region).list_resources('port', self.context, [])
+                if 'device_id' in ports[0]:
+                    actual[3].append(ports[0]['id'])
+                    if region == 't_region':
+                        actual[4].append(ports[0]['id'])
+                else:
+                    actual[3].append(ports[1]['id'])
+                    if region == 't_region':
+                        actual[4].append(ports[1]['id'])
 
         expect = [[route['top_id'], route['bottom_id']] for route in routes]
         self.assertItemsEqual(expect, actual)
@@ -458,6 +478,22 @@ class ServerTest(unittest.TestCase):
                   'allocation_pools': {'start': '10.0.0.2',
                                        'end': '10.0.0.254'},
                   'enable_dhcp': True}
+        TOP_NETS.append(net)
+        TOP_SUBNETS.append(subnet)
+        self.controller._handle_network(self.context, b_pod, net, [subnet])
+        self._check_routes()
+
+    def test_handle_network_dhcp_disable(self):
+        t_pod, b_pod = self._prepare_pod()
+        net = {'id': 'top_net_id', 'name': 'net'}
+        subnet = {'id': 'top_subnet_id',
+                  'network_id': 'top_net_id',
+                  'ip_version': 4,
+                  'cidr': '10.0.0.0/24',
+                  'gateway_ip': '10.0.0.1',
+                  'allocation_pools': {'start': '10.0.0.2',
+                                       'end': '10.0.0.254'},
+                  'enable_dhcp': False}
         TOP_NETS.append(net)
         TOP_SUBNETS.append(subnet)
         self.controller._handle_network(self.context, b_pod, net, [subnet])
@@ -486,67 +522,6 @@ class ServerTest(unittest.TestCase):
         TOP_PORTS.append(port)
         self.controller._handle_port(self.context, b_pod, port)
         self._check_routes()
-
-    def _test_handle_network_dhcp_port(self, dhcp_ip):
-        t_pod, b_pod = self._prepare_pod()
-
-        top_net_id = 'top_net_id'
-        bottom_net_id = 'bottom_net_id'
-        top_subnet_id = 'top_subnet_id'
-        bottom_subnet_id = 'bottom_subnet_id'
-        t_net = {'id': top_net_id, 'name': 'net'}
-        b_net = {'id': bottom_net_id}
-        t_subnet = {'id': top_subnet_id,
-                    'network_id': top_net_id,
-                    'ip_version': 4,
-                    'cidr': '10.0.0.0/24',
-                    'gateway_ip': '10.0.0.1',
-                    'allocation_pools': {'start': '10.0.0.2',
-                                         'end': '10.0.0.254'},
-                    'enable_dhcp': True}
-        b_subnet = {'id': bottom_subnet_id,
-                    'network_id': bottom_net_id,
-                    'ip_version': 4,
-                    'cidr': '10.0.0.0/24',
-                    'gateway_ip': '10.0.0.1',
-                    'allocation_pools': {'start': '10.0.0.2',
-                                         'end': '10.0.0.254'},
-                    'enable_dhcp': True}
-        b_dhcp_port = {'id': 'bottom_dhcp_port_id',
-                       'network_id': bottom_net_id,
-                       'fixed_ips': [
-                           {'subnet_id': bottom_subnet_id,
-                            'ip_address': dhcp_ip}
-                       ],
-                       'mac_address': 'fa:16:3e:96:41:0a',
-                       'binding:profile': {},
-                       'device_id': 'reserved_dhcp_port',
-                       'device_owner': 'network:dhcp'}
-        TOP_NETS.append(t_net)
-        TOP_SUBNETS.append(t_subnet)
-        BOTTOM_NETS.append(b_net)
-        BOTTOM_SUBNETS.append(b_subnet)
-        BOTTOM_PORTS.append(b_dhcp_port)
-        with self.context.session.begin():
-            core.create_resource(
-                self.context, models.ResourceRouting,
-                {'top_id': top_net_id, 'bottom_id': bottom_net_id,
-                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
-                 'resource_type': 'network'})
-            core.create_resource(
-                self.context, models.ResourceRouting,
-                {'top_id': top_subnet_id, 'bottom_id': bottom_subnet_id,
-                 'pod_id': b_pod['pod_id'], 'project_id': self.project_id,
-                 'resource_type': 'subnet'})
-        self.controller._handle_network(self.context,
-                                        b_pod, t_net, [t_subnet])
-        self._check_routes()
-
-    def test_handle_network_dhcp_port_same_ip(self):
-        self._test_handle_network_dhcp_port('10.0.0.2')
-
-    def test_handle_network_dhcp_port_exist_diff_ip(self):
-        self._test_handle_network_dhcp_port('10.0.0.4')
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(FakeClient, 'create_servers')
