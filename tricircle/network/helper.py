@@ -21,8 +21,6 @@ import tricircle.common.context as t_context
 import tricircle.common.lock_handle as t_lock
 from tricircle.common import utils
 import tricircle.db.api as db_api
-from tricircle.db import core
-from tricircle.db import models
 
 
 # manually define these constants to avoid depending on neutron repos
@@ -228,7 +226,7 @@ class NetworkHelper(object):
                 'cidr': t_subnet['cidr'],
                 'gateway_ip': t_subnet['gateway_ip'],
                 'allocation_pools': t_subnet['allocation_pools'],
-                'enable_dhcp': t_subnet['enable_dhcp'],
+                'enable_dhcp': False,
                 'tenant_id': project_id
             }
         }
@@ -294,6 +292,8 @@ class NetworkHelper(object):
 
         # subnet
         subnet_map = {}
+        subnet_dhcp_map = {}
+
         for subnet in t_subnets:
             subnet_body = self.get_create_subnet_body(
                 project_id, subnet, b_net_id)
@@ -301,11 +301,17 @@ class NetworkHelper(object):
                 t_ctx, project_id, pod, subnet, t_constants.RT_SUBNET,
                 subnet_body)
             subnet_map[subnet['id']] = b_subnet_id
+            subnet_dhcp_map[subnet['id']] = subnet['enable_dhcp']
 
         # dhcp port
         for t_subnet_id, b_subnet_id in subnet_map.iteritems():
+            if not subnet_dhcp_map[t_subnet_id]:
+                continue
             self.prepare_dhcp_port(t_ctx, project_id, pod, t_net['id'],
                                    t_subnet_id, b_net_id, b_subnet_id)
+            b_client = self._get_client(pod['pod_name'])
+            b_client.update_subnets(t_ctx, b_subnet_id,
+                                    {'subnet': {'enable_dhcp': True}})
 
         return b_net_id, subnet_map
 
@@ -409,7 +415,6 @@ class NetworkHelper(object):
         :return: None
         """
         t_client = self._get_client()
-        b_client = self._get_client(b_pod['pod_name'])
 
         t_dhcp_name = t_constants.dhcp_port_name % t_subnet_id
         t_dhcp_port_body = {
@@ -436,71 +441,7 @@ class NetworkHelper(object):
             ctx, None, project_id, db_api.get_top_pod(ctx),
             {'id': t_dhcp_name}, t_constants.RT_PORT, t_dhcp_port_body)
         t_dhcp_port = t_client.get_ports(ctx, t_dhcp_port_id)
-
-        mappings = db_api.get_bottom_mappings_by_top_id(
-            ctx, t_dhcp_port['id'], t_constants.RT_PORT)
-        pod_list = [mapping[0]['pod_id'] for mapping in mappings]
-        if b_pod['pod_id'] in pod_list:
-            # mapping exists, skip this subnet
-            return
-
-        dhcp_port_filters = [
-            {'key': 'device_owner', 'comparator': 'eq',
-             'value': 'network:dhcp'},
-            {'key': 'network_id', 'comparator': 'eq',
-             'value': b_net_id},
-        ]
         dhcp_port_body = self._get_create_dhcp_port_body(
             project_id, t_dhcp_port, b_subnet_id, b_net_id)
-        t_dhcp_ip = t_dhcp_port['fixed_ips'][0]['ip_address']
-
-        b_dhcp_port = None
-        try:
-            b_dhcp_port = b_client.create_ports(ctx, dhcp_port_body)
-        except Exception:
-            # examine if we conflicted with a dhcp port which was
-            # automatically created by bottom pod
-            b_dhcp_ports = b_client.list_ports(ctx,
-                                               dhcp_port_filters)
-            dhcp_port_match = False
-            for dhcp_port in b_dhcp_ports:
-                subnet_id = dhcp_port['fixed_ips'][0]['subnet_id']
-                ip = dhcp_port['fixed_ips'][0]['ip_address']
-                if b_subnet_id == subnet_id and t_dhcp_ip == ip:
-                    with ctx.session.begin():
-                        core.create_resource(
-                            ctx, models.ResourceRouting,
-                            {'top_id': t_dhcp_port['id'],
-                             'bottom_id': dhcp_port['id'],
-                             'pod_id': b_pod['pod_id'],
-                             'project_id': project_id,
-                             'resource_type': t_constants.RT_PORT})
-                    dhcp_port_match = True
-                    break
-            if not dhcp_port_match:
-                # so we didn't conflict with a dhcp port, raise exception
-                raise
-
-        if b_dhcp_port:
-            with ctx.session.begin():
-                core.create_resource(ctx, models.ResourceRouting,
-                                     {'top_id': t_dhcp_port['id'],
-                                      'bottom_id': b_dhcp_port['id'],
-                                      'pod_id': b_pod['pod_id'],
-                                      'project_id': project_id,
-                                      'resource_type': t_constants.RT_PORT})
-            # there is still one thing to do, there may be other dhcp ports
-            # created by bottom pod, we need to delete them
-            b_dhcp_ports = b_client.list_ports(ctx,
-                                               dhcp_port_filters)
-            remove_port_list = []
-            for dhcp_port in b_dhcp_ports:
-                subnet_id = dhcp_port['fixed_ips'][0]['subnet_id']
-                ip = dhcp_port['fixed_ips'][0]['ip_address']
-                if b_subnet_id == subnet_id and t_dhcp_ip != ip:
-                    remove_port_list.append(dhcp_port['id'])
-            for dhcp_port_id in remove_port_list:
-                # NOTE(zhiyuan) dhcp agent will receive this port-delete
-                # notification and re-configure dhcp so our newly created
-                # dhcp port can be used
-                b_client.delete_ports(ctx, dhcp_port_id)
+        self.prepare_bottom_element(ctx, project_id, b_pod, t_dhcp_port,
+                                    t_constants.RT_PORT, dhcp_port_body)

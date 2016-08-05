@@ -118,7 +118,7 @@ class GlanceResourceHandle(ResourceHandle):
 class NeutronResourceHandle(ResourceHandle):
     service_type = cons.ST_NEUTRON
     support_resource = {'network': LIST | CREATE | DELETE | GET,
-                        'subnet': LIST | CREATE | DELETE | GET,
+                        'subnet': LIST | CREATE | DELETE | GET | UPDATE,
                         'port': LIST | CREATE | DELETE | GET,
                         'router': LIST | CREATE | ACTION | GET | UPDATE,
                         'security_group': LIST | CREATE | GET,

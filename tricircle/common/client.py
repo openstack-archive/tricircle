@@ -438,6 +438,7 @@ class Client(object):
                resource -> args -> kwargs
                --------------------------
                router -> body -> none
+               subnet -> body -> none
                --------------------------
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
