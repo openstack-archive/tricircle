@@ -1597,6 +1597,34 @@ class PluginTest(unittest.TestCase,
         mock_rpc.assert_called_with(t_ctx, t_router_id)
 
     @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_external_network_no_az_pod(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        # create external network without specifying az pod name
+        body = {
+            'network': {
+                'name': 'ext-net',
+                'admin_state_up': True,
+                'shared': True,
+                'tenant_id': 'test_tenant_id',
+                'router:external': True,
+            }
+        }
+
+        top_net = fake_plugin.create_network(q_ctx, body)
+        for net in BOTTOM1_NETS:
+            if net.get('router:external'):
+                bottom_net = net
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, top_net['id'], constants.RT_NETWORK)
+        self.assertEqual(mappings[0][1], bottom_net['id'])
+
+    @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network(self, mock_context):
         self._basic_pod_route_setup()
 
@@ -1605,15 +1633,6 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        # create external network without specifying pod name
-        body = {
-            'network': {
-                'router:external': True,
-                'tenant_id': 'test_tenant_id',
-            }
-        }
-        self.assertRaises(exceptions.ExternalNetPodNotSpecify,
-                          fake_plugin.create_network, q_ctx, body)
         # create external network specifying az name
         body = {
             'network': {

@@ -127,12 +127,10 @@ class ServerController(rest.RestController):
             return utils.format_nova_error(
                 400, _('server is not set'))
 
-        if 'availability_zone' not in kw['server']:
-            return utils.format_nova_error(
-                400, _('availability zone is not set'))
+        az = kw['server'].get('availability_zone', '')
 
         pod, b_az = az_ag.get_pod_by_az_tenant(
-            context, kw['server']['availability_zone'], self.project_id)
+            context, az, self.project_id)
         if not pod:
             return utils.format_nova_error(
                 500, _('Pod not configured or scheduling failure'))

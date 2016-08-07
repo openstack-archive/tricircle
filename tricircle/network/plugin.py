@@ -173,12 +173,20 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         attributes.NETWORKS, ['_extend_availability_zone'])
 
     @staticmethod
-    def _ensure_az_set_for_external_network(req_data):
+    def _ensure_az_set_for_external_network(context, req_data):
         external = req_data.get(external_net.EXTERNAL)
         external_set = attributes.is_attr_set(external)
         if not external_set or not external:
             return False
         if az_ext.AZ_HINTS in req_data and req_data[az_ext.AZ_HINTS]:
+            return True
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        pod, pod_az = az_ag.get_pod_by_az_tenant(
+            t_ctx,
+            az_name='',
+            tenant_id=req_data['tenant_id'])
+        if pod:
+            req_data[az_ext.AZ_HINTS] = [pod['pod_name']]
             return True
         raise t_exceptions.ExternalNetPodNotSpecify()
 
@@ -234,7 +242,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def create_network(self, context, network):
         net_data = network[attributes.NETWORK]
         tenant_id = net_data['tenant_id']
-        is_external = self._ensure_az_set_for_external_network(net_data)
+        is_external = self._ensure_az_set_for_external_network(context,
+                                                               net_data)
         if az_ext.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
                                               net_data[az_ext.AZ_HINTS],
