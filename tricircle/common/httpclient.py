@@ -182,7 +182,17 @@ def get_res_routing_ref(context, _id, t_url, s_type):
 
 
 def convert_header(from_release, to_release, header):
-    return header
+    b_header = {}
+
+    # remove invalid header item, requests lib will strictly check
+    # header for security purpose, non-string or non-bytes value
+    # will lead to exception, and leading space will also be removed
+    # by requests.util.check_header_validity function
+    for k, v in header.items():
+        if v:
+            b_header[k] = v
+
+    return b_header
 
 
 def convert_object(from_release, to_release, res_object,

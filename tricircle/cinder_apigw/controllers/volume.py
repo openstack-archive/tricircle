@@ -249,9 +249,15 @@ class VolumeController(rest.RestController):
                           % pod['pod_name'])
                 continue
 
-            # TODO(joehuang): convert header and body content
+            # TODO(joehuang): get the release of top and bottom
+            t_release = cons.R_MITAKA
+            b_release = cons.R_MITAKA
+            b_headers = hclient.convert_header(t_release,
+                                               b_release,
+                                               request.headers)
+
             resp = hclient.forward_req(context, 'GET',
-                                       request.headers,
+                                       b_headers,
                                        s_ctx['b_url'],
                                        request.body)
 
