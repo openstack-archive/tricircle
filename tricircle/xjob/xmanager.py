@@ -415,9 +415,8 @@ class XManager(PeriodicTasks):
         b_fips = b_ext_client.list_floatingips(
             ctx, [{'key': 'floating_network_id', 'comparator': 'eq',
                    'value': b_ext_net_id}])
-        # skip unbound bottom floatingip
         b_ip_fip_map = dict([(fip['floating_ip_address'],
-                              fip) for fip in b_fips if fip['port_id']])
+                              fip) for fip in b_fips])
         add_fips = [ip for ip in t_ip_fip_map if ip not in b_ip_fip_map]
         del_fips = [ip for ip in b_ip_fip_map if ip not in t_ip_fip_map]
 
@@ -471,6 +470,9 @@ class XManager(PeriodicTasks):
 
         for del_fip in del_fips:
             fip = b_ip_fip_map[del_fip]
+            if not fip['port_id']:
+                b_ext_client.delete_floatingips(ctx, fip['id'])
+                continue
             if need_ns_bridge:
                 b_ns_bridge_port = b_ext_client.get_ports(ctx, fip['port_id'])
                 entries = core.query_resource(
@@ -490,8 +492,6 @@ class XManager(PeriodicTasks):
                       'value': b_ns_bridge_net_id}])
                 if b_int_fips:
                     b_client.delete_floatingips(ctx, b_int_fips[0]['id'])
-                b_ext_client.update_floatingips(
-                    ctx, fip['id'], {'floatingip': {'port_id': None}})
 
                 # for bridge port, we have two resource routing entries, one
                 # for bridge port in top pod, another for bridge port in bottom
@@ -523,9 +523,7 @@ class XManager(PeriodicTasks):
                                           [{'key': 'bottom_id',
                                             'comparator': 'eq',
                                             'value': t_ns_bridge_port_id}])
-            else:
-                b_client.update_floatingips(ctx, fip['id'],
-                                            {'floatingip': {'port_id': None}})
+            b_ext_client.delete_floatingips(ctx, fip['id'])
 
     @_job_handle(constants.JT_ROUTER_SETUP)
     def setup_bottom_router(self, ctx, payload):
