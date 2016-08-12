@@ -166,8 +166,8 @@ class ServerController(rest.RestController):
         t_sg_ids, b_sg_ids, is_news = self._handle_security_group(
             context, pod, top_sg_map, security_groups)
 
+        server_body['networks'] = []
         if 'networks' in kw['server']:
-            server_body['networks'] = []
             for net_info in kw['server']['networks']:
                 if 'uuid' in net_info:
                     network = top_client.get_networks(context,
