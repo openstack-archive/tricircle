@@ -341,6 +341,18 @@ class FakeClient(object):
                 ret_list.append(res)
         return ret_list
 
+    def delete_resources(self, _type, ctx, _id):
+        index = -1
+        if self.pod_name == 'top':
+            res_list = self._res_map[self.pod_name][_type + 's']
+        else:
+            res_list = self._res_map[self.pod_name][_type]
+        for i, res in enumerate(res_list):
+            if res['id'] == _id:
+                index = i
+        if index != -1:
+            del res_list[index]
+
     def list_networks(self, ctx, filters=None):
         networks = self.list_resources('network', ctx, filters)
         if self.pod_name != 'top':
@@ -363,6 +375,9 @@ class FakeClient(object):
                                                     'comparator': 'eq',
                                                     'value': subnet_id}])[0]
 
+    def delete_subnets(self, ctx, subnet_id):
+        self.delete_resources('subnet', ctx, subnet_id)
+
     def update_subnets(self, ctx, subnet_id, body):
         pass
 
@@ -383,16 +398,7 @@ class FakeClient(object):
             '', params={'filters': {'id': [port_id]}})['ports'][0]
 
     def delete_ports(self, ctx, port_id):
-        index = -1
-        if self.pod_name == 'top':
-            port_list = self._res_map[self.pod_name]['ports']
-        else:
-            port_list = self._res_map[self.pod_name]['port']
-        for i, port in enumerate(port_list):
-            if port['id'] == port_id:
-                index = i
-        if index != -1:
-            del port_list[index]
+        self.delete_resources('port', ctx, port_id)
 
     def add_gateway_routers(self, ctx, *args, **kwargs):
         # only for mock purpose
@@ -797,7 +803,7 @@ class FakeSession(object):
         RES_MAP[model_obj.__tablename__].append(model_dict)
 
     def _cascade_delete(self, model_dict, foreign_key, table, key):
-        if foreign_key not in model_dict:
+        if key not in model_dict:
             return
         index = -1
         for i, instance in enumerate(RES_MAP[table]):
@@ -1388,6 +1394,46 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_subnet_clean(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = 'test_tenant_id'
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        t_port_id = fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+
+        port_num = len(TOP_PORTS)
+        pre_created_port_num = 0
+        for port in TOP_PORTS:
+            if port.get('name').startswith('dhcp_port_'):
+                pre_created_port_num += 1
+            elif port.get('name').startswith('interface_'):
+                pre_created_port_num += 1
+            elif port.get('device_owner') == 'network:router_interface':
+                pre_created_port_num += 1
+
+        fake_plugin.remove_router_interface(
+            q_ctx, t_router_id, {'port_id': t_port_id})
+        fake_plugin.delete_subnet(q_ctx, t_subnet_id)
+
+        # check pre-created ports are all deleted
+        self.assertEqual(port_num - pre_created_port_num, len(TOP_PORTS))
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface(self, mock_context, mock_rpc):
@@ -1591,7 +1637,6 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
-    @patch.object(FakeRPCAPI, 'configure_extra_routes', new=mock.Mock)
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_exception(self, mock_context, mock_action):
@@ -1649,7 +1694,6 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes', new=mock.Mock)
     @patch.object(FakeClient, '_get_connection')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_exception_port_left(self, mock_context,

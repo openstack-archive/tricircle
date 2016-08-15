@@ -121,6 +121,21 @@ def get_bottom_mappings_by_top_id(context, top_id, resource_type):
     return mappings
 
 
+def delete_pre_created_resource_mapping(context, name):
+    with context.session.begin():
+        entries = core.query_resource(
+            context, models.ResourceRouting,
+            filters=[{'key': 'top_id', 'comparator': 'eq',
+                      'value': name}], sorts=[])
+        if entries:
+            core.delete_resources(
+                context, models.ResourceRouting,
+                filters=[{'key': 'top_id', 'comparator': 'eq',
+                          'value': entries[0]['bottom_id']}])
+            core.delete_resource(context, models.ResourceRouting,
+                                 entries[0]['id'])
+
+
 def get_bottom_id_by_top_id_pod_name(context, top_id, pod_name, resource_type):
     """Get resource bottom id by top id and bottom pod name
 
