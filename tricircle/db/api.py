@@ -184,6 +184,22 @@ def get_bottom_mappings_by_tenant_pod(context,
     return routings
 
 
+def delete_mappings_by_top_id(context, top_id):
+    with context.session.begin():
+        core.delete_resources(
+            context, models.ResourceRouting,
+            filters=[{'key': 'top_id', 'comparator': 'eq',
+                      'value': top_id}])
+
+
+def delete_mappings_by_bottom_id(context, bottom_id):
+    with context.session.begin():
+        core.delete_resources(
+            context, models.ResourceRouting,
+            filters=[{'key': 'bottom_id', 'comparator': 'eq',
+                      'value': bottom_id}])
+
+
 def get_next_bottom_pod(context, current_pod_id=None):
     pods = list_pods(context, sorts=[(models.Pod.pod_id, True)])
     # NOTE(zhiyuan) number of pods is small, just traverse to filter top pod

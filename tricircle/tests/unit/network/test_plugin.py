@@ -199,6 +199,11 @@ class DotDict(dict):
         return self.get(item)
 
 
+class DotList(list):
+    def all(self):
+        return self
+
+
 class FakeNeutronClient(object):
 
     _res_map = {'top': {'port': TOP_PORTS},
@@ -367,6 +372,9 @@ class FakeClient(object):
                                          'comparator': 'eq',
                                          'value': net_id}])[0]
 
+    def delete_networks(self, ctx, net_id):
+        self.delete_resources('network', ctx, net_id)
+
     def list_subnets(self, ctx, filters=None):
         return self.list_resources('subnet', ctx, filters)
 
@@ -399,6 +407,13 @@ class FakeClient(object):
 
     def delete_ports(self, ctx, port_id):
         self.delete_resources('port', ctx, port_id)
+        index = -1
+        for i, allocation in enumerate(TOP_IPALLOCATIONS):
+            if allocation['port_id'] == port_id:
+                index = i
+                break
+        if index != -1:
+            del TOP_IPALLOCATIONS[index]
 
     def add_gateway_routers(self, ctx, *args, **kwargs):
         # only for mock purpose
@@ -440,6 +455,9 @@ class FakeClient(object):
                                                       'comparator': 'eq',
                                                       'value': router_id}])[0]
         return _fill_external_gateway_info(router)
+
+    def delete_routers(self, ctx, router_id):
+        self.delete_resources('router', ctx, router_id)
 
     def action_routers(self, ctx, action, *args, **kwargs):
         # divide into three functions for test purpose
@@ -669,7 +687,7 @@ class FakeQuery(object):
                 filtered_list.append(record)
         return FakeQuery(filtered_list, self.table)
 
-    def delete(self):
+    def delete(self, synchronize_session=False):
         for model_obj in self.records:
             unlink_models(RES_MAP['routers'], model_obj, 'router_id',
                           'id', 'attached_ports', 'port_id', 'port_id')
@@ -1381,7 +1399,7 @@ class PluginTest(unittest.TestCase,
                 'name': 'top_router',
                 'distributed': False,
                 'tenant_id': tenant_id,
-                'attached_ports': []
+                'attached_ports': DotList()
             }
             TOP_ROUTERS.append(DotDict(t_router))
         else:
@@ -1875,7 +1893,7 @@ class PluginTest(unittest.TestCase,
             'name': 'router',
             'distributed': False,
             'tenant_id': tenant_id,
-            'attached_ports': []
+            'attached_ports': DotList()
         }
 
         TOP_ROUTERS.append(DotDict(t_router))
@@ -1957,7 +1975,7 @@ class PluginTest(unittest.TestCase,
             'name': 'router',
             'distributed': False,
             'tenant_id': tenant_id,
-            'attached_ports': []
+            'attached_ports': DotList()
         }
 
         TOP_ROUTERS.append(DotDict(t_router))
@@ -2214,7 +2232,6 @@ class PluginTest(unittest.TestCase,
         (t_port_id, b_port_id,
          fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
                                                                fake_plugin)
-
         # associate floating ip
         fip_body = {'port_id': t_port_id}
         fake_plugin.update_floatingip(q_ctx, fip['id'],
@@ -2240,6 +2257,58 @@ class PluginTest(unittest.TestCase,
             t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
         # check routing for bridge port in top pod is deleted
         self.assertIsNone(mapping)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_router(self, mock_context):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        t_ctx.project_id = 'test_tenant_id'
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+        # disassociate floating ip
+        fip_body = {'port_id': None}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        t_router_id = TOP_ROUTERS[0]['id']
+        for port in TOP_PORTS:
+            if port['id'] == t_port_id:
+                t_subnet_id = port['fixed_ips'][0]['subnet_id']
+        fake_plugin.remove_router_interface(q_ctx, t_router_id,
+                                            {'subnet_id': t_subnet_id})
+        fake_plugin.update_router(q_ctx, t_router_id,
+                                  {'router': {'external_gateway_info': {}}})
+
+        top_res_sets = [TOP_NETS, TOP_SUBNETS, TOP_PORTS]
+        top_res_nums = [len(top_res_set) for top_res_set in top_res_sets]
+        top_pre_created_res_nums = [0, 0, 0]
+        for i, top_res_set in enumerate(top_res_sets):
+            for top_res in top_res_set:
+                if top_res.get('name', '').find('bridge') != -1:
+                    top_pre_created_res_nums[i] += 1
+        fake_plugin.delete_router(q_ctx, t_router_id)
+
+        # check pre-created networks, subnets and ports are all deleted
+        for i, top_res_set in enumerate(top_res_sets):
+            self.assertEqual(top_res_nums[i] - top_pre_created_res_nums[i],
+                             len(top_res_set))
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_security_group_rule(self, mock_context):
