@@ -76,7 +76,7 @@ class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
                  is_admin=False, read_deleted="no", request_id=None,
                  overwrite=True, user_name=None, tenant_name=None,
-                 quota_class=None, **kwargs):
+                 quota_class=None, roles=None, **kwargs):
         """Initialize RequestContext.
 
         :param read_deleted: 'no' indicates deleted records are hidden, 'yes'
@@ -105,6 +105,7 @@ class ContextBase(oslo_ctx.RequestContext):
         self.read_deleted = read_deleted
         self.nova_micro_version = kwargs.get('nova_micro_version',
                                              constants.NOVA_APIGW_MIN_VERSION)
+        self.roles = roles or []
 
     def _get_read_deleted(self):
         return self._read_deleted
@@ -128,7 +129,8 @@ class ContextBase(oslo_ctx.RequestContext):
             'tenant_name': self.tenant_name,
             'tenant_id': self.tenant_id,
             'project_id': self.project_id,
-            'quota_class': self.quota_class
+            'quota_class': self.quota_class,
+            'roles': self.roles,
         })
         return ctx_dict
 
@@ -175,6 +177,7 @@ class Context(ContextBase):
     def elevated(self, read_deleted=None, overwrite=False):
         """Return a version of this context with admin flag set."""
         ctx = copy.copy(self)
+        ctx.roles = copy.deepcopy(self.roles)
         ctx.is_admin = True
 
         if read_deleted is not None:

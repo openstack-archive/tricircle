@@ -123,6 +123,10 @@ class AdminRequired(NotAuthorized):
     message = _("User does not have admin privileges")
 
 
+class PolicyNotAuthorized(NotAuthorized):
+    message = _("Policy doesn't allow this operation to be performed.")
+
+
 class InUse(TricircleException):
     message = _("The resource is inuse")
 

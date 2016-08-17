@@ -24,6 +24,7 @@ import oslo_db.exception as db_exc
 from tricircle.api import app
 from tricircle.common import az_ag
 from tricircle.common import context
+from tricircle.common import policy
 from tricircle.common import utils
 from tricircle.db import core
 from tricircle.tests import base
@@ -33,8 +34,14 @@ OPT_GROUP_NAME = 'keystone_authtoken'
 cfg.CONF.import_group(OPT_GROUP_NAME, "keystonemiddleware.auth_token")
 
 
-def fake_is_admin(ctx):
-    return True
+def fake_admin_context():
+    context_paras = {'is_admin': True}
+    return context.Context(**context_paras)
+
+
+def fake_non_admin_context():
+    context_paras = {}
+    return context.Context(**context_paras)
 
 
 class API_FunctionalTest(base.TestCase):
@@ -44,6 +51,7 @@ class API_FunctionalTest(base.TestCase):
 
         self.addCleanup(set_config, {}, overwrite=True)
 
+        cfg.CONF.clear()
         cfg.CONF.register_opts(app.common_opts)
 
         self.CONF = self.useFixture(fixture_config.Config()).conf
@@ -55,6 +63,8 @@ class API_FunctionalTest(base.TestCase):
         core.ModelBase.metadata.create_all(core.get_engine())
 
         self.context = context.get_admin_context()
+
+        policy.populate_default_rules()
 
         self.app = self._make_app()
 
@@ -78,13 +88,14 @@ class API_FunctionalTest(base.TestCase):
         cfg.CONF.unregister_opts(app.common_opts)
         pecan.set_config({}, overwrite=True)
         core.ModelBase.metadata.drop_all(core.get_engine())
+        policy.reset()
 
 
 class TestPodController(API_FunctionalTest):
     """Test version listing on root URI."""
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_no_input(self):
         pods = [
             # missing pod
@@ -109,8 +120,8 @@ class TestPodController(API_FunctionalTest):
     def fake_create_ag_az(context, ag_name, az_name):
         raise db_exc.DBDuplicateEntry
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     @patch.object(az_ag, 'create_ag_az',
                   new=fake_create_ag_az)
     def test_post_dup_db_exception(self):
@@ -132,8 +143,8 @@ class TestPodController(API_FunctionalTest):
     def fake_create_ag_az_exp(context, ag_name, az_name):
         raise Exception
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     @patch.object(core, 'create_resource',
                   new=fake_create_ag_az_exp)
     def test_post_exception(self):
@@ -152,8 +163,8 @@ class TestPodController(API_FunctionalTest):
 
         self._test_and_check(pods)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_invalid_input(self):
 
         pods = [
@@ -230,8 +241,8 @@ class TestPodController(API_FunctionalTest):
 
         self._test_and_check(pods)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_duplicate_top_region(self):
 
         pods = [
@@ -261,8 +272,8 @@ class TestPodController(API_FunctionalTest):
 
         self._test_and_check(pods)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_duplicate_pod(self):
 
         pods = [
@@ -293,8 +304,8 @@ class TestPodController(API_FunctionalTest):
 
         self._test_and_check(pods)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_pod_duplicate_top_region(self):
 
         pods = [
@@ -336,8 +347,8 @@ class TestPodController(API_FunctionalTest):
             self.assertEqual(response.status_int,
                              test_pod['expected_error'])
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_get_all(self):
 
         pods = [
@@ -387,12 +398,9 @@ class TestPodController(API_FunctionalTest):
         self.assertIn('Pod1', response)
         self.assertIn('Pod2', response)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
-    @patch.object(context, 'extract_context_from_environ')
-    def test_get_delete_one(self, mock_context):
-
-        mock_context.return_value = self.context
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
+    def test_get_delete_one(self):
 
         pods = [
 
@@ -480,12 +488,42 @@ class TestPodController(API_FunctionalTest):
             ag = az_ag.get_ag_by_name(self.context, ag_name)
             self.assertIsNone(ag)
 
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_non_admin_context)
+    def test_non_admin_action(self):
+
+        pods = [
+            {
+                "pod":
+                    {
+                        "pod_name": "Pod1",
+                        "pod_az_name": "az1",
+                        "dc_name": "dc2",
+                        "az_name": "AZ1"
+                    },
+                "expected_error": 401,
+            },
+        ]
+        self._test_and_check(pods)
+
+        response = self.app.get('/v1.0/pods/1234567890',
+                                expect_errors=True)
+        self.assertEqual(response.status_int, 401)
+
+        response = self.app.get('/v1.0/pods',
+                                expect_errors=True)
+        self.assertEqual(response.status_int, 401)
+
+        response = self.app.delete('/v1.0/pods/1234567890',
+                                   expect_errors=True)
+        self.assertEqual(response.status_int, 401)
+
 
 class TestBindingController(API_FunctionalTest):
     """Test version listing on root URI."""
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_no_input(self):
         pod_bindings = [
             # missing pod_binding
@@ -507,8 +545,8 @@ class TestBindingController(API_FunctionalTest):
             self.assertEqual(response.status_int,
                              test_pod['expected_error'])
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_post_invalid_input(self):
 
         pod_bindings = [
@@ -552,8 +590,8 @@ class TestBindingController(API_FunctionalTest):
 
         self._test_and_check(pod_bindings)
 
-    @patch.object(context, 'is_admin_context',
-                  new=fake_is_admin)
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_admin_context)
     def test_bindings(self):
 
         pods = [
@@ -665,3 +703,31 @@ class TestBindingController(API_FunctionalTest):
 
             self.assertEqual(response.status_int,
                              test_pod['expected_error'])
+
+    @patch.object(context, 'extract_context_from_environ',
+                  new=fake_non_admin_context)
+    def test_non_admin_action(self):
+        pod_bindings = [
+            {
+                "pod_binding":
+                    {
+                        "tenant_id": "dddddd",
+                        "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    },
+                "expected_error": 401
+            },
+        ]
+
+        self._test_and_check(pod_bindings)
+
+        response = self.app.get('/v1.0/bindings/1234567890',
+                                expect_errors=True)
+        self.assertEqual(response.status_int, 401)
+
+        response = self.app.get('/v1.0/bindings',
+                                expect_errors=True)
+        self.assertEqual(response.status_int, 401)
+
+        response = self.app.delete('/v1.0/bindings/1234567890',
+                                   expect_errors=True)
+        self.assertEqual(response.status_int, 401)
