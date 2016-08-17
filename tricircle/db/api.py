@@ -67,10 +67,40 @@ def update_pod(context, pod_id, update_dict):
         return core.update_resource(context, models.Pod, pod_id, update_dict)
 
 
+def change_pod_binding(context, pod_binding, pod_id):
+    with context.session.begin():
+        core.update_resource(context, models.PodBinding,
+                             pod_binding['id'], pod_binding)
+        core.create_resource(context, models.PodBinding,
+                             {'id': uuidutils.generate_uuid(),
+                              'tenant_id': pod_binding['tenant_id'],
+                              'pod_id': pod_id,
+                              'is_binding': True})
+
+
+def get_pod_binding_by_tenant_id(context, filter_):
+    with context.session.begin():
+        return core.query_resource(context, models.PodBinding, filter_, [])
+
+
+def get_pod_by_pod_id(context, pod_id):
+    with context.session.begin():
+        return core.get_resource(context, models.Pod, pod_id)
+
+
 def create_pod_service_configuration(context, config_dict):
     with context.session.begin():
         return core.create_resource(context, models.PodServiceConfiguration,
                                     config_dict)
+
+
+def create_pod_binding(context, tenant_id, pod_id):
+    with context.session.begin():
+        return core.create_resource(context, models.PodBinding,
+                                    {'id': uuidutils.generate_uuid(),
+                                     'tenant_id': tenant_id,
+                                     'pod_id': pod_id,
+                                     'is_binding': True})
 
 
 def delete_pod_service_configuration(context, config_id):

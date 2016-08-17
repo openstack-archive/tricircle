@@ -147,7 +147,8 @@ def get_pod_by_az_tenant(context, az_name, tenant_id):
                         context, models.PodBinding,
                         {'id': uuidutils.generate_uuid(),
                          'tenant_id': tenant_id,
-                         'pod_id': pod['pod_id']})
+                         'pod_id': pod['pod_id'],
+                         'is_binding': True})
                     return pod, pod['pod_az_name']
             except Exception as e:
                 LOG.error(_LE('Fail to create pod binding: %(exception)s'),

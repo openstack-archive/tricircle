@@ -47,6 +47,7 @@ def upgrade(migrate_engine):
         sql.Column('id', sql.String(36), primary_key=True),
         sql.Column('tenant_id', sql.String(length=255), nullable=False),
         sql.Column('pod_id', sql.String(length=255), nullable=False),
+        sql.Column('is_binding', sql.Boolean, nullable=False),
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
         migrate.UniqueConstraint(

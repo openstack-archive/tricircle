@@ -23,7 +23,6 @@ from tricircle.db import api
 from tricircle.db import core
 from tricircle.db import models
 
-
 FAKE_AZ = 'fake_az'
 
 FAKE_SITE_ID = 'fake_pod_id'
@@ -133,6 +132,7 @@ class AZAGTest(unittest.TestCase):
             self.assertEqual(pod2['pod_name'], FAKE_SITE_NAME)
             self.assertEqual(pod2['pod_id'], FAKE_SITE_ID)
             self.assertEqual(pod2['az_name'], FAKE_AZ)
+
         else:
             self.assertEqual(pod2['pod_name'], FAKE_SITE_NAME_2)
             self.assertEqual(pod2['pod_id'], FAKE_SITE_ID_2)

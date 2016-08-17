@@ -23,7 +23,6 @@ import oslo_log.log as logging
 
 import neutronclient.common.exceptions as q_exceptions
 
-from tricircle.common import az_ag
 import tricircle.common.client as t_client
 from tricircle.common import constants
 import tricircle.common.context as t_context
@@ -32,12 +31,14 @@ from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
 import tricircle.common.lock_handle as t_lock
 from tricircle.common.quota import QUOTAS
+from tricircle.common.scheduler import filter_scheduler
 from tricircle.common import utils
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 from tricircle.network import helper
+
 
 LOG = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ServerController(rest.RestController):
         self.clients = {constants.TOP: t_client.Client()}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
+        self.filter_scheduler = filter_scheduler.FilterScheduler()
 
     def _get_client(self, pod_name=constants.TOP):
         if pod_name not in self.clients:
@@ -128,9 +130,8 @@ class ServerController(rest.RestController):
                 400, _('server is not set'))
 
         az = kw['server'].get('availability_zone', '')
-
-        pod, b_az = az_ag.get_pod_by_az_tenant(
-            context, az, self.project_id)
+        pod, b_az = self.filter_scheduler.select_destination(
+            context, az, self.project_id, pod_group='')
         if not pod:
             return utils.format_nova_error(
                 500, _('Pod not configured or scheduling failure'))
