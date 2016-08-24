@@ -42,7 +42,8 @@ class VolumeActionController(rest.RestController):
             'os-reset_status': self._reset_status,
             'os-set_image_metadata': self._set_image_metadata,
             'os-unset_image_metadata': self._unset_image_metadata,
-            'os-show_image_metadata': self._show_image_metadata
+            'os-show_image_metadata': self._show_image_metadata,
+            'os-force_detach': self._force_detach
         }
 
     def _get_client(self, pod_name=constants.TOP):
@@ -103,6 +104,15 @@ class VolumeActionController(rest.RestController):
             return utils.format_cinder_error(400, msg)
         return self._action(context, pod_name, 'os-extend',
                             {'new_size': new_size})
+
+    def _force_detach(self, context, pod_name, kw):
+        """Forces a volume to detach
+
+        :param pod_name: the bottom pod name.
+        :param kw: request body.
+        """
+        body = kw['os-force_detach']
+        return self._action(context, pod_name, 'os-force_detach', body)
 
     def _reset_status(self, context, pod_name, kw):
         """Update the provided volume with the provided state.
