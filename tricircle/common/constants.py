@@ -81,3 +81,19 @@ JT_PORT_DELETE = 'port_delete'
 # network type
 NT_LOCAL = 'local'
 NT_SHARED_VLAN = 'shared_vlan'
+
+
+# nova microverson headers key word
+NOVA_API_VERSION_REQUEST_HEADER = 'OpenStack-API-Version'
+LEGACY_NOVA_API_VERSION_REQUEST_HEADER = 'X-OpenStack-Nova-API-Version'
+HTTP_NOVA_API_VERSION_REQUEST_HEADER = 'HTTP_OPENSTACK_API_VERSION'
+HTTP_LEGACY_NOVA_API_VERSION_REQUEST_HEADER = \
+    'HTTP_X_OPENSTACK_NOVA_API_VERSION'
+
+# nova microverson prefix
+NOVA_MICRO_VERSION_PREFIX = 'compute'
+
+
+# support nova version range
+NOVA_APIGW_MIN_VERSION = '2.1'
+NOVA_APIGW_MAX_VERSION = '2.36'

@@ -1,3 +1,62 @@
+#!/bin/bash -e
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+
+export DEST=$BASE/new
+export TEMPEST_DIR=$DEST/tempest
+export TEMPEST_CONF=$TEMPEST_DIR/etc/tempest.conf
+
+# preparation for the tests
+cd $TEMPEST_DIR
+
+# Run functional test
+echo "Running Tricircle functional test suite..."
+
+# all test cases with following prefix
+TESTCASES="(tempest.api.compute.test_versions"
+#TESTCASES="$TESTCASES|tempest.api.volume.test_volumes_get"
+# add new test cases like following line for volume_type test
+# TESTCASES="$TESTCASES|tempest.api.volume.admin.test_volumes_type"
+TESTCASES="$TESTCASES)"
+
+ostestr --regex $TESTCASES
+
+# --------------------- IMPORTANT begin -------------------- #
+# all following test cases are from Cinder tempest test cases,
+# the purpose to list them here is to check which test cases
+# are still not covered and tested in Cinder-APIGW.
+#
+# Those test cases which have been covered by ostestr running
+# above should be marked with **DONE** after the "#".
+# please leave the length of each line > 80 characters in order
+# to keep one test case one line.
+#
+# When you add new feature to Cinder-APIGW, please select
+# proper test cases to test against the feature, and marked
+# these test cases with **DONE** after the "#". For those test
+# cases which are not needed to be tested in Cinder-APIGW, for
+# example V1(which has been deprecated) should be marked with
+# **SKIP** after "#"
+#
+# The test cases running through ostestr could be filtered
+# by regex expression, for example, for Cinder volume type
+# releated test cases could be executed by a single clause:
+# ostestr --regex tempest.api.volume.admin.test_volume_types
+# --------------------- IMPORTANT end -----------------------#
+
+
+
 # tempest.api.compute.admin.test_agents.AgentsAdminTestJSON.test_create_agent[id-1fc6bdc8-0b6d-4cc7-9f30-9b04fabe5b90]
 # tempest.api.compute.admin.test_agents.AgentsAdminTestJSON.test_delete_agent[id-470e0b89-386f-407b-91fd-819737d0b335]
 # tempest.api.compute.admin.test_agents.AgentsAdminTestJSON.test_list_agents[id-6a326c69-654b-438a-80a3-34bcc454e138]
@@ -494,8 +553,8 @@
 # tempest.api.compute.test_quotas.QuotasTestJSON.test_get_default_quotas[id-9bfecac7-b966-4f47-913f-1a9e2c12134a]
 # tempest.api.compute.test_quotas.QuotasTestJSON.test_get_quotas[id-f1ef0a97-dbbb-4cca-adc5-c9fbc4f76107]
 # tempest.api.compute.test_tenant_networks.ComputeTenantNetworksTest.test_list_show_tenant_networks[id-edfea98e-bbe3-4c7a-9739-87b986baff26,network]
-# tempest.api.compute.test_versions.TestVersions.test_get_version_details[id-b953a29e-929c-4a8e-81be-ec3a7e03cb76]
-# tempest.api.compute.test_versions.TestVersions.test_list_api_versions[id-6c0a0990-43b6-4529-9b61-5fd8daf7c55c]
+# **DONE** tempest.api.compute.test_versions.TestVersions.test_get_version_details[id-b953a29e-929c-4a8e-81be-ec3a7e03cb76]
+# **DONE** tempest.api.compute.test_versions.TestVersions.test_list_api_versions[id-6c0a0990-43b6-4529-9b61-5fd8daf7c55c]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_attach_detach_volume[id-52e9045a-e90d-4c0d-9087-79d657faffff]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_attach_volume_shelved_or_offload_server[id-13a940b6-3474-4c3c-b03f-29b89112bfee]
 # tempest.api.compute.volumes.test_attach_volume.AttachVolumeShelveTestJSON.test_detach_volume_shelved_or_offload_server[id-b54e86dd-a070-49c4-9c07-59ae6dae15aa]

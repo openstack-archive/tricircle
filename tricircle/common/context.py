@@ -19,6 +19,7 @@ from pecan import request
 
 import oslo_context.context as oslo_ctx
 
+from tricircle.common import constants
 from tricircle.common.i18n import _
 from tricircle.db import core
 
@@ -46,7 +47,9 @@ def extract_context_from_environ():
                      'domain': 'HTTP_X_DOMAIN_ID',
                      'user_domain': 'HTTP_X_USER_DOMAIN_ID',
                      'project_domain': 'HTTP_X_PROJECT_DOMAIN_ID',
-                     'request_id': 'openstack.request_id'}
+                     'request_id': 'openstack.request_id',
+                     'nova_micro_version':
+                         constants.NOVA_API_VERSION_REQUEST_HEADER}
 
     environ = request.environ
 
@@ -100,6 +103,8 @@ class ContextBase(oslo_ctx.RequestContext):
         self.tenant_name = tenant_name
         self.quota_class = quota_class
         self.read_deleted = read_deleted
+        self.nova_micro_version = kwargs.get('nova_micro_version',
+                                             constants.NOVA_APIGW_MIN_VERSION)
 
     def _get_read_deleted(self):
         return self._read_deleted

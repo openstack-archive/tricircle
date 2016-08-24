@@ -18,7 +18,9 @@ from oslo_config import cfg
 
 from tricircle.common.i18n import _
 from tricircle.common import restapp
+from tricircle.nova_apigw.controllers import micro_versions
 from tricircle.nova_apigw.controllers import root
+from tricircle.nova_apigw.controllers import root_versions
 
 
 common_opts = [
@@ -72,5 +74,10 @@ def setup_app(*args, **kwargs):
         hooks=app_hooks,
         guess_content_type_from_ext=True
     )
+
+    # get nova api version
+    app = micro_versions.MicroVersion(app)
+    # version can be unauthenticated so it goes outside of auth
+    app = root_versions.Versions(app)
 
     return app

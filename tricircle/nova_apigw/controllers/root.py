@@ -23,6 +23,7 @@ import oslo_log.log as logging
 
 import webob.exc as web_exc
 
+from tricircle.common import constants
 from tricircle.common import context as ctx
 from tricircle.common import xrpcapi
 from tricircle.nova_apigw.controllers import action
@@ -53,34 +54,6 @@ class RootController(object):
     def _lookup(self, version, *remainder):
         if version == 'v2.1':
             return V21Controller(), remainder
-
-    @pecan.expose(generic=True, template='json')
-    def index(self):
-        return {
-            "versions": [
-                {
-                    "status": "CURRENT",
-                    "updated": "2013-07-23T11:33:21Z",
-                    "links": [
-                        {
-                            "href": pecan.request.application_url + "/v2.1/",
-                            "rel": "self"
-                        }
-                    ],
-                    "min_version": "2.1",
-                    "version": "2.12",
-                    "id": "v2.1"
-                }
-            ]
-        }
-
-    @index.when(method='POST')
-    @index.when(method='PUT')
-    @index.when(method='DELETE')
-    @index.when(method='HEAD')
-    @index.when(method='PATCH')
-    def not_supported(self):
-        pecan.abort(405)
 
 
 class V21Controller(object):
@@ -154,8 +127,8 @@ class V21Controller(object):
                         "rel": "describedby"
                     }
                 ],
-                "min_version": "2.1",
-                "version": "2.12",
+                "min_version": constants.NOVA_APIGW_MIN_VERSION,
+                "version": constants.NOVA_APIGW_MAX_VERSION,
                 "media-types": [
                     {
                         "base": "application/json",
@@ -172,7 +145,7 @@ class V21Controller(object):
     @index.when(method='HEAD')
     @index.when(method='PATCH')
     def not_supported(self):
-        pecan.abort(405)
+        pecan.abort(404)
 
 
 class TestRPCController(rest.RestController):

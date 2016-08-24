@@ -74,29 +74,30 @@ class TestRootController(Nova_API_GW_FunctionalTest):
         self.assertEqual(response.status_int, 200)
         json_body = jsonutils.loads(response.body)
         versions = json_body.get('versions')
-        self.assertEqual(1, len(versions))
-        self.assertEqual(versions[0]["min_version"], "2.1")
-        self.assertEqual(versions[0]["id"], "v2.1")
+        self.assertEqual(2, len(versions))
+        self.assertEqual(versions[0]["id"], "v2.0")
+        self.assertEqual(versions[1]["min_version"], "2.1")
+        self.assertEqual(versions[1]["id"], "v2.1")
 
-    def _test_method_returns_405(self, method):
+    def _test_method_returns_404(self, method):
         api_method = getattr(self.app, method)
         response = api_method('/', expect_errors=True)
-        self.assertEqual(response.status_int, 405)
+        self.assertEqual(response.status_int, 404)
 
     def test_post(self):
-        self._test_method_returns_405('post')
+        self._test_method_returns_404('post')
 
     def test_put(self):
-        self._test_method_returns_405('put')
+        self._test_method_returns_404('put')
 
     def test_patch(self):
-        self._test_method_returns_405('patch')
+        self._test_method_returns_404('patch')
 
     def test_delete(self):
-        self._test_method_returns_405('delete')
+        self._test_method_returns_404('delete')
 
     def test_head(self):
-        self._test_method_returns_405('head')
+        self._test_method_returns_404('head')
 
 
 class TestV21Controller(Nova_API_GW_FunctionalTest):
@@ -109,25 +110,25 @@ class TestV21Controller(Nova_API_GW_FunctionalTest):
         self.assertEqual(version["min_version"], "2.1")
         self.assertEqual(version["id"], "v2.1")
 
-    def _test_method_returns_405(self, method):
+    def _test_method_returns_404(self, method):
         api_method = getattr(self.app, method)
-        response = api_method('/v2.1', expect_errors=True)
-        self.assertEqual(response.status_int, 405)
+        response = api_method('/', expect_errors=True)
+        self.assertEqual(response.status_int, 404)
 
     def test_post(self):
-        self._test_method_returns_405('post')
+        self._test_method_returns_404('post')
 
     def test_put(self):
-        self._test_method_returns_405('put')
+        self._test_method_returns_404('put')
 
     def test_patch(self):
-        self._test_method_returns_405('patch')
+        self._test_method_returns_404('patch')
 
     def test_delete(self):
-        self._test_method_returns_405('delete')
+        self._test_method_returns_404('delete')
 
     def test_head(self):
-        self._test_method_returns_405('head')
+        self._test_method_returns_404('head')
 
 
 class TestErrors(Nova_API_GW_FunctionalTest):
@@ -145,7 +146,7 @@ class TestErrors(Nova_API_GW_FunctionalTest):
 class TestRequestID(Nova_API_GW_FunctionalTest):
 
     def test_request_id(self):
-        response = self.app.get('/')
+        response = self.app.get('/v2.1/')
         self.assertIn('x-openstack-request-id', response.headers)
         self.assertTrue(
             response.headers['x-openstack-request-id'].startswith('req-'))
@@ -169,5 +170,5 @@ class TestKeystoneAuth(Nova_API_GW_FunctionalTest):
         self.app = self._make_app()
 
     def test_auth_enforced(self):
-        response = self.app.get('/', expect_errors=True)
+        response = self.app.get('/v2.1/', expect_errors=True)
         self.assertEqual(response.status_int, 401)

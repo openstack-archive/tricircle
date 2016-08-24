@@ -215,7 +215,7 @@ class NovaResourceHandle(ResourceHandle):
                         'server_volume': ACTION}
 
     def _get_client(self, cxt):
-        cli = n_client.Client(api_versions.APIVersion('2.1'),
+        cli = n_client.Client(api_versions.APIVersion(cxt.nova_micro_version),
                               auth_token=cxt.auth_token,
                               auth_url=self.auth_url,
                               timeout=cfg.CONF.client.nova_timeout)
