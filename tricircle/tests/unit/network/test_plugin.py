@@ -844,6 +844,9 @@ class PluginTest(unittest.TestCase,
         cfg.CONF.register_opts(q_config.core_opts)
         plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
         cfg.CONF.set_override('core_plugin', plugin_path)
+        cfg.CONF.set_override('ipam_driver', '')
+        # set ipam_driver as empty string to use IpamNonPluggableBackend, which
+        # is enough for test purpose
         self.context = context.Context()
         self.save_method = manager.NeutronManager._get_default_service_plugins
         manager.NeutronManager._get_default_service_plugins = mock.Mock()
