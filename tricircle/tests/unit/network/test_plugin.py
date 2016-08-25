@@ -821,19 +821,24 @@ def fake_make_router_dict(self, router, fields=None, process_extensions=True):
     return router
 
 
-@staticmethod
-def fake_generate_ip(context, subnets, prefer_next=False):
+def fake_generate_ip(subnet):
     suffix = 1
     for allocation in TOP_IPALLOCATIONS:
-        if allocation['subnet_id'] == subnets[0]['id']:
+        if allocation['subnet_id'] == subnet['id']:
             ip = allocation['ip_address']
             current_suffix = int(ip[ip.rindex('.') + 1:])
             if current_suffix >= suffix:
                 suffix = current_suffix
     suffix += 1
-    cidr = subnets[0]['cidr']
+    cidr = subnet['cidr']
     new_ip = cidr[:cidr.rindex('.') + 1] + ('%d' % suffix)
-    return {'ip_address': new_ip, 'subnet_id': subnets[0]['id']}
+    return {'ip_address': new_ip, 'subnet_id': subnet['id']}
+
+
+def fake_allocate_ips_for_port(self, context, port):
+    for subnet in TOP_SUBNETS:
+        if subnet['network_id'] == port['port']['network_id']:
+            return [fake_generate_ip(subnet)]
 
 
 class PluginTest(unittest.TestCase,
@@ -1078,7 +1083,7 @@ class PluginTest(unittest.TestCase,
         fake_plugin.create_network(neutron_context, network)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(context, 'get_context_from_neutron_context')
@@ -1181,7 +1186,7 @@ class PluginTest(unittest.TestCase,
         return t_net_id, t_subnet_id, t_router_id
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
@@ -1287,7 +1292,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(mock_action.call_count, 3)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
@@ -1469,7 +1474,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(mock_action.call_count, 7)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
@@ -1528,7 +1533,7 @@ class PluginTest(unittest.TestCase,
             self.assertEqual(entry_num + 5, len(entries))
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
@@ -1566,7 +1571,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(3, len(BOTTOM1_PORTS))
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(subnet_alloc.SubnetAllocator, '_lock_subnetpool',
@@ -1665,7 +1670,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(mappings[0][1], bottom_net['id'])
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -1748,7 +1753,7 @@ class PluginTest(unittest.TestCase,
         mock_action.assert_has_calls(calls)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -1871,7 +1876,7 @@ class PluginTest(unittest.TestCase,
             'network_id': t_net_id,
             'mac_address': 'fa:16:3e:96:41:03',
             'fixed_ips': [{'subnet_id': t_subnet_id,
-                          'ip_address': '10.0.0.3'}]
+                          'ip_address': '10.0.0.4'}]
         }
         b_port = {
             'id': b_port_id,
@@ -1882,7 +1887,7 @@ class PluginTest(unittest.TestCase,
             'fixed_ips': [
                 {'subnet_id': db_api.get_bottom_id_by_top_id_pod_name(
                     t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET),
-                 'ip_address': '10.0.0.3'}]
+                 'ip_address': '10.0.0.4'}]
         }
         TOP_PORTS.append(t_port)
         BOTTOM1_PORTS.append(b_port)
@@ -1896,7 +1901,7 @@ class PluginTest(unittest.TestCase,
         return t_port_id, b_port_id, fip, e_net
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -1945,7 +1950,7 @@ class PluginTest(unittest.TestCase,
         mock_create.assert_has_calls(calls)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -2005,7 +2010,7 @@ class PluginTest(unittest.TestCase,
         mock_create.assert_has_calls(calls)
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
@@ -2044,7 +2049,7 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
 
     @patch.object(ipam_non_pluggable_backend.IpamNonPluggableBackend,
-                  '_generate_ip', new=fake_generate_ip)
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
