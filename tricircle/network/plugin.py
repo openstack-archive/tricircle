@@ -312,15 +312,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def get_network(self, context, network_id, fields=None):
         net = super(TricirclePlugin, self).get_network(context, network_id,
                                                        fields)
-        self.type_manager.extend_network_dict_provider(context, net)
+        if not fields or 'id' in fields:
+            self.type_manager.extend_network_dict_provider(context, net)
         return net
 
     def get_networks(self, context, filters=None, fields=None,
                      sorts=None, limit=None, marker=None, page_reverse=False):
         nets = super(TricirclePlugin,
-                     self).get_networks(context, filters, None, sorts,
+                     self).get_networks(context, filters, fields, sorts,
                                         limit, marker, page_reverse)
-        self.type_manager.extend_networks_dict_provider(context, nets)
+        if not fields or 'id' in fields:
+            self.type_manager.extend_networks_dict_provider(context, nets)
         return nets
 
     def create_subnet(self, context, subnet):
@@ -373,7 +375,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             context, subnet_id, subnet)
 
     def create_port(self, context, port):
-        return super(TricirclePlugin, self).create_port(context, port)
+        db_port = super(TricirclePlugin, self).create_port_db(context, port)
+        return self._make_port_dict(db_port)
 
     def update_port(self, context, port_id, port):
         # TODO(zhiyuan) handle bottom port update
@@ -447,6 +450,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _apply_ports_filters(query, model, filters):
         if not filters:
             return query
+
+        fixed_ips = filters.pop('fixed_ips', {})
+        ip_addresses = fixed_ips.get('ip_address')
+        subnet_ids = fixed_ips.get('subnet_id')
+        if ip_addresses or subnet_ids:
+            query = query.join(models_v2.Port.fixed_ips)
+        if ip_addresses:
+            query = query.filter(
+                models_v2.IPAllocation.ip_address.in_(ip_addresses))
+        if subnet_ids:
+            query = query.filter(
+                models_v2.IPAllocation.subnet_id.in_(subnet_ids))
+
         for key, value in filters.iteritems():
             column = getattr(model, key, None)
             if column is not None:
@@ -558,6 +574,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if filters:
             _filters = dict(filters)
             for key, value in _filters:
+                if key == 'fixed_ips':
+                    if 'ip_address' in value:
+                        _filters[key] = 'ip_address=%s' % value['ip_address']
+                    continue
                 id_list = self._get_map_filter_ids(
                     key, value, current_pod['pod_id'], top_bottom_map)
                 if id_list:
@@ -660,7 +680,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # _get_ports_from_pod_with_number already traverses all the pods
             # to try to get ports equal to limit, so pod is transparent for
             # controller.
-            return res['ports']
+            return [super(TricirclePlugin,
+                          self)._fields(p, fields) for p in res['ports']]
         else:
             ret = []
             pods = db_api.list_pods(t_ctx)
@@ -670,6 +691,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 _filters = []
                 if filters:
                     for key, value in filters.iteritems():
+                        if key == 'fixed_ips':
+                            if 'ip_address' in value:
+                                _filters.append(
+                                    {'key': key, 'comparator': 'eq',
+                                     'value': 'ip_address=%s' % value[
+                                         'ip_address']})
+                            continue
                         id_list = self._get_map_filter_ids(
                             key, value, pod['pod_id'], top_bottom_map)
                         if id_list:
@@ -685,7 +713,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             ret = self._map_ports_from_bottom_to_top(ret, bottom_top_map)
             ret.extend(self._get_ports_from_top(context, top_bottom_map,
                                                 filters))
-            return ret
+            return [super(TricirclePlugin,
+                          self)._fields(p, fields) for p in ret]
 
     def create_router(self, context, router):
         return super(TricirclePlugin, self).create_router(context, router)
