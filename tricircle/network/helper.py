@@ -472,21 +472,17 @@ class NetworkHelper(object):
         }
         return body
 
-    def prepare_dhcp_port(self, ctx, project_id, b_pod, t_net_id, t_subnet_id,
-                          b_net_id, b_subnet_id):
-        """Create top dhcp port and map it to bottom dhcp port
+    def prepare_top_dhcp_port(self, t_ctx, q_ctx, project_id, t_net_id,
+                              t_subnet_id):
+        """Create top dhcp port
 
-        :param ctx: tricircle context
+        :param t_ctx: tricircle context
+        :param q_ctx: neutron context
         :param project_id: project id
-        :param b_pod: dict of bottom pod
         :param t_net_id: top network id
         :param t_subnet_id: top subnet id
-        :param b_net_id: bottom network id
-        :param b_subnet_id: bottom subnet id
-        :return: None
+        :return: top dhcp port id
         """
-        t_client = self._get_client()
-
         t_dhcp_name = t_constants.dhcp_port_name % t_subnet_id
         t_dhcp_port_body = {
             'port': {
@@ -509,8 +505,26 @@ class NetworkHelper(object):
         # the same IP, each dnsmasq daemon only takes care of VM IPs in
         # its own pod, VM will not receive incorrect dhcp response
         _, t_dhcp_port_id = self.prepare_top_element(
-            ctx, None, project_id, db_api.get_top_pod(ctx),
+            t_ctx, q_ctx, project_id, db_api.get_top_pod(t_ctx),
             {'id': t_dhcp_name}, t_constants.RT_PORT, t_dhcp_port_body)
+        return t_dhcp_port_id
+
+    def prepare_dhcp_port(self, ctx, project_id, b_pod, t_net_id, t_subnet_id,
+                          b_net_id, b_subnet_id):
+        """Create top dhcp port and map it to bottom dhcp port
+
+        :param ctx: tricircle context
+        :param project_id: project id
+        :param b_pod: dict of bottom pod
+        :param t_net_id: top network id
+        :param t_subnet_id: top subnet id
+        :param b_net_id: bottom network id
+        :param b_subnet_id: bottom subnet id
+        :return: None
+        """
+        t_dhcp_port_id = self.prepare_top_dhcp_port(ctx, None, project_id,
+                                                    t_net_id, t_subnet_id)
+        t_client = self._get_client()
         t_dhcp_port = t_client.get_ports(ctx, t_dhcp_port_id)
         dhcp_port_body = self._get_create_dhcp_port_body(
             project_id, t_dhcp_port, b_subnet_id, b_net_id)

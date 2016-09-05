@@ -72,6 +72,7 @@ JS_Fail = 'Fail'
 SP_EXTRA_ID = '00000000-0000-0000-0000-000000000000'
 TOP = 'top'
 POD_NOT_SPECIFIED = 'not_specified_pod'
+PROFILE_REGION = 'region'
 
 # job type
 JT_ROUTER = 'router'

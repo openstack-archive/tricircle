@@ -127,6 +127,26 @@ def update_pod_service_configuration(context, config_id, update_dict):
             context, models.PodServiceConfiguration, config_id, update_dict)
 
 
+def create_resource_mapping(context, top_id, bottom_id, pod_id, project_id,
+                            resource_type):
+    try:
+        context.session.begin()
+        route = core.create_resource(context, models.ResourceRouting,
+                                     {'top_id': top_id,
+                                      'bottom_id': bottom_id,
+                                      'pod_id': pod_id,
+                                      'project_id': project_id,
+                                      'resource_type': resource_type})
+        context.session.commit()
+        return route
+    except db_exc.DBDuplicateEntry:
+        # entry has already been created
+        context.session.rollback()
+        return None
+    finally:
+        context.session.close()
+
+
 def get_bottom_mappings_by_top_id(context, top_id, resource_type):
     """Get resource id and pod name on bottom
 

@@ -43,7 +43,7 @@ curl -X POST http://127.0.0.1:19999/v1.0/pods \
 #                    <name> <id> <ram> <disk> <vcpus>
 # the following command is to create a flavor wih name='test',
 # id=1, ram=1024MB, disk=10GB, vcpu=1
-nova flavor-create test 1 1024 10 1
+# nova flavor-create test 1 1024 10 1
 image_id=$(openstack image list | awk 'NR==4 {print $2}')
 
 # preparation for the tests
@@ -80,12 +80,12 @@ iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
 iniset $TEMPEST_CONF validation connect_method fixed
 
 # Run the Compute Tempest tests
-cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
-sudo BASE=$BASE ./tempest_compute.sh
+# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+# sudo BASE=$BASE ./tempest_compute.sh
 
 # Run the Volume Tempest tests
-cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
-sudo BASE=$BASE ./tempest_volume.sh
+# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+# sudo BASE=$BASE ./tempest_volume.sh
 
 # Run the Network Tempest tests
 cd $TRICIRCLE_TEMPEST_PLUGIN_DIR

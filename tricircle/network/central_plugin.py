@@ -79,7 +79,10 @@ tricircle_opts = [
     cfg.StrOpt('bridge_network_type',
                default='',
                help=_('Type of l3 bridge network, this type should be enabled '
-                      'in tenant_network_types and is not local type.'))
+                      'in tenant_network_types and is not local type.')),
+    cfg.BoolOpt('enable_api_gateway',
+                default=True,
+                help=_('Whether the Nova API gateway is enabled'))
 ]
 
 tricircle_opt_group = cfg.OptGroup('tricircle')
@@ -335,6 +338,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if network.get(external_net.EXTERNAL):
                 self._create_bottom_external_subnet(
                     context, res, network, res['id'])
+        if res['enable_dhcp']:
+            try:
+                t_ctx = t_context.get_context_from_neutron_context(context)
+                self.helper.prepare_top_dhcp_port(
+                    t_ctx, context, res['tenant_id'], network['id'], res['id'])
+            except Exception:
+                self.delete_subnet(context, res['id'])
+                raise
         return res
 
     def _delete_pre_created_port(self, t_ctx, q_ctx, port_name):
@@ -384,7 +395,26 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # router interface, we cannot directly update bottom port in this case,
         # otherwise we will fail when attaching bottom port to bottom router
         # because its device_id is not empty
-        return super(TricirclePlugin, self).update_port(context, port_id, port)
+        res = super(TricirclePlugin, self).update_port(context, port_id, port)
+        if t_constants.PROFILE_REGION in port['port'].get(
+                'binding:profile', {}):
+            region_name = port['port']['binding:profile'][
+                t_constants.PROFILE_REGION]
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            pod = db_api.get_pod_by_name(t_ctx, region_name)
+            entries = [(ip['subnet_id'],
+                        t_constants.RT_SUBNET) for ip in res['fixed_ips']]
+            entries.append((res['network_id'], t_constants.RT_NETWORK))
+            entries.append((res['id'], t_constants.RT_PORT))
+
+            for resource_id, resource_type in entries:
+                if db_api.get_bottom_id_by_top_id_pod_name(
+                        t_ctx, resource_id, pod['pod_name'], resource_type):
+                    continue
+                db_api.create_resource_mapping(t_ctx, resource_id, resource_id,
+                                               pod['pod_id'], res['tenant_id'],
+                                               resource_type)
+        return res
 
     def delete_port(self, context, port_id, l3_port_check=True):
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -393,16 +423,20 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # ports, we just remove records in top pod and leave deletion of
         # ports and routing entries in bottom pods to xjob
         if port.get('device_owner') not in NON_VM_PORT_TYPES:
-            try:
-                mappings = db_api.get_bottom_mappings_by_top_id(
-                    t_ctx, port_id, t_constants.RT_PORT)
-                if mappings:
-                    pod_name = mappings[0][0]['pod_name']
-                    bottom_port_id = mappings[0][1]
-                    self._get_client(pod_name).delete_ports(
-                        t_ctx, bottom_port_id)
-            except Exception:
-                raise
+            if cfg.CONF.tricircle.enable_api_gateway:
+                # NOTE(zhiyuan) this is a temporary check, after we remove all
+                # the networking process from nova api gateway, we can remove
+                # this option
+                try:
+                    mappings = db_api.get_bottom_mappings_by_top_id(
+                        t_ctx, port_id, t_constants.RT_PORT)
+                    if mappings:
+                        pod_name = mappings[0][0]['pod_name']
+                        bottom_port_id = mappings[0][1]
+                        self._get_client(pod_name).delete_ports(
+                            t_ctx, bottom_port_id)
+                except Exception:
+                    raise
             with t_ctx.session.begin():
                 core.delete_resources(t_ctx, models.ResourceRouting,
                                       filters=[{'key': 'top_id',

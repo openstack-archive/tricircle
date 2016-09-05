@@ -28,3 +28,7 @@ class DefaultGroupUpdateNotSupported(exceptions.InvalidInput):
 
 class BottomPodOperationFailure(exceptions.NeutronException):
     message = _('Operation for %(resource)s on bottom pod %(pod_name)s fails')
+
+
+class DhcpPortNotFound(exceptions.NotFound):
+    message = _('Dhcp port for subnet %(subnet_id)s not found')

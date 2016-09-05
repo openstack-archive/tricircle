@@ -50,11 +50,11 @@ from tricircle.common import exceptions
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+import tricircle.network.central_plugin as plugin
 from tricircle.network.drivers import type_local
 from tricircle.network.drivers import type_shared_vlan
 from tricircle.network import helper
 from tricircle.network import managers
-from tricircle.network import plugin
 from tricircle.tests.unit.network import test_security_groups
 from tricircle.xjob import xmanager
 
@@ -1020,7 +1020,8 @@ class PluginTest(unittest.TestCase,
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         cfg.CONF.register_opts(q_config.core_opts)
-        plugin_path = 'tricircle.tests.unit.network.test_plugin.FakePlugin'
+        plugin_path = \
+            'tricircle.tests.unit.network.test_central_plugin.FakePlugin'
         cfg.CONF.set_override('core_plugin', plugin_path)
         self.context = context.Context()
         self.save_method = manager.NeutronManager._get_default_service_plugins
