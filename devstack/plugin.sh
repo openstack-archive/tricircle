@@ -230,6 +230,7 @@ function start_new_neutron_server {
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head
 
+    enable_service q-svc$server_index
     run_process q-svc$server_index "$NEUTRON_BIN_DIR/neutron-server --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE"
 }
 
@@ -241,7 +242,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         echo_summary "Installing Tricircle"
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Configuring Tricircle"
-
+        export NEUTRON_CREATE_INITIAL_NETWORKS=False
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
 
         enable_service t-api t-ngw t-cgw t-job

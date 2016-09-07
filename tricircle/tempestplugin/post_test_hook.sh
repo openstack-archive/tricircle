@@ -77,6 +77,8 @@ iniset $TEMPEST_CONF volume catalog_type volumev2
 iniset $TEMPEST_CONF volume endpoint_type publicURL
 iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
 
+iniset $TEMPEST_CONF validation connect_method fixed
+
 # Run the Compute Tempest tests
 cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
 sudo BASE=$BASE ./tempest_compute.sh
