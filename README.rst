@@ -31,7 +31,7 @@ specific bottom OpenStack instances in one or multiple AZs automatically.
 * Design documentation: `Tricircle Design Blueprint <https://docs.google.com/document/d/18kZZ1snMOCD9IQvUKI5NVDzSASpw-QKj7l2zNqMEd3g/>`_
 * Wiki: https://wiki.openstack.org/wiki/tricircle
 * Installation with DevStack: https://github.com/openstack/tricircle/blob/master/doc/source/installation.rst
-* Documentation: TBD
+* Tricircle Admin API documentation: https://github.com/openstack/tricircle/blob/master/doc/source/api_v1.rst
 * Source: https://github.com/openstack/tricircle
 * Bugs: http://bugs.launchpad.net/tricircle
 * Blueprints: https://launchpad.net/tricircle
