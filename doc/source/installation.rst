@@ -444,7 +444,7 @@ Verification with script
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 A sample of admin-openrc.sh and an installation verification script can be
-found in devstack/ directory. And a demo blog with virtualbox can be found in http://shipengfei92.cn/play_tricircle_with_virtualbox
+found in devstack/ directory. And a demo blog with virtualbox can be found in https://wiki.openstack.org/wiki/Play_tricircle_with_virtualbox
 
 Script 'verify_cross_pod_install.sh' is to quickly verify the installation of
 the Tricircle in Cross Pod OpenStack as the contents above and save the output
