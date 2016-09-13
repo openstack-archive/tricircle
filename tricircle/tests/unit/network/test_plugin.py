@@ -108,6 +108,7 @@ RES_MAP = {'networks': TOP_NETS,
            'securitygroups': TOP_SGS,
            'securitygrouprules': TOP_SG_RULES}
 SUBNET_INFOS = {}
+TEST_TENANT_ID = 'test_tenant_id'
 
 
 def _fill_external_gateway_info(router):
@@ -504,7 +505,8 @@ class FakeNeutronContext(object):
         self._session = None
         self.is_admin = True
         self.is_advsvc = False
-        self.tenant_id = ''
+        self.tenant_id = TEST_TENANT_ID
+        self.project_id = TEST_TENANT_ID
 
     @property
     def session(self):
@@ -727,6 +729,12 @@ class FakeSession(object):
     def __init__(self):
         self.info = {}
 
+    def __getattr__(self, field):
+        def dummy_method(*args, **kwargs):
+            pass
+
+        return dummy_method
+
     @property
     def is_active(self):
         return True
@@ -805,12 +813,6 @@ class FakeSession(object):
         self._cascade_delete(model_obj, 'port_id', 'ipallocations', 'id')
         for res_list in RES_MAP.values():
             delete_model(res_list, model_obj)
-
-    def flush(self):
-        pass
-
-    def expire(self, obj, fields=None):
-        pass
 
 
 class FakeXManager(xmanager.XManager):
@@ -1193,7 +1195,7 @@ class PluginTest(unittest.TestCase,
         mock_context.return_value = tricircle_context
 
         network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': 'test_tenant_id',
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['az_name_1', 'az_name_2']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         mock_update.return_value = network['network']
@@ -1204,7 +1206,7 @@ class PluginTest(unittest.TestCase,
                 'availability_zone_hints': '["az_name_1", "az_name_2"]'}})
 
         err_network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': 'test_tenant_id',
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['az_name_1', 'az_name_3']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         self.assertRaises(az_ext.AvailabilityZoneNotFound,
@@ -1221,7 +1223,7 @@ class PluginTest(unittest.TestCase,
         mock_context.return_value = tricircle_context
 
         network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': 'test_tenant_id',
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'admin_state_up': True, 'shared': False,
             'availability_zone_hints': ['az_name_1', 'az_name_2']}}
         fake_plugin.create_network(neutron_context, network)
@@ -1396,7 +1398,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
             tenant_id, t_ctx, 'pod_1', 1)
@@ -1469,7 +1471,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
             tenant_id, t_ctx, 'pod_1', 1)
@@ -1600,7 +1602,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
             tenant_id, t_ctx, 'pod_1', 1)
@@ -1659,7 +1661,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
             tenant_id, t_ctx, 'pod_1', 1)
@@ -1693,7 +1695,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
             tenant_id, t_ctx, 'pod_1', 1)
@@ -1729,7 +1731,7 @@ class PluginTest(unittest.TestCase,
                 'name': 'ext-net',
                 'admin_state_up': True,
                 'shared': True,
-                'tenant_id': 'test_tenant_id',
+                'tenant_id': TEST_TENANT_ID,
                 'router:external': True,
             }
         }
@@ -1755,7 +1757,7 @@ class PluginTest(unittest.TestCase,
         body = {
             'network': {
                 'router:external': True,
-                'tenant_id': 'test_tenant_id',
+                'tenant_id': TEST_TENANT_ID,
                 'availability_zone_hints': ['az_name_1']
             }
         }
@@ -1766,7 +1768,7 @@ class PluginTest(unittest.TestCase,
                 'name': 'ext-net',
                 'admin_state_up': True,
                 'shared': False,
-                'tenant_id': 'test_tenant_id',
+                'tenant_id': TEST_TENANT_ID,
                 'router:external': True,
                 'availability_zone_hints': ['pod_1']
             }
@@ -1796,7 +1798,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         t_net_body = {
             'name': 'ext_net',
             'availability_zone_hints': ['pod_1'],
@@ -1878,7 +1880,7 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         t_net_body = {
             'name': 'ext_net',
             'availability_zone_hints': ['pod_1'],
@@ -1933,7 +1935,7 @@ class PluginTest(unittest.TestCase,
         mock_action.assert_called_with(t_ctx, 'remove_gateway', b_router_id)
 
     def _prepare_associate_floatingip_test(self, t_ctx, q_ctx, fake_plugin):
-        tenant_id = 'test_tenant_id'
+        tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
