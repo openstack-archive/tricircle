@@ -14,6 +14,7 @@
 #    under the License.
 
 from mock import patch
+from novaclient.client import HTTPClient
 import pecan
 import unittest
 
@@ -40,8 +41,9 @@ class ActionTest(unittest.TestCase):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
-        self.context = context.get_admin_context()
+        self.context = context.Context()
         self.project_id = 'test_project'
+        self.context.tenant = self.project_id
         self.controller = action.ActionController(self.project_id, '')
 
     def _prepare_pod(self, bottom_pod_num=1):
@@ -62,6 +64,13 @@ class ActionTest(unittest.TestCase):
                 api.create_pod(self.context, b_pod)
                 b_pods.append(b_pod)
         return t_pod, b_pods
+
+    def _prepare_pod_service(self, pod_id, service):
+        config_dict = {'service_id': uuidutils.generate_uuid(),
+                       'pod_id': pod_id,
+                       'service_type': service,
+                       'service_url': 'fake_pod_service'}
+        api.create_pod_service_configuration(self.context, config_dict)
 
     def _prepare_server(self, pod):
         t_server_id = uuidutils.generate_uuid()
@@ -357,6 +366,107 @@ class ActionTest(unittest.TestCase):
         res = self.controller.post(**body)
         mock_action.assert_called_once_with(
             'server', self.context, 'migrate', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_confirm_resize_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"confirmResize": ''}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_revert_resize_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"revertResize": ''}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_resize_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"resize": {"flavorRef": "2"}}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_reset_state_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"os-resetState": {"state": "active"}}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_soft_reboot_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"reboot": {"type": "SOFT"}}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_hard_reboot_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_NOVA)
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+        body = {"reboot": {"type": "HARD"}}
+        res = self.controller.post(**body)
+        url = '/servers/%s/action' % t_server_id
+        mock_action.assert_called_once_with(url, body=body)
         self.assertEqual(202, res.status)
 
     def tearDown(self):

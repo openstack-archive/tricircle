@@ -49,7 +49,12 @@ class ActionController(rest.RestController):
             'unshelve': self._handle_unshelve,
             'shelveOffload': self._handle_shelve_offload,
             'migrate': self._handle_migrate,
-            'trigger_crash_dump': self._handle_trigger_crash_dump
+            'trigger_crash_dump': self._handle_trigger_crash_dump,
+            'reboot': self._handle_action,
+            'resize': self._handle_action,
+            'confirmResize': self._handle_action,
+            'revertResize': self._handle_action,
+            'os-resetState': self._handle_action
         }
 
     def _get_client(self, pod_name=constants.TOP):
@@ -113,6 +118,18 @@ class ActionController(rest.RestController):
     def _handle_migrate(self, context, pod_name, body):
         client = self._get_client(pod_name)
         return client.action_servers(context, 'migrate', self.server_id)
+
+    def _handle_action(self, context, pod_name, body):
+        """Perform a server action
+
+        :param pod_name: the bottom pod name.
+
+        :param body: action parameters body.
+        """
+        url = constants.SERVER_ACTION_URL % self.server_id
+        api = self._get_client(pod_name).get_native_client(constants.RT_SERVER,
+                                                           context)
+        return api.client.post(url, body=body)
 
     @expose(generic=True, template='json')
     def post(self, **kw):
