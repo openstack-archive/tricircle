@@ -55,7 +55,10 @@ common_opts = [
                help=_("Running job is considered expires after this time, in"
                       " seconds")),
     cfg.FloatOpt('worker_sleep_time', default=0.1,
-                 help=_("Seconds a worker sleeps after one run in a loop"))
+                 help=_("Seconds a worker sleeps after one run in a loop")),
+    cfg.BoolOpt('enable_api_gateway',
+                default=False,
+                help=_('Whether the Nova API gateway is enabled'))
 ]
 
 service_opts = [

@@ -385,9 +385,13 @@ class XManager(PeriodicTasks):
             t_subnet_id = t_port['fixed_ips'][0]['subnet_id']
             t_subnet = t_client.get_subnets(ctx, t_subnet_id)
 
-            (b_net_id,
-             subnet_map) = self.helper.prepare_bottom_network_subnets(
-                ctx, q_ctx, project_id, b_pod, t_net, [t_subnet])
+            if CONF.enable_api_gateway:
+                (b_net_id,
+                 subnet_map) = self.helper.prepare_bottom_network_subnets(
+                    ctx, q_ctx, project_id, b_pod, t_net, [t_subnet])
+            else:
+                (b_net_id,
+                 subnet_map) = (t_net['id'], {t_subnet['id']: t_subnet['id']})
 
             # the gateway ip of bottom subnet is set to the ip of t_port, so
             # we just attach the bottom subnet to the bottom router and neutron
@@ -456,13 +460,14 @@ class XManager(PeriodicTasks):
                 _, b_ns_bridge_port_id = self.helper.prepare_bottom_element(
                     ctx, project_id, b_ext_pod, t_ns_bridge_port,
                     constants.RT_PORT, port_body)
-                self._safe_create_bottom_floatingip(
-                    ctx, b_ext_pod, b_ext_client, b_ext_net_id, add_fip,
-                    b_ns_bridge_port_id)
+                # swap these two lines
                 self._safe_create_bottom_floatingip(
                     ctx, b_pod, b_client, b_ns_bridge_net_id,
                     t_ns_bridge_port['fixed_ips'][0]['ip_address'],
                     b_int_port_id)
+                self._safe_create_bottom_floatingip(
+                    ctx, b_ext_pod, b_ext_client, b_ext_net_id, add_fip,
+                    b_ns_bridge_port_id)
             else:
                 self._safe_create_bottom_floatingip(
                     ctx, b_pod, b_client, b_ext_net_id, add_fip,

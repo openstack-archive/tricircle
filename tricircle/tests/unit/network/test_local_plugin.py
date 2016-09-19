@@ -19,6 +19,7 @@ from mock import patch
 import six
 import unittest
 
+from oslo_config import cfg
 from oslo_utils import uuidutils
 
 import neutron_lib.constants as q_constants
@@ -106,6 +107,9 @@ class FakeCorePlugin(object):
         create_resource('port', False, port['port'])
         return port['port']
 
+    def update_port(self, context, _id, port):
+        pass
+
     def get_port(self, context, _id, fields=None):
         return get_resource('port', False, _id)
 
@@ -180,6 +184,15 @@ class FakeNeutronHandle(object):
     def handle_get(self, context, _type, _id):
         return get_resource(_type, True, _id)
 
+    def handle_create(self, context, _type, body):
+        if _type == 'port':
+            return FakeClient().create_port(body)['port']
+        create_resource(_type, True, body[_type])
+        return body[_type]
+
+    def handle_update(self, context, _type, _id, body):
+        pass
+
 
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
@@ -207,6 +220,9 @@ class PluginTest(unittest.TestCase):
                     'name': 'subnet1',
                     'network_id': network_id,
                     'cidr': '10.0.1.0/24',
+                    'ip_version': 4,
+                    'allocation_pools': [{'start': '10.0.1.2',
+                                          'end': '10.0.1.254'}],
                     'enable_dhcp': True}
         t_port = {'id': port_id,
                   'tenant_id': self.tenant_id,
@@ -232,10 +248,26 @@ class PluginTest(unittest.TestCase):
         b_port = get_resource('port', False, port['id'])
         b_net.pop('project_id')
         b_subnet.pop('project_id')
+        pool = subnet.pop('allocation_pools')[0]
+        b_pools = b_subnet.pop('allocation_pools')
+        b_gateway_ip = b_subnet.pop('gateway_ip')
+
+        def ip_to_digit(ip):
+            return int(ip[ip.rindex('.') + 1:])
+
+        pool_range = range(ip_to_digit(pool['start']),
+                           ip_to_digit(pool['end']) + 1)
+        b_pool_range1 = range(ip_to_digit(b_pools[0]['start']),
+                              ip_to_digit(b_pools[0]['end']) + 1)
+        b_pool_range2 = range(ip_to_digit(b_pools[1]['start']),
+                              ip_to_digit(b_pools[1]['end']) + 1)
+        b_pool_range = b_pool_range1 + [
+            ip_to_digit(b_gateway_ip)] + b_pool_range2
         port.pop('name')
         b_port.pop('name')
         self.assertDictEqual(net, b_net)
         self.assertDictEqual(subnet, b_subnet)
+        self.assertEqual(pool_range, b_pool_range)
         self.assertEqual('vlan', b_net_type)
         self.assertDictEqual(port, b_port)
 
@@ -328,6 +360,19 @@ class PluginTest(unittest.TestCase):
             b_port = get_resource('port', False, t_ports[i]['id'])
             b_port.pop('project_id')
             self.assertDictEqual(t_ports[i], b_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    @patch.object(FakeNeutronHandle, 'handle_update')
+    def test_update_port(self, mock_update, mock_context):
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        mock_context.return_value = self.context
+        update_body = {'port': {'device_owner': 'compute:None',
+                                'binding:host_id': 'fake_host'}}
+        port_id = 'fake_port_id'
+        self.plugin.update_port(self.context, port_id, update_body)
+        mock_update.assert_called_once_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
 
     def tearDown(self):
         for res in RES_LIST:

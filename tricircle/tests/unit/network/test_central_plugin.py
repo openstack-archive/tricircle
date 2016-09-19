@@ -1020,9 +1020,11 @@ class PluginTest(unittest.TestCase,
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         cfg.CONF.register_opts(q_config.core_opts)
+        cfg.CONF.register_opts(plugin.tricircle_opts)
         plugin_path = \
             'tricircle.tests.unit.network.test_central_plugin.FakePlugin'
         cfg.CONF.set_override('core_plugin', plugin_path)
+        cfg.CONF.set_override('enable_api_gateway', True)
         self.context = context.Context()
         self.save_method = manager.NeutronManager._get_default_service_plugins
         manager.NeutronManager._get_default_service_plugins = mock.Mock()
@@ -2111,15 +2113,15 @@ class PluginTest(unittest.TestCase,
                     t_ctx, net['id'], 'pod_1', constants.RT_NETWORK)
         calls = [mock.call(t_ctx,
                            {'floatingip': {
+                               'floating_network_id': b_bridge_net_id,
+                               'floating_ip_address': '100.128.0.3',
+                               'port_id': b_port_id}}),
+                 mock.call(t_ctx,
+                           {'floatingip': {
                                'floating_network_id': b_ext_net_id,
                                'floating_ip_address': fip[
                                    'floating_ip_address'],
-                               'port_id': ns_bridge_port['id']}}),
-                 mock.call(t_ctx,
-                           {'floatingip': {
-                               'floating_network_id': b_bridge_net_id,
-                               'floating_ip_address': '100.128.0.3',
-                               'port_id': b_port_id}})]
+                               'port_id': ns_bridge_port['id']}})]
         mock_create.assert_has_calls(calls)
 
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
