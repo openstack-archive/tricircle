@@ -244,6 +244,8 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
 
+        enable_service t-api t-ngw t-cgw t-job
+
         configure_tricircle_api
         configure_tricircle_nova_apigw
         configure_tricircle_cinder_apigw
