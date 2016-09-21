@@ -241,7 +241,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         echo_summary "Installing Tricircle"
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Configuring Tricircle"
-
+        export NEUTRON_CREATE_INITIAL_NETWORKS=False
         sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
 
         enable_service t-api t-ngw t-cgw t-job
