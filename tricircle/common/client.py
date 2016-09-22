@@ -229,8 +229,6 @@ class Client(object):
 
     def _get_config_with_retry(self, cxt, filters, pod, service, retry):
         conf_list = api.list_pod_service_configurations(cxt, filters)
-        if len(conf_list) > 1:
-            raise exceptions.EndpointNotUnique(pod, service)
         if len(conf_list) == 0:
             if not retry:
                 raise exceptions.EndpointNotFound(pod, service)
@@ -295,7 +293,7 @@ class Client(object):
                     cxt, config_filters)
 
                 if len(config_list) > 1:
-                    raise exceptions.EndpointNotUnique(pod_id, service)
+                    continue
                 if len(config_list) == 1:
                     config_id = config_list[0]['service_id']
                     update_dict = {

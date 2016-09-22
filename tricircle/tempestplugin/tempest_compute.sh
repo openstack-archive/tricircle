@@ -24,8 +24,18 @@ cd $TEMPEST_DIR
 echo "Running Tricircle functional test suite..."
 
 # all test cases with following prefix
-TESTCASES="(tempest.api.compute.test_versions"
-#TESTCASES="$TESTCASES|tempest.api.volume.test_volumes_get"
+TESTCASES="(tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_stop_start_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_lock_unlock_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_pause_unpause_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_shelve_unshelve_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_suspend_resume_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_force_delete_nonexistent_server_id"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_non_existent_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_server_invalid_state"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_non_existent_server"
+TESTCASES="$TESTCASES|tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_server_invalid_state"
+TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_non_existent_server"
+TESTCASES="$TESTCASES|tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_server_invalid_state"
 # add new test cases like following line for volume_type test
 # TESTCASES="$TESTCASES|tempest.api.volume.admin.test_volumes_type"
 TESTCASES="$TESTCASES)"
@@ -204,8 +214,8 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.admin.test_servers.ServersAdminTestJSON.test_reset_network_inject_network_info[id-7a1323b4-a6a2-497a-96cb-76c07b945c71]
 # tempest.api.compute.admin.test_servers.ServersAdminTestJSON.test_reset_state_server[id-ee8ae470-db70-474d-b752-690b7892cab1]
 # tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_get_server_diagnostics_by_non_admin[id-e84e2234-60d2-42fa-8b30-e2d3049724ac,negative]
-# tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_non_existent_server[id-46a4e1ca-87ae-4d28-987a-1b6b136a0221,negative]
-# tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_server_invalid_state[id-b0b17f83-d14e-4fc4-8f31-bcc9f3cfa629,negative]
+# **DONE** tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_non_existent_server[id-46a4e1ca-87ae-4d28-987a-1b6b136a0221,negative]
+# **DONE** tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_migrate_server_invalid_state[id-b0b17f83-d14e-4fc4-8f31-bcc9f3cfa629,negative]
 # tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_invalid_state[id-b0b4d8af-1256-41ef-9ee7-25f1c19dde80,negative]
 # tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_invalid_type[id-4cdcc984-fab0-4577-9a9d-6d558527ee9d,negative]
 # tempest.api.compute.admin.test_servers_negative.ServersAdminNegativeTestJSON.test_reset_state_server_nonexistent_server[id-e741298b-8df2-46f0-81cb-8f814ff2504c,negative]
@@ -436,8 +446,8 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_get_console_output_server_id_in_shutoff_status[id-5b65d4e7-4ecd-437c-83c0-d6b79d927568]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_get_console_output_with_unlimited_size[id-89104062-69d8-4b19-a71b-f47b7af093d7]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_get_vnc_console[id-c6bc11bf-592e-4015-9319-1c98dc64daf5]
-# tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_lock_unlock_server[id-80a8094c-211e-440a-ab88-9e59d556c7ee]
-# tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_pause_unpause_server[id-bd61a9fd-062f-4670-972b-2d6c3e3b9e73]
+# **DONE** tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_lock_unlock_server[id-80a8094c-211e-440a-ab88-9e59d556c7ee]
+# **DONE** tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_pause_unpause_server[id-bd61a9fd-062f-4670-972b-2d6c3e3b9e73]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_reboot_server_hard[id-2cb1baf6-ac8d-4429-bf0d-ba8a0ba53e32,smoke]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_reboot_server_soft[id-4640e3ef-a5df-482e-95a1-ceeeb0faa84d]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_rebuild_server[id-aaa6cdf3-55a7-461a-add9-1c8596b9a07c]
@@ -445,9 +455,9 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_resize_server_confirm[id-1499262a-9328-4eda-9068-db1ac57498d2]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_resize_server_confirm_from_stopped[id-138b131d-66df-48c9-a171-64f45eb92962]
 # tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_resize_server_revert[id-c03aab19-adb1-44f5-917d-c419577e9e68]
-# tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_shelve_unshelve_server[id-77eba8e0-036e-4635-944b-f7a8f3b78dc9]
-# tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_stop_start_server[id-af8eafd4-38a7-4a4b-bdbc-75145a580560]
-# tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_suspend_resume_server[id-0d8ee21e-b749-462d-83da-b85b41c86c7f]
+# **DONE** tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_shelve_unshelve_server[id-77eba8e0-036e-4635-944b-f7a8f3b78dc9]
+# **DONE** tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_stop_start_server[id-af8eafd4-38a7-4a4b-bdbc-75145a580560]
+# **DONE** tempest.api.compute.servers.test_server_actions.ServerActionsTestJSON.test_suspend_resume_server[id-0d8ee21e-b749-462d-83da-b85b41c86c7f]
 # tempest.api.compute.servers.test_server_addresses.ServerAddressesTestJSON.test_list_server_addresses[id-6eb718c0-02d9-4d5e-acd1-4e0c269cef39,network,smoke]
 # tempest.api.compute.servers.test_server_addresses.ServerAddressesTestJSON.test_list_server_addresses_by_network[id-87bbc374-5538-4f64-b673-2b0e4443cc30,network,smoke]
 # tempest.api.compute.servers.test_server_addresses_negative.ServerAddressesNegativeTestJSON.test_list_server_addresses_by_network_neg[id-a2ab5144-78c0-4942-a0ed-cc8edccfd9ba,negative,network]
@@ -509,7 +519,7 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_delete_non_existent_server[id-1041b4e6-514b-4855-96a5-e974b60870a3,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_delete_server_pass_id_exceeding_length_limit[id-f4d7279b-5fd2-4bf2-9ba4-ae35df0d18c5,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_delete_server_pass_negative_id[id-75f79124-277c-45e6-a373-a1d6803f4cc4,negative]
-# tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_force_delete_nonexistent_server_id[id-6f47992b-5144-4250-9f8b-f00aa33950f3,negative]
+# **DONE** tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_force_delete_nonexistent_server_id[id-6f47992b-5144-4250-9f8b-f00aa33950f3,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_get_console_output_of_non_existent_server[id-7dd919e7-413f-4198-bebb-35e2a01b13e9,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_get_non_existent_server[id-3436b02f-1b1e-4f03-881e-c6a602327439,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_invalid_access_ip_v4_address[id-7f70a4d1-608f-4794-9e56-cb182765972c,negative]
@@ -526,14 +536,14 @@ ostestr --regex $TESTCASES
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resize_server_with_null_flavor[id-45436a7d-a388-4a35-a9d8-3adc5d0d940b,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_restore_nonexistent_server_id[id-9c6d38cc-fcfb-437a-85b9-7b788af8bf01,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_restore_server_invalid_state[id-7fcadfab-bd6a-4753-8db7-4a51e51aade9,negative]
-# tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_non_existent_server[id-221cd282-bddb-4837-a683-89c2487389b6,negative]
-# tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_server_invalid_state[id-ccb6294d-c4c9-498f-8a43-554c098bfadb,negative]
+# **DONE** tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_non_existent_server[id-221cd282-bddb-4837-a683-89c2487389b6,negative]
+# **DONE** tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_resume_server_invalid_state[id-ccb6294d-c4c9-498f-8a43-554c098bfadb,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_server_name_blank[id-dbbfd247-c40c-449e-8f6c-d2aa7c7da7cf,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_shelve_non_existent_server[id-abca56e2-a892-48ea-b5e5-e07e69774816,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_shelve_shelved_server[id-443e4f9b-e6bf-4389-b601-3a710f15fddd,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_stop_non_existent_server[id-a31460a9-49e1-42aa-82ee-06e0bb7c2d03,negative]
-# tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_non_existent_server[id-d1f032d5-7b6e-48aa-b252-d5f16dd994ca,negative]
-# tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_server_invalid_state[id-7f323206-05a9-4bf8-996b-dd5b2036501b,negative]
+# **DONE** tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_non_existent_server[id-d1f032d5-7b6e-48aa-b252-d5f16dd994ca,negative]
+# **DONE** tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_suspend_server_invalid_state[id-7f323206-05a9-4bf8-996b-dd5b2036501b,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_unpause_non_existent_server[id-705b8e3a-e8a7-477c-a19b-6868fc24ac75,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_unpause_server_invalid_state[id-c8e639a7-ece8-42dd-a2e0-49615917ba4f,negative]
 # tempest.api.compute.servers.test_servers_negative.ServersNegativeTestJSON.test_unshelve_non_existent_server[id-23d23b37-afaf-40d7-aa5d-5726f82d8821,negative]

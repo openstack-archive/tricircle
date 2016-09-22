@@ -155,5 +155,209 @@ class ActionTest(unittest.TestCase):
             'server', self.context, 'stop', t_server_id)
         self.assertEqual(202, res.status)
 
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_force_delete_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'forceDelete': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'force_delete', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_lock_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'lock': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'lock', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_unlock_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'unlock': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'unlock', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_pause_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'pause': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'pause', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_unpause_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'unpause': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'unpause', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_suspend_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'suspend': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'suspend', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_resume_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'resume': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'resume', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_shelveOffload_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'shelveOffload': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'shelve_offload', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_shelve_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'shelve': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'shelve', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_unshelve_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'unshelve': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'unshelve', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_trigger_crash_dump_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'trigger_crash_dump': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'trigger_crash_dump', t_server_id)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(client.Client, 'action_resources')
+    @patch.object(context, 'extract_context_from_environ')
+    def test_migrate_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.server_id = t_server_id
+
+        body = {'migrate': ''}
+        res = self.controller.post(**body)
+        mock_action.assert_called_once_with(
+            'server', self.context, 'migrate', t_server_id)
+        self.assertEqual(202, res.status)
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

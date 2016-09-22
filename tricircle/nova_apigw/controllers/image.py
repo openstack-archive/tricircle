@@ -25,6 +25,16 @@ from tricircle.common.i18n import _
 from tricircle.common import utils
 import tricircle.db.api as db_api
 
+SUPPORTED_FILTERS = {
+    'name': 'name',
+    'status': 'status',
+    'changes-since': 'changes-since',
+    'server': 'property-instance_uuid',
+    'type': 'property-image_type',
+    'minRam': 'min_ram',
+    'minDisk': 'min_disk',
+}
+
 
 def url_join(*parts):
     """Convenience method for joining parts of a URL
@@ -138,19 +148,50 @@ class ImageController(rest.RestController):
         }
 
     @expose(generic=True, template='json')
-    def get_one(self, _id):
+    def get_one(self, _id, **kwargs):
         context = t_context.extract_context_from_environ()
         if _id == 'detail':
-            return self.get_all()
+            return self.get_all(**kwargs)
         image = self.client.get_images(context, _id)
         if not image:
             return utils.format_nova_error(404, _('Image not found'))
         return {'image': self._construct_show_image_entry(context, image)}
 
+    def _get_filters(self, params):
+        """Return a dictionary of query param filters from the request.
+
+        :param params: the URI params coming from the wsgi layer
+        :return a dict of key/value filters
+        """
+        filters = {}
+        for param in params:
+            if param in SUPPORTED_FILTERS or param.startswith('property-'):
+                # map filter name or carry through if property-*
+                filter_name = SUPPORTED_FILTERS.get(param, param)
+                filters[filter_name] = params.get(param)
+
+        # ensure server filter is the instance uuid
+        filter_name = 'property-instance_uuid'
+        try:
+            filters[filter_name] = filters[filter_name].rsplit('/', 1)[1]
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+        filter_name = 'status'
+        if filter_name in filters:
+            # The Image API expects us to use lowercase strings for status
+            filters[filter_name] = filters[filter_name].lower()
+
+        return filters
+
     @expose(generic=True, template='json')
-    def get_all(self):
+    def get_all(self, **kwargs):
         context = t_context.extract_context_from_environ()
-        images = self.client.list_images(context)
+        filters = self._get_filters(kwargs)
+        filters = [{'key': key,
+                    'comparator': 'eq',
+                    'value': value} for key, value in filters.iteritems()]
+        images = self.client.list_images(context, filters=filters)
         ret_images = [self._construct_list_image_entry(
             context, image) for image in images]
         return {'images': ret_images}

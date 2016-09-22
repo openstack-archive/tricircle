@@ -223,19 +223,6 @@ class ClientTest(unittest.TestCase):
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
-    def test_list_endpoint_not_unique(self):
-        # add a new configuration with same pod and service type
-        config_dict = {
-            'service_id': FAKE_SERVICE_ID + '_new',
-            'pod_id': FAKE_SITE_ID,
-            'service_type': FAKE_TYPE,
-            'service_url': FAKE_URL
-        }
-        api.create_pod_service_configuration(self.context, config_dict)
-        self.assertRaises(exceptions.EndpointNotUnique,
-                          self.client.list_resources,
-                          FAKE_RESOURCE, self.context, [])
-
     def test_list_endpoint_not_valid(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')

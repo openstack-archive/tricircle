@@ -230,6 +230,7 @@ function start_new_neutron_server {
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head
 
+    enable_service q-svc$server_index
     run_process q-svc$server_index "$NEUTRON_BIN_DIR/neutron-server --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE"
 }
 
