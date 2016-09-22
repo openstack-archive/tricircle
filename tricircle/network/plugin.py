@@ -1098,7 +1098,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         :param context: request context
         :param _id: ID of the floating ip
         :param floatingip: data of floating ip we update to
-        :return: updated floating ip ojbect
+        :return: updated floating ip object
         """
         org_floatingip_dict = self._make_floatingip_dict(
             self._get_floatingip(context, _id))
@@ -1171,3 +1171,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self.xjob_handler.setup_bottom_router(
             t_ctx, net_id, ori_floatingip_db['router_id'],
             b_int_net_pod['pod_id'])
+
+    def delete_floatingip(self, context, _id):
+        """Disassociate floating ip if needed then delete it
+
+        :param context: request context
+        :param _id: ID of the floating ip
+        :return: None
+        """
+        self.update_floatingip(context, _id, {'floatingip': {'port_id': None}})
+        super(TricirclePlugin, self).delete_floatingip(context, _id)

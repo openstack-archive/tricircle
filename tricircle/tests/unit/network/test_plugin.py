@@ -2105,10 +2105,8 @@ class PluginTest(unittest.TestCase,
     @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
                   new=update_floatingip)
     @patch.object(FakeClient, 'delete_floatingips')
-    @patch.object(FakeClient, 'update_floatingips')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_disassociate_floatingip(self, mock_context, mock_update,
-                                     mock_delete):
+    def test_disassociate_floatingip(self, mock_context, mock_delete):
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
@@ -2138,9 +2136,10 @@ class PluginTest(unittest.TestCase,
 
         fip_id1 = BOTTOM1_FIPS[0]['id']
         fip_id2 = BOTTOM2_FIPS[0]['id']
-        mock_update.assert_called_once_with(
-            t_ctx, fip_id2, {'floatingip': {'port_id': None}})
-        mock_delete.assert_called_once_with(t_ctx, fip_id1)
+
+        calls = [mock.call(t_ctx, fip_id1),
+                 mock.call(t_ctx, fip_id2)]
+        mock_delete.assert_has_calls(calls)
         mapping = db_api.get_bottom_id_by_top_id_pod_name(
             t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
         # check routing for bridge port in top pod is deleted
@@ -2150,6 +2149,53 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakeClient, 'delete_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_floatingip(self, mock_context, mock_delete):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        bridge_port_name = constants.ns_bridge_port_name % (
+            e_net['tenant_id'], None, b_port_id)
+        t_pod = db_api.get_top_pod(t_ctx)
+        mapping = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        # check routing for bridge port in top pod exists
+        self.assertIsNotNone(mapping)
+
+        fake_plugin.delete_floatingip(q_ctx, fip['id'])
+
+        fip_id1 = BOTTOM1_FIPS[0]['id']
+        fip_id2 = BOTTOM2_FIPS[0]['id']
+
+        calls = [mock.call(t_ctx, fip_id1),
+                 mock.call(t_ctx, fip_id2)]
+        mock_delete.assert_has_calls(calls)
+        mapping = db_api.get_bottom_id_by_top_id_pod_name(
+            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        # check routing for bridge port in top pod is deleted
+        self.assertIsNone(mapping)
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_security_group_rule(self, mock_context):
