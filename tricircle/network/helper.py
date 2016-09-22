@@ -567,3 +567,18 @@ class NetworkHelper(object):
             return getattr(self.call_obj, 'get_%s' % _type)(q_ctx, _id)
         else:
             return getattr(self._get_client(), 'get_%ss' % _type)(t_ctx, _id)
+
+    @staticmethod
+    def get_create_sg_rule_body(rule, sg_id, ip=None):
+        ip = ip or rule['remote_ip_prefix']
+        # if ip is passed, this is a extended rule for remote group
+        return {'security_group_rule': {
+            'tenant_id': rule['tenant_id'],
+            'remote_group_id': None,
+            'direction': rule['direction'],
+            'remote_ip_prefix': ip,
+            'protocol': rule.get('protocol'),
+            'ethertype': rule['ethertype'],
+            'port_range_max': rule.get('port_range_max'),
+            'port_range_min': rule.get('port_range_min'),
+            'security_group_id': sg_id}}

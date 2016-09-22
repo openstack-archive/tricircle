@@ -400,7 +400,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 gateway_port_body)
             return super(TricirclePlugin, self).get_port(context, t_gateway_id)
         db_port = super(TricirclePlugin, self).create_port_db(context, port)
-        return self._make_port_dict(db_port)
+        self._ensure_default_security_group_on_port(context, port)
+        sgids = self._get_security_groups_on_port(context, port)
+        result = self._make_port_dict(db_port)
+        self._process_port_create_security_group(context, result, sgids)
+        return result
 
     def update_port(self, context, port_id, port):
         # TODO(zhiyuan) handle bottom port update
@@ -419,6 +423,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                         t_constants.RT_SUBNET) for ip in res['fixed_ips']]
             entries.append((res['network_id'], t_constants.RT_NETWORK))
             entries.append((res['id'], t_constants.RT_PORT))
+            if res['security_groups']:
+                for sg_id in res['security_groups']:
+                    entries.append((sg_id, t_constants.RT_SG))
 
             for resource_id, resource_type in entries:
                 if db_api.get_bottom_id_by_top_id_pod_name(
@@ -441,6 +448,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     admin_context, res['network_id'],
                     interfaces[0]['device_id'], pod['pod_id'])
 
+            self.xjob_handler.configure_security_group_rules(t_ctx,
+                                                             res['tenant_id'])
         return res
 
     def delete_port(self, context, port_id, l3_port_check=True):
@@ -916,10 +925,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _get_bridge_subnet_pool_id(self, t_ctx, q_ctx, project_id, pod, is_ew):
         if is_ew:
             pool_name = t_constants.ew_bridge_subnet_pool_name
-            pool_cidr = '100.0.0.0/9'
+            pool_cidr = cfg.CONF.client.ew_bridge_cidr
         else:
             pool_name = t_constants.ns_bridge_subnet_pool_name
-            pool_cidr = '100.128.0.0/9'
+            pool_cidr = cfg.CONF.client.ns_bridge_cidr
         pool_ele = {'id': pool_name}
         body = {'subnetpool': {'tenant_id': project_id,
                                'name': pool_name,

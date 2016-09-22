@@ -24,6 +24,7 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import periodic_task
 
+import neutron_lib.exceptions as q_exceptions
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from tricircle.common import client
@@ -150,7 +151,8 @@ class XManager(PeriodicTasks):
         self.job_handles = {
             constants.JT_ROUTER: self.configure_extra_routes,
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
-            constants.JT_PORT_DELETE: self.delete_server_port}
+            constants.JT_PORT_DELETE: self.delete_server_port,
+            constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -611,8 +613,8 @@ class XManager(PeriodicTasks):
             router_ips_map[b_router_ids[i]] = {}
             for b_interface in b_interfaces:
                 ip = b_interface['fixed_ips'][0]['ip_address']
-                ew_bridge_cidr = '100.0.0.0/9'
-                ns_bridge_cidr = '100.128.0.0/9'
+                ew_bridge_cidr = CONF.client.ew_bridge_cidr
+                ns_bridge_cidr = CONF.client.ns_bridge_cidr
                 if netaddr.IPAddress(ip) in netaddr.IPNetwork(ew_bridge_cidr):
                     router_bridge_ip_map[b_router_ids[i]] = ip
                     continue
@@ -655,3 +657,108 @@ class XManager(PeriodicTasks):
     def delete_server_port(self, ctx, payload):
         t_port_id = payload[constants.JT_PORT_DELETE]
         self._get_client().delete_ports(ctx, t_port_id)
+
+    @staticmethod
+    def _safe_create_security_group_rule(context, client, body):
+        try:
+            client.create_security_group_rules(context, body)
+        except q_exceptions.Conflict:
+            return
+
+    @staticmethod
+    def _safe_delete_security_group_rule(context, client, _id):
+        try:
+            client.delete_security_group_rules(context, _id)
+        except q_exceptions.NotFound:
+            return
+
+    @staticmethod
+    def _construct_bottom_rule(rule, sg_id, ip=None):
+        ip = ip or rule['remote_ip_prefix']
+        # if ip is passed, this is a extended rule for remote group
+        return {'remote_group_id': None,
+                'direction': rule['direction'],
+                'remote_ip_prefix': ip,
+                'protocol': rule.get('protocol'),
+                'ethertype': rule['ethertype'],
+                'port_range_max': rule.get('port_range_max'),
+                'port_range_min': rule.get('port_range_min'),
+                'security_group_id': sg_id}
+
+    @staticmethod
+    def _compare_rule(rule1, rule2):
+        for key in ('direction', 'remote_ip_prefix', 'protocol', 'ethertype',
+                    'port_range_max', 'port_range_min'):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
+    @_job_handle(constants.JT_SEG_RULE_SETUP)
+    def configure_security_group_rules(self, ctx, payload):
+        project_id = payload[constants.JT_SEG_RULE_SETUP]
+        top_client = self._get_client()
+        sg_filters = [{'key': 'tenant_id', 'comparator': 'eq',
+                       'value': project_id}]
+        top_sgs = top_client.list_security_groups(ctx, sg_filters)
+        for top_sg in top_sgs:
+            new_b_rules = []
+            for t_rule in top_sg['security_group_rules']:
+                if not t_rule['remote_group_id']:
+                    # leave sg_id empty here
+                    new_b_rules.append(
+                        self._construct_bottom_rule(t_rule, ''))
+                    continue
+                if top_sg['name'] != 'default':
+                    # currently we only handle rules containing remote_group_id
+                    # for default security group
+                    continue
+                if t_rule['ethertype'] != 'IPv4':
+                    continue
+                subnets = top_client.list_subnets(
+                    ctx, [{'key': 'tenant_id', 'comparator': 'eq',
+                           'value': project_id}])
+                ew_bridge_ip_net = netaddr.IPNetwork(
+                    CONF.client.ew_bridge_cidr)
+                ns_bridge_ip_net = netaddr.IPNetwork(
+                    CONF.client.ns_bridge_cidr)
+                for subnet in subnets:
+                    ip_net = netaddr.IPNetwork(subnet['cidr'])
+                    if ip_net in ew_bridge_ip_net or (
+                            ip_net in ns_bridge_ip_net):
+                        continue
+                    # leave sg_id empty here
+                    new_b_rules.append(
+                        self._construct_bottom_rule(t_rule, '',
+                                                    subnet['cidr']))
+
+                mappings = db_api.get_bottom_mappings_by_top_id(
+                    ctx, top_sg['id'], constants.RT_SG)
+                for pod, b_sg_id in mappings:
+                    client = self._get_client(pod['pod_name'])
+                    b_sg = client.get_security_groups(ctx, b_sg_id)
+                    add_rules = []
+                    del_rules = []
+                    match_index = set()
+                    for b_rule in b_sg['security_group_rules']:
+                        match = False
+                        for i, rule in enumerate(new_b_rules):
+                            if self._compare_rule(b_rule, rule):
+                                match = True
+                                match_index.add(i)
+                                break
+                        if not match:
+                            del_rules.append(b_rule)
+                    for i, rule in enumerate(new_b_rules):
+                        if i not in match_index:
+                            add_rules.append(rule)
+
+                    for del_rule in del_rules:
+                        self._safe_delete_security_group_rule(
+                            ctx, client, del_rule['id'])
+                    if add_rules:
+                        rule_body = {'security_group_rules': []}
+                        for add_rule in add_rules:
+                            add_rule['security_group_id'] = b_sg_id
+                            rule_body['security_group_rules'].append(add_rule)
+                        self._safe_create_security_group_rule(
+                            ctx, client, rule_body)
