@@ -175,6 +175,7 @@ class PodsController(rest.RestController):
                         az_ag.delete_ag(context, ag['id'])
                 core.delete_resource(context, models.Pod, _id)
                 pecan.response.status = 200
+                return {}
         except t_exc.ResourceNotFound:
             return Response(_('Pod not found'), 404)
         except Exception as e:
@@ -317,6 +318,7 @@ class BindingsController(rest.RestController):
             with context.session.begin():
                 core.delete_resource(context, models.PodBinding, _id)
                 pecan.response.status = 200
+                return {}
         except t_exc.ResourceNotFound:
             pecan.abort(404, _('Pod binding not found'))
             return
