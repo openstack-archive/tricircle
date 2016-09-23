@@ -335,6 +335,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     context, res, network, res['id'])
         return res
 
+    def _delete_pre_created_port(self, t_ctx, q_ctx, port_name):
+        ports = super(TricirclePlugin, self).get_ports(
+            q_ctx, {'name': [port_name]})
+        if ports:
+            super(TricirclePlugin, self).delete_port(q_ctx, ports[0]['id'])
+        db_api.delete_pre_created_resource_mapping(t_ctx, port_name)
+
     def delete_subnet(self, context, subnet_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
@@ -345,6 +352,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 bottom_subnet_id = mapping[1]
                 self._get_client(pod_name).delete_subnets(
                     t_ctx, bottom_subnet_id)
+                interface_name = t_constants.interface_port_name % (
+                    mapping[0]['pod_id'], subnet_id)
+                self._delete_pre_created_port(t_ctx, context, interface_name)
                 with t_ctx.session.begin():
                     core.delete_resources(
                         t_ctx, models.ResourceRouting,
@@ -354,6 +364,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                   'value': mapping[0]['pod_id']}])
         except Exception:
             raise
+        dhcp_port_name = t_constants.dhcp_port_name % subnet_id
+        self._delete_pre_created_port(t_ctx, context, dhcp_port_name)
         super(TricirclePlugin, self).delete_subnet(context, subnet_id)
 
     def update_subnet(self, context, subnet_id, subnet):
