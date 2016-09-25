@@ -19,6 +19,7 @@ import pecan
 from pecan import request
 
 from tricircle.api.controllers import pod
+from tricircle.api.controllers import routing
 import tricircle.common.context as t_context
 
 
@@ -77,7 +78,8 @@ class V1Controller(object):
 
         self.sub_controllers = {
             "pods": pod.PodsController(),
-            "bindings": pod.BindingsController()
+            "bindings": pod.BindingsController(),
+            "routings": routing.RoutingController()
         }
 
         for name, ctrl in self.sub_controllers.items():

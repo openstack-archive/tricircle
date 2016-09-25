@@ -35,6 +35,13 @@ RT_PORT = 'port'
 RT_ROUTER = 'router'
 RT_SG = 'security_group'
 
+
+# check whether the resource type is properly provisioned.
+def is_valid_resource_type(resource_type):
+    resource_type_table = [RT_NETWORK, RT_SUBNET, RT_PORT, RT_ROUTER, RT_SG]
+    return resource_type in resource_type_table
+
+
 # version list
 NOVA_VERSION_V21 = 'v2.1'
 CINDER_VERSION_V2 = 'v2'

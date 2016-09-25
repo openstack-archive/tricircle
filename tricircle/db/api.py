@@ -102,6 +102,12 @@ def create_pod_binding(context, tenant_id, pod_id):
                                      'is_binding': True})
 
 
+def list_pod_bindings(context, filters=None, sorts=None):
+    with context.session.begin():
+        return core.query_resource(context, models.PodBinding,
+                                   filters or [], sorts or [])
+
+
 def delete_pod_service_configuration(context, config_id):
     with context.session.begin():
         return core.delete_resource(context, models.PodServiceConfiguration,
@@ -143,6 +149,28 @@ def create_resource_mapping(context, top_id, bottom_id, pod_id, project_id,
         return None
     finally:
         context.session.close()
+
+
+def list_resource_routings(context, filters=None, sorts=None):
+    with context.session.begin():
+        return core.query_resource(context, models.ResourceRouting,
+                                   filters or [], sorts or [])
+
+
+def get_resource_routing(context, id):
+    with context.session.begin():
+        return core.get_resource(context, models.ResourceRouting, id)
+
+
+def delete_resource_routing(context, id):
+    with context.session.begin():
+        return core.delete_resource(context, models.ResourceRouting, id)
+
+
+def update_resource_routing(context, id, update_dict):
+    with context.session.begin():
+        return core.update_resource(context, models.ResourceRouting, id,
+                                    update_dict)
 
 
 def get_bottom_mappings_by_top_id(context, top_id, resource_type):

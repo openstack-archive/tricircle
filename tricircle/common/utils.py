@@ -159,6 +159,10 @@ def format_error(code, message, error_type=None):
     return {error_type: {'message': message, 'code': code}}
 
 
+def format_api_error(code, message, error_type=None):
+    return format_error(code, message, error_type)
+
+
 def format_nova_error(code, message, error_type=None):
     return format_error(code, message, error_type)
 
