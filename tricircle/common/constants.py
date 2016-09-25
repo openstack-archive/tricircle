@@ -97,3 +97,6 @@ NOVA_MICRO_VERSION_PREFIX = 'compute'
 # support nova version range
 NOVA_APIGW_MIN_VERSION = '2.1'
 NOVA_APIGW_MAX_VERSION = '2.36'
+
+# server action url(part url)
+SERVER_ACTION_URL = '/servers/%s/action'
