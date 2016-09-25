@@ -117,13 +117,14 @@ class GlanceResourceHandle(ResourceHandle):
 
 class NeutronResourceHandle(ResourceHandle):
     service_type = cons.ST_NEUTRON
-    support_resource = {'network': LIST | CREATE | DELETE | GET,
-                        'subnet': LIST | CREATE | DELETE | GET | UPDATE,
-                        'port': LIST | CREATE | DELETE | GET,
-                        'router': LIST | CREATE | ACTION | GET | UPDATE,
-                        'security_group': LIST | CREATE | GET,
-                        'security_group_rule': LIST | CREATE | DELETE,
-                        'floatingip': LIST | CREATE | UPDATE | DELETE}
+    support_resource = {
+        'network': LIST | CREATE | DELETE | GET,
+        'subnet': LIST | CREATE | DELETE | GET | UPDATE,
+        'port': LIST | CREATE | DELETE | GET,
+        'router': LIST | CREATE | DELETE | ACTION | GET | UPDATE,
+        'security_group': LIST | CREATE | GET,
+        'security_group_rule': LIST | CREATE | DELETE,
+        'floatingip': LIST | CREATE | UPDATE | DELETE}
 
     def _get_client(self, cxt):
         return q_client.Client('2.0',

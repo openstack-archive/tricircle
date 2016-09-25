@@ -690,7 +690,127 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def create_router(self, context, router):
         return super(TricirclePlugin, self).create_router(context, router)
 
+    def _delete_top_bridge_resource(self, t_ctx, q_ctx, resource_type,
+                                    resource_id, resource_name):
+        with t_ctx.session.begin():
+            core.update_resources(
+                t_ctx, models.ResourceRouting,
+                [{'key': 'bottom_id', 'comparator': 'eq',
+                  'value': resource_id}],
+                {'bottom_id': None,
+                 'created_at': t_constants.expire_time,
+                 'updated_at': t_constants.expire_time})
+        if resource_type == t_constants.RT_PORT:
+            getattr(super(TricirclePlugin, self), 'delete_%s' % resource_type)(
+                q_ctx, resource_id)
+        else:
+            getattr(self, 'delete_%s' % resource_type)(q_ctx, resource_id)
+        with t_ctx.session.begin():
+            core.delete_resources(t_ctx, models.ResourceRouting,
+                                  [{'key': 'top_id',
+                                    'comparator': 'eq',
+                                    'value': resource_name}])
+
+    def _delete_top_bridge_network_subnet(self, t_ctx, q_ctx):
+        project_id = t_ctx.project_id
+        ew_bridge_subnet_name = t_constants.ew_bridge_subnet_name % project_id
+        ns_bridge_subnet_name = t_constants.ns_bridge_subnet_name % project_id
+        subnet_names = [ew_bridge_subnet_name, ns_bridge_subnet_name]
+        for subnet_name in subnet_names:
+            bridge_subnets = super(TricirclePlugin, self).get_subnets(
+                q_ctx, {'name': [subnet_name]})
+            if bridge_subnets:
+                self._delete_top_bridge_resource(
+                    t_ctx, q_ctx, t_constants.RT_SUBNET,
+                    bridge_subnets[0]['id'], subnet_name)
+        ew_bridge_net_name = t_constants.ew_bridge_net_name % project_id
+        ns_bridge_net_name = t_constants.ns_bridge_net_name % project_id
+        net_names = [ew_bridge_net_name, ns_bridge_net_name]
+        for net_name in net_names:
+            bridge_nets = super(TricirclePlugin, self).get_networks(
+                q_ctx, {'name': [net_name]})
+            if bridge_nets:
+                self._delete_top_bridge_resource(
+                    t_ctx, q_ctx, t_constants.RT_NETWORK, bridge_nets[0]['id'],
+                    net_name)
+
+    def _delete_top_bridge_port(self, t_ctx, q_ctx, bridge_port_id,
+                                bridge_port_name):
+        self._delete_top_bridge_resource(t_ctx, q_ctx, t_constants.RT_PORT,
+                                         bridge_port_id, bridge_port_name)
+
     def delete_router(self, context, _id):
+        router = super(TricirclePlugin,
+                       self)._ensure_router_not_in_use(context, _id)
+        project_id = router['tenant_id']
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        mappings = db_api.get_bottom_mappings_by_top_id(t_ctx, _id,
+                                                        t_constants.RT_ROUTER)
+        for pod, b_router_id in mappings:
+            b_client = self._get_client(pod['pod_name'])
+
+            ew_port_name = t_constants.ew_bridge_port_name % (project_id,
+                                                              b_router_id)
+            ew_ports = super(TricirclePlugin, self).get_ports(
+                context, {'name': [ew_port_name]})
+            if ew_ports:
+                t_ew_port_id = ew_ports[0]['id']
+                b_ew_port_id = db_api.get_bottom_id_by_top_id_pod_name(
+                    t_ctx, t_ew_port_id, pod['pod_name'], t_constants.RT_PORT)
+                if b_ew_port_id:
+                    request_body = {'port_id': b_ew_port_id}
+                    try:
+                        b_client.action_routers(t_ctx, 'remove_interface',
+                                                b_router_id, request_body)
+                    except Exception as e:
+                        if e.status_code == 404:
+                            # 404 error means that the router interface has
+                            # been already detached, skip this exception
+                            pass
+                        raise
+                    db_api.delete_mappings_by_top_id(t_ctx, t_ew_port_id)
+                self._delete_top_bridge_port(t_ctx, context, t_ew_port_id,
+                                             ew_port_name)
+
+            ns_port_name = t_constants.ns_bridge_port_name % (
+                project_id, b_router_id, None)
+            ns_ports = super(TricirclePlugin, self).get_ports(
+                context, {'name': [ns_port_name]})
+            if ns_ports:
+                t_ns_port_id = ns_ports[0]['id']
+                b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
+                self._delete_top_bridge_port(t_ctx, context, t_ns_port_id,
+                                             ns_port_name)
+            else:
+                ns_subnet_name = t_constants.ns_bridge_subnet_name % project_id
+                ns_subnets = super(TricirclePlugin,
+                                   self).get_subnets(
+                    context, {'name': [ns_subnet_name]})
+                if ns_subnets:
+                    t_ns_subnet_id = ns_subnets[0]['id']
+                    b_ns_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+                        t_ctx, t_ns_subnet_id, pod['pod_name'],
+                        t_constants.RT_SUBNET)
+                    if b_ns_subnet_id:
+                        request_body = {'subnet_id': b_ns_subnet_id}
+                        try:
+                            b_client.action_routers(t_ctx, 'remove_interface',
+                                                    b_router_id, request_body)
+                        except Exception as e:
+                            if e.status_code == 404:
+                                # 404 error means that the router interface has
+                                # been already detached, skip this exception
+                                pass
+                            raise
+
+            b_client.delete_routers(t_ctx, b_router_id)
+            db_api.delete_mappings_by_bottom_id(t_ctx, b_router_id)
+
+        routers = super(TricirclePlugin, self).get_routers(
+            context, {'tenant_id': [project_id]})
+        if len(routers) <= 1:
+            self._delete_top_bridge_network_subnet(t_ctx, context)
+
         super(TricirclePlugin, self).delete_router(context, _id)
 
     def _prepare_top_element(self, t_ctx, q_ctx,
