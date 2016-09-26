@@ -25,8 +25,10 @@ from oslo_utils import uuidutils
 
 from tricircle.common import constants
 from tricircle.common import context
-import tricircle.common.exceptions as t_exceptions
+
+from tricircle.common import exceptions as t_exceptions
 from tricircle.common import lock_handle
+from tricircle.common.scheduler import filter_scheduler
 from tricircle.common import xrpcapi
 from tricircle.db import api
 from tricircle.db import core
@@ -85,6 +87,7 @@ class FakeServerController(server.ServerController):
         self.project_id = project_id
         self.helper = FakeHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
+        self.filter_scheduler = filter_scheduler.FilterScheduler()
 
     def _get_client(self, pod_name=None):
         if not pod_name:

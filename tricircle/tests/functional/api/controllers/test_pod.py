@@ -613,7 +613,8 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "dddddd",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643",
+                    "is_binding": "True"
                 },
                 "expected_error": 200
             },
@@ -622,7 +623,8 @@ class TestBindingController(API_FunctionalTest):
                 "pod_binding":
                 {
                     "tenant_id": "aaaaa",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
+                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643",
+                    "is_binding": "True"
                 },
                 "expected_error": 200
             },

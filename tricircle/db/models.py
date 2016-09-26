@@ -420,7 +420,7 @@ class PodBinding(core.ModelBase, core.DictBase, models.TimestampMixin):
             'tenant_id', 'pod_id',
             name='pod_binding0tenant_id0pod_id'),
     )
-    attributes = ['id', 'tenant_id', 'pod_id',
+    attributes = ['id', 'tenant_id', 'pod_id', 'is_binding',
                   'created_at', 'updated_at']
 
     id = sql.Column(sql.String(36), primary_key=True)
@@ -428,6 +428,7 @@ class PodBinding(core.ModelBase, core.DictBase, models.TimestampMixin):
     pod_id = sql.Column('pod_id', sql.String(36),
                         sql.ForeignKey('cascaded_pods.pod_id'),
                         nullable=False)
+    is_binding = sql.Column('is_binding', sql.Boolean, nullable=False)
 
 
 # Routing Model
