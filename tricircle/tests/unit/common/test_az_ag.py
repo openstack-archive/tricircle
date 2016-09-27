@@ -112,7 +112,7 @@ class AZAGTest(unittest.TestCase):
         pod1, _ = az_ag.get_pod_by_az_tenant(self.context,
                                              FAKE_AZ + FAKE_AZ,
                                              FAKE_TENANT_ID)
-        self.assertEqual(pod1, None)
+        self.assertIsNone(pod1)
         pods = az_ag.list_pods_by_tenant(self.context, FAKE_TENANT_ID)
         self.assertEqual(len(pods), 0)
 
@@ -153,7 +153,7 @@ class AZAGTest(unittest.TestCase):
                                              FAKE_AZ + FAKE_AZ,
                                              FAKE_TENANT_ID)
         pods = az_ag.list_pods_by_tenant(self.context, FAKE_TENANT_ID)
-        self.assertEqual(pod1, None)
+        self.assertIsNone(pod1)
         self.assertEqual(len(pods), 0)
 
         # TODO(joehuang): tenant bound to multiple pods in one AZ

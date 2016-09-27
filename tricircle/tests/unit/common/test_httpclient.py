@@ -190,7 +190,7 @@ class HttpClientTest(unittest.TestCase):
         api.create_pod(self.context, pod_dict)
 
         pod = api.get_pod_by_name(self.context, pod_dict['pod_name'] + '1')
-        self.assertEqual(pod, None)
+        self.assertIsNone(pod)
 
         pod = api.get_pod_by_name(self.context, pod_dict['pod_name'])
         self.assertEqual(pod['pod_id'], pod_dict['pod_id'])
