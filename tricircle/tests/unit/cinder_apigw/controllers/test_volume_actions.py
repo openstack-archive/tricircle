@@ -199,6 +199,27 @@ class VolumeActionTest(unittest.TestCase):
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(HTTPClient, 'post')
     @patch.object(context, 'extract_context_from_environ')
+    def test_force_detach_volume_action(self, mock_context, mock_action):
+        mock_context.return_value = self.context
+        mock_action.return_value = (FakeResponse(202), None)
+
+        t_pod, b_pods = self._prepare_pod()
+        self._prepare_pod_service(b_pods[0]['pod_id'], constants.ST_CINDER)
+        t_volume_id = self._prepare_volume(b_pods[0])
+        t_server_id = self._prepare_server(b_pods[0])
+        self.controller.volume_id = t_volume_id
+        body = {"os-force_detach": {
+            "attachment_id": t_server_id,
+            "connector": {
+                "initiator": "iqn.2012-07.org.fake:01"}}}
+        res = self.controller.post(**body)
+        url = '/volumes/%s/action' % t_volume_id
+        mock_action.assert_called_once_with(url, body=body)
+        self.assertEqual(202, res.status)
+
+    @patch.object(pecan, 'response', new=FakeResponse)
+    @patch.object(HTTPClient, 'post')
+    @patch.object(context, 'extract_context_from_environ')
     def test_reset_status_action(self, mock_context, mock_action):
         mock_context.return_value = self.context
         mock_action.return_value = (FakeResponse(202), None)
