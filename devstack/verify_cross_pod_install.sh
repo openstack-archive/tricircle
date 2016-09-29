@@ -7,11 +7,11 @@
 # In this script, there are some parameters you need to consider before running it.
 #
 # 1, Post URL whether is 127.0.0.1 or something else,
-# 2, This script create 2 subnets 10.0.1.0/24 and 10.0.2.0/24, Change these if needed.
-# 3, This script create external subnet ext-net 10.50.11.0/26, Change it according 
+# 2, This script creates 2 subnets 10.0.1.0/24 and 10.0.2.0/24, Change these if needed.
+# 3, This script creates external subnet ext-net 10.50.11.0/26, Change it according to
 # your own environment.
 # 4, The floating ip attached to the VM with ip 10.0.2.3, created by the script
-# "verify_cross_pod_install.sh", modify it to your own environment.
+# "verify_cross_pod_install.sh", modify it according to your own environment.
 #
 # Change the parameters according to your own environment.
 # Finally, execute "verify_cross_pod_install.sh" in the Node1.
@@ -31,7 +31,7 @@ if [ ! -r admin-openrc.sh ];then
 exit 1
 fi
 
-echo "Begining the verify testing..."
+echo "Beginning the verify testing..."
 
 echo "Import client environment variables:"
 source $TEST_DIR/admin-openrc.sh
