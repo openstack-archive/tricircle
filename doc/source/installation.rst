@@ -28,16 +28,32 @@ Now the Tricircle can be played with DevStack.
 
     ./stack.sh
 
-- 4 In DevStack folder, create a file adminrc, and copy the content of
-  https://github.com/openstack/tricircle/blob/master/devstack/admin-openrc.sh
-  to the adminrc, change the password in the file if needed.
-  And run the following command to set the environment variables::
+- 4 After DevStack successfully starts, we need to create environment variables for
+  the user (admin user as example in this document). In DevStack folder, create a file
+  admin-openrc, and copy the content of
+  https://github.com/openstack/tricircle/blob/master/devstack/admin-openrc.sh to the
+  admin-openrc, change the password in the file if needed. Then run the following
+  command to set the environment variables::
 
-     source adminrc
+      source admin-openrc
 
-- 5 After DevStack successfully starts, check if services have been correctly
-  registered. Run "openstack endpoint list" and you should get output look
-  like as following::
+ 'admin-openrc' is used to create environment variable as the following::
+
+      export OS_PROJECT_DOMAIN_ID=default
+      export OS_USER_DOMAIN_ID=default
+      export OS_PROJECT_NAME=admin
+      export OS_TENANT_NAME=admin
+      export OS_USERNAME=admin
+      export OS_PASSWORD=password #change password as you set in your own environment
+      export OS_AUTH_URL=http://127.0.0.1:5000
+      export OS_IDENTITY_API_VERSION=3
+      export OS_IMAGE_API_VERSION=2
+      export OS_REGION_NAME=RegionOne
+
+
+
+- 5 Check if services have been correctly registered. Run "openstack endpoint list" and
+  you should get output look like as following::
 
         +----------------------------------+-----------+--------------+----------------+
         | ID                               | Region    | Service Name | Service Type   |
@@ -53,12 +69,16 @@ Now the Tricircle can be played with DevStack.
         | 8759b2941fe7469e9651de3f6a123998 | RegionOne | tricircle    | Cascading      |
         +----------------------------------+-----------+--------------+----------------+
 
-
   "RegionOne" is the region you set in local.conf via REGION_NAME, whose default
   value is "RegionOne", we use it as the region for the Tricircle instance;
   "Pod1" is the region set via "POD_REGION_NAME", new configuration option
   introduced by the Tricircle, we use it as the bottom OpenStack instance.
-- 6 Create pod instances for Tricircle and bottom OpenStack::
+- 6 Create pod instances for Tricircle and bottom OpenStack. The "token" can be
+  obtained from the Keystone. We can use the command to get the "token" as follows::
+
+   openstack token issue
+
+  The commands to create pod instances for the Tricircle and bottom OpenStack::
 
    curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
        -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
@@ -70,9 +90,11 @@ Now the Tricircle can be played with DevStack.
   should exactly match the region name registered in Keystone since it is used
   by the Tricircle to route API request. In the above commands, we create pods
   named "RegionOne" and "Pod1" for the Tricircle instance and bottom OpenStack
-  instance. The Tricircle API service will automatically create an aggregate
-  when user creates a bottom pod, so command "nova aggregate-list" will show
-  the following result::
+  instance.
+
+  The Tricircle API service will automatically create an aggregate when user
+  creates a bottom pod, so command "nova aggregate-list" will show the following
+  result::
 
     +----+----------+-------------------+
     | Id | Name     | Availability Zone |
@@ -85,6 +107,7 @@ Now the Tricircle can be played with DevStack.
      nova flavor-create test 1 1024 10 1
      neutron net-create net1
      neutron subnet-create net1 10.0.0.0/24
+     neutron net-list
      glance image-list
 
   Note that flavor mapping has not been implemented yet so the created flavor
@@ -102,10 +125,17 @@ Now the Tricircle can be played with DevStack.
       cinder --debug delete $volume_id
       cinder --debug list
 
+- 10 Attach the volume to a server::
+
+      cinder create --availability-zone=az1 1
+      cinder list
+      nova list
+      nova volume-attach $vm_id $volume_id
+      cinder volume show $volume_id
+
+
 Verification with script
 ^^^^^^^^^^^^^^^^^^^^^^^^
-
-
 A sample of admin-openrc.sh and an installation verification script can be found
 in devstack/ in the Tricircle root folder. 'admin-openrc.sh' is used to create
 environment variables for the admin user as the following::
@@ -132,7 +162,7 @@ to logs.
 Before verifying the installation, you should modify the script based on your
 own environment.
 
-- 1 The default post URL is 127.0.0.1, change it if needed,
+- 1 The default post URL is 127.0.0.1, change it if needed.
 - 2 The default create net1's networ address is 10.0.0.0/24, change it if
   needed.
 
@@ -141,27 +171,30 @@ Then you do the following steps to verify::
   cd tricircle/devstack/
   ./verify_top_install.sh 2>&1 | tee logs
 
-
-======================================================================
-Two nodes installation with DevStack for Cross-OpenStack L3 networking
-======================================================================
+=========================================================
+Two nodes installation with DevStack (Local network type)
+=========================================================
 
 Introduction
 ^^^^^^^^^^^^
 
-Now the Tricircle supports cross-pod l3 networking.
+Now the Tricircle supports cross-pod l3 networking, all cross OpenStack L3
+networking in this part means L3 networking for local network type. For
+"local network", the network will be only presented in one bottom pod. If
+a VM in one pod tries to attach to a local network in another pod, it should
+be failed. So cross-pod L2 networking is not supported in local network.
 
-To achieve cross-pod l3 networking, Tricircle utilizes a shared provider VLAN
-network at first phase. We are considering later using DCI controller to create
-a multi-segment VLAN network, VxLAN network for L3 networking purpose. When a
-subnet is attached to a router in top pod, Tricircle not only creates
-corresponding subnet and router in bottom pod, but also creates a VLAN type
-"bridge" network. Both tenant network and "bridge" network are attached to
-bottom router. Each tenant will have one allocated VLAN, which is shared by
-the tenant's "bridge" networks across bottom pods. The CIDRs of "bridge"
-networks for one tenant are also the same, so the router interfaces in
-"bridge" networks across different bottom pods can communicate with each
-other via the provider VLAN network. By adding an extra route as following::
+To achieve cross-pod l3 networking, the Tricircle utilizes a shared provider
+VLAN network at first phase. We are considering later using VxLAN network or
+multi-segment VLAN network for L3 networking purpose. When a subnet is attached
+to a router in top pod, the Tricircle not only creates corresponding subnet and
+router in bottom pod, but also creates a VLAN type "bridge" network. Both tenant
+network and "bridge" network are attached to bottom router. Each tenant will
+have one allocated VLAN, which is shared by the tenant's "bridge" networks
+across bottom pods. The CIDRs of "bridge" networks for one tenant are also the
+same, so the router interfaces in "bridge" networks across different bottom pods
+can communicate with each other via the provider VLAN network. By adding an
+extra route as following::
 
   destination: CIDR of tenant network in another bottom pod
   nexthop: "bridge" network interface ip in another bottom pod
@@ -173,21 +206,8 @@ route, at last the packet is sent to the target server. This configuration job
 is triggered when user attaches a subnet to a router in top pod and finished
 asynchronously.
 
-Currently cross-pod L2 networking is not supported yet, so tenant networks
-cannot cross pods, that is to say, one network in top pod can only locate in
-one bottom pod, tenant network is bound to bottom pod. Otherwise we cannot
-correctly configure extra route since for one destination CIDR, we have more
-than one possible nexthop addresses.
-
-*When cross-pod L2 networking is introduced, L2GW will be used to connect L2
-network in different pods. No extra route is required to connect L2 network
-All L3 traffic will be forwarded to the local L2 network, then go to the
-server in another pod via the L2GW.*
-
-We use "availability_zone_hints" attribute for user to specify the bottom pod
-he wants to create the bottom network. Currently we do not support attaching
-a network to a router without setting "availability_zone_hints" attribute of
-the network.
+This part of installation guide focuses on cross-pod l3 networking for local
+network.
 
 Prerequisite
 ^^^^^^^^^^^^
@@ -211,7 +231,7 @@ In node1,
   local.conf, change password in the file if needed.
 - 4 Change the following options according to your environment::
 
-   HOST_IP=10.250.201.24
+    HOST_IP=10.250.201.24
 
   change to your management interface ip::
 
@@ -304,9 +324,17 @@ In node2,
 How to play
 ^^^^^^^^^^^
 
-All the following operations are performed in node1
+All the following operations are performed in node1.
 
-- 1 Check if services have been correctly registered. Run "openstack endpoint
+- 1 After the setup is finished, we also need to create environment variables for the
+  admin user. In DevStack folder, create a file admin-openrc, and copy the content of
+  https://github.com/openstack/tricircle/blob/master/devstack/admin-openrc.sh to the
+  admin-openrc, change the password in the file if needed. Then run the following command
+  to set the environment variables::
+
+     source admin-openrc
+
+- 2 Check if services have been correctly registered. Run "openstack endpoint
   list" and you should get similar output as following::
 
       +----------------------------------+-----------+--------------+----------------+
@@ -336,7 +364,8 @@ All the following operations are performed in node1
   need to set KEYSTONE_REGION_NAME the same as REGION_NAME in node1, which is
   "RegionOne" in this example. So services in node2 can interact with Keystone
   service in RegionOne.
-- 2 Create pod instances for Tricircle and bottom OpenStack::
+- 3 Create pod instances for Tricircle and bottom OpenStack, the "token" can be obtained
+  from the Keystone::
 
     curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
         -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
@@ -347,35 +376,35 @@ All the following operations are performed in node1
     curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
         -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "Pod2", "az_name": "az2"}}'
 
-- 3 Create network with AZ scheduler hints specified::
+- 4 Create network with AZ scheduler hints specified::
 
-    curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-        -H "X-Auth-Token: $token" \
-        -d '{"network": {"name": "net1", "admin_state_up": true, "availability_zone_hints": ["az1"]}}'
-    curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-        -H "X-Auth-Token: $token" \
-        -d '{"network": {"name": "net2", "admin_state_up": true, "availability_zone_hints": ["az2"]}}'
+    neutron net-create --availability-zone-hint az1 net1
+    neutron net-create --availability-zone-hint az2 net2
 
-  Here we create two networks separately bound to Pod1 and Pod2
-- 4 Create necessary resources to boot virtual machines::
+  We use "availability_zone_hints" attribute for user to specify the bottom pod he wants
+  to create the bottom network.
+
+  Here we create two networks separately bound to Pod1 and Pod2.
+- 5 Create necessary resources to boot virtual machines::
 
     nova flavor-create test 1 1024 10 1
     neutron subnet-create net1 10.0.1.0/24
     neutron subnet-create net2 10.0.2.0/24
+    neutron net-list
     glance image-list
 
-- 5 Boot virtual machines::
+- 6 Boot virtual machines::
 
      nova boot --flavor 1 --image $image_id --nic net-id=$net1_id --availability-zone az1 vm1
      nova boot --flavor 1 --image $image_id --nic net-id=$net2_id --availability-zone az2 vm2
 
-- 6 Create router and attach interface::
+- 7 Create router and attach interface::
 
     neutron router-create router
     neutron router-interface-add router $subnet1_id
     neutron router-interface-add router $subnet2_id
 
-- 7 Launch VNC console anc check connectivity
+- 8 Launch VNC console and check connectivity
   By now, two networks are connected by the router, the two virtual machines
   should be able to communicate with each other, we can launch a VNC console to
   check. Currently Tricircle doesn't support VNC proxy, we need to go to bottom
@@ -444,11 +473,13 @@ Verification with script
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 A sample of admin-openrc.sh and an installation verification script can be
-found in devstack/ directory. And a demo blog with virtualbox can be found in https://wiki.openstack.org/wiki/Play_tricircle_with_virtualbox
+found in devstack/ directory. And a demo blog with virtualbox can be found in
+https://wiki.openstack.org/wiki/Play_tricircle_with_virtualbox
 
 Script 'verify_cross_pod_install.sh' is to quickly verify the installation of
 the Tricircle in Cross Pod OpenStack as the contents above and save the output
 to logs.
+
 Before verifying the installation, some parameters should be modified to your
 own environment.
 
@@ -460,8 +491,29 @@ own environment.
 - 4 The default created floating-ip is attached to the VM with port 10.0.2.3
   created by the subnets, modify it according to your environment.
 
-Then do the following steps in Node1 OpenStack to verify network functions::
+Then do the followings in Node1 OpenStack to verify network functions::
 
    cd tricircle/devstack/
    ./verify_cross_pod_install.sh 2>&1 | tee logs
 
+===============================================================
+Two nodes installation with DevStack (Shared VLAN network type)
+===============================================================
+
+As the first step to support cross-pod L2 networking, we have added shared VLAN
+network type to the Tricircle. If you have already set up cross-pod L3 networking
+in your environment, you can directly try out cross-pod L2 networking with shared
+VLAN network since by default Neutron server uses the same physical network to
+create shared VLAN network as the bridge network used in cross-pod L3 networking.
+
+After you prepare two nodes and finish the creating about the pod instances for the
+Tricircle and bottom OpenStack accoding to the above method. You can create network
+in Shared VLAN network type(No AZ parameter in the following command means the network
+will be able spanning into all AZs)::
+
+    neutron net-create --provider:network_type shared_vlan net1
+    neutron net-create --provider:network_type shared_vlan net2
+
+After you create the network, you can continue deploying according to the above section.
+After all steps are finished, VMs should be able to ping each other if they are attached
+to the same network, no matter the VM is in which bottom OpenStack.
