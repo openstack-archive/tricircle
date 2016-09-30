@@ -1,7 +1,7 @@
 # Git information
 TRICIRCLE_REPO=${TRICIRCLE_REPO:-https://git.openstack.org/cgit/openstack/tricircle/}
 TRICIRCLE_DIR=$DEST/tricircle
-TRICIRCLE_BRANCH=${TRICIRCLE_BRANCH:-master}
+TRICIRCLE_BRANCH=${TRICIRCLE_BRANCH:-stable/newton}
 
 # common variables
 POD_REGION_NAME=${POD_REGION_NAME:-Pod1}

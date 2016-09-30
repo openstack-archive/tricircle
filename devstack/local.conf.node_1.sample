@@ -44,7 +44,7 @@ Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000)
 OVS_BRIDGE_MAPPINGS=bridge:br-bridge
 
 Q_ENABLE_TRICIRCLE=True
-enable_plugin tricircle https://github.com/openstack/tricircle/
+enable_plugin tricircle https://github.com/openstack/tricircle stable/newton
 
 # Tricircle Services
 enable_service t-api

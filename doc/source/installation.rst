@@ -22,18 +22,18 @@ Now the Tricircle can be played with DevStack.
   http://docs.openstack.org/developer/devstack/
   on how to install DevStack into single VM or physcial machine
 - 2 In DevStack folder, create a file local.conf, and copy the content of
-  https://github.com/openstack/tricircle/blob/master/devstack/local.conf.sample
+  https://github.com/openstack/tricircle/blob/stable/newton/devstack/local.conf.sample
   to local.conf, change password in the file if needed.
 - 3 Run DevStack. In DevStack folder, run::
 
     ./stack.sh
 
-- 4 After DevStack successfully starts, we need to create environment variables for
-  the user (admin user as example in this document). In DevStack folder, create a file
-  admin-openrc, and copy the content of
-  https://github.com/openstack/tricircle/blob/master/devstack/admin-openrc.sh to the
-  admin-openrc, change the password in the file if needed. Then run the following
-  command to set the environment variables::
+- 4 After DevStack successfully starts, we need to create environment
+  variables for the user (admin user as example in this document). In DevStack
+  folder, create a file admin-openrc, and copy the content of
+  https://github.com/openstack/tricircle/blob/stable/newton/devstack/admin-openrc.sh
+  to the admin-openrc, change the password in the file if needed. Then run the
+  following command to set the environment variables::
 
       source admin-openrc
 
@@ -328,7 +328,7 @@ All the following operations are performed in node1.
 
 - 1 After the setup is finished, we also need to create environment variables for the
   admin user. In DevStack folder, create a file admin-openrc, and copy the content of
-  https://github.com/openstack/tricircle/blob/master/devstack/admin-openrc.sh to the
+  https://github.com/openstack/tricircle/blob/stable/newton/devstack/admin-openrc.sh to the
   admin-openrc, change the password in the file if needed. Then run the following command
   to set the environment variables::
 
