@@ -303,3 +303,11 @@ class VolumeTypeExists(Duplicate):
 
 class VolumeTypeUpdateFailed(TricircleException):
     message = _("Cannot update volume_type %(id)s")
+
+
+class ServerMappingsNotFound(NotFound):
+    message = _('Instance %(server_id)s could not be found.')
+
+
+class VolumeMappingsNotFound(NotFound):
+    message = _('Volume %(volume_id)s could not be found')
