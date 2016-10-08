@@ -1,0 +1,151 @@
+---
+prelude: >
+  - This release notes is for the Tricircle Newton release. All features
+    described here are only applicable to the Tricircle Newton release.
+  - In Newton release, the Tricircle still provides OpenStack API gateway
+    and networking automation functionalities to allow multiple OpenStack
+    cloud, spanning in one site or multiple sites or in hybrid cloud, to
+    be managed as a single OpenStack cloud.
+  - After Newton release, the Tricircle will be a dedicated project for
+    networking automation across Neutron in OpenStack multi-region deployment,
+    and the OpenStack API gateway functionality provided by the Tricircle
+    will be moved to a new project called the Trio2o.
+features:
+  - Admin API:
+      - Pod management:
+          A pod represents a region in Keystone, the pod management is to
+          manage the relationship between the pod and availability zone which
+          is exposed to the end user. Features including creating a pod,
+          deleting a pod, retrieving pod list and retrieving a single pod are
+          provided.
+      - Pod binding management:
+          A pod binding represents a mapping relationship between tenant and
+          pod, an active pod binding for the tenant in one availability zone
+          means the new resource like VM, volume will be provisioned in this
+          pod if availability zone parameter specified in the request. If there
+          is no any binding for the tenant in the availability zone, the
+          Tricircle will automatically schedule one pod for the tenant and
+          create an active tenant-pod binding. A cloud administrator is able
+          to change the active pod binding manually if needed for the tenant.
+          Features including creating a pod binding, deleting a pod binding,
+          retrieving pod binding list and retrieving a single pod binding are
+          provided.
+  - Nova API-GW:
+      - Micro version:
+          Minimal version is 2.1, the maximum version is 2.36
+      - Server management:
+          - List servers
+          - Create server
+          - List servers detailed
+          - Show server details
+          - Delete server
+          - Force-delete server (force delete action)
+          - Lock server (lock action)
+          - Pause server (pause action)
+          - Reboot Server (reboot Action)
+          - Rescue Server (rescue Action)
+          - Resize Server (resize Action)
+          - Resume Suspended Server (resume Action)
+          - Revert Resized Server (revertResize Action)
+          - Shelve Server (shelve Action)
+          - Shelf-Offload (Remove) Server (shelveOffload Action)
+          - Start Server (os-start Action)
+          - Stop Server (os-stop Action)
+          - Unlock Server (unlock Action)
+          - Unpause Server (unpause Action)
+          - Unshelve (Restore) Shelved Server (unshelve Action)
+          - Trigger Crash Dump In Server
+          - Migrate Server (migrate Action)
+          - Reset Server State (os-resetState Action)
+          - List Flavors
+          - Create Flavor
+          - List Flavors With Details
+          - Show Flavor Details
+          - Delete Flavor
+          - List volume attachments for an instance
+          - Attach a volume to an instance
+          - Show a detail of a volume attachment
+          - Detach a volume from an instance
+      - Note for server management:
+          - For flavors, the cloud administrator should take care of the flavor
+            mapping between the Tricircle and bottom OpenStack clouds. The
+            Tricircle will forward the request to bottom OpenStack using the
+            same Flavor ID which is specified by the request to the Nova
+            API-GW.
+          - pagination and sort are not supported at the same time for list
+            operation.
+  - Cinder API-GW:
+      - Micro version:
+          Not supported. The version supported by Cinder API-GW is v2.
+      - Volume management:
+          - Create volume
+          - List volumes
+          - List volumes with details
+          - Show volume details
+          - Update volume
+          - Delete volume
+          - Create volume metadata
+          - Show volume metadata
+          - Update volume metadata
+          - Extend volume size
+          - Reset volume statuses
+          - Set image metadata for volume
+          - Attach volume to server
+          - Force detach volume
+          - List volume types
+          - Create volume type
+          - Update volume type
+          - Show volume type details
+          - Delete volume type
+      - Note for volume management:
+          - For volume type, the mapping from the Tricircle to the bottom
+            OpenStack is not established yet, so it's not applicable to
+            volume creation. You can only create volume without the volume
+            type option.
+          - pagination and sort are not supported at the same time for list
+            operation.
+  - Networking:
+      - Network:
+          - List networks
+          - Create network
+          - Show network details
+          - Delete network
+      - Subnet:
+          - List subnets
+          - Create subnet
+          - Show subnet details
+          - Delete subnet
+      - Port:
+          - List ports
+          - Create port
+          - Show port details
+          - Delete port
+      - Router:
+          - List routers
+          - Create router
+          - Show router details
+          - Delete router
+          - Add interface to router
+          - Delete interface from router
+          - List floating IPs
+          - Create floating IP
+          - Show floating IP details
+          - Update floating IP
+          - Delete floating IP
+      - Security Group:
+          - List security groups
+          - Create security group
+          - Show security group details
+          - List security group rules
+          - Create security group rule
+          - Show security group rule
+      - Note for networking:
+          - Only Local Network and Shared VLAN network supported. Shared
+            VLAN is the only L2 network type which supports cross
+            Neutron L2 networking and the bridge network for L3 networking.
+          - Pagination and sort are not supported at the same time for list
+            operion.
+          - For security group rule, remote group not supported yet. Use IP
+            prefix to create security group rule.
+issues:
+  - refer to https://bugs.launchpad.net/tricircle
