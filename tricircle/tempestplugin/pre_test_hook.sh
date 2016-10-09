@@ -16,6 +16,4 @@
 
 export localconf=$BASE/new/devstack/local.conf
 export TRICIRCLE_API_CONF=/etc/tricircle/api.conf
-export TRICIRCLE_CINDER_APIGW_CONF=/etc/tricircle/cinder_apigw.conf
-export TRICIRCLE_NOVA_APIGW_CONF=/etc/tricircle/nova_apigw.conf
 export TRICIRCLE_XJOB_CONF=/etc/tricircle/xjob.conf
