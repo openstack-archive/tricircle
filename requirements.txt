@@ -21,7 +21,7 @@ netifaces>=0.10.4 # MIT
 neutron-lib>=0.4.0 # Apache-2.0
 retrying!=1.3.0,>=1.2.3 # Apache-2.0
 SQLAlchemy<1.1.0,>=1.0.10 # MIT
-WebOb>=1.2.3 # MIT
+WebOb>=1.6.0 # MIT
 python-cinderclient!=1.7.0,!=1.7.1,>=1.6.0 # Apache-2.0
 python-glanceclient>=2.5.0 # Apache-2.0
 python-keystoneclient!=2.1.0,>=2.0.0 # Apache-2.0
