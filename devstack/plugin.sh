@@ -86,7 +86,6 @@ function configure_tricircle_xjob {
         echo "Configuring Tricircle xjob"
 
         init_common_tricircle_conf $TRICIRCLE_XJOB_CONF
-        iniset $TRICIRCLE_XJOB_CONF DEFAULT enable_api_gateway False
 
         setup_colorized_logging $TRICIRCLE_XJOB_CONF DEFAULT
     fi

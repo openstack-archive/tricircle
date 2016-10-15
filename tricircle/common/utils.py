@@ -18,6 +18,7 @@ import six
 import pecan
 
 from oslo_log import log as logging
+from oslo_utils import uuidutils
 
 from tricircle.common import constants as cons
 import tricircle.common.exceptions as t_exceptions
@@ -124,6 +125,21 @@ def check_string_length(value, name=None, min_len=0, max_len=None):
 
 def get_bottom_network_name(network):
     return '%s#%s' % (network['id'], network['name'])
+
+
+def get_id_from_name(_type, name):
+    if _type == cons.RT_NETWORK:
+        tokens = name.split('#')
+        if len(tokens) == 2:
+            id_candidate = tokens[1]
+        else:
+            id_candidate = tokens[0]
+    else:
+        id_candidate = name
+    if uuidutils.is_uuid_like(id_candidate):
+        return id_candidate
+    else:
+        return None
 
 
 def format_error(code, message, error_type=None):

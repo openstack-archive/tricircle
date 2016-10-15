@@ -38,12 +38,11 @@ NEUTRON_CREATE_INITIAL_NETWORKS=False
 Q_USE_PROVIDERNET_FOR_PUBLIC=True
 
 HOST_IP=10.250.201.25
-REGION_NAME=Pod2
+REGION_NAME=RegionTwo
 KEYSTONE_REGION_NAME=RegionOne
 SERVICE_HOST=$HOST_IP
 KEYSTONE_SERVICE_HOST=10.250.201.24
 KEYSTONE_AUTH_HOST=10.250.201.24
-GLANCE_SERVICE_HOST=10.250.201.24
 
 Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
 OVS_BRIDGE_MAPPINGS=bridge:br-bridge,extern:br-ext
@@ -60,8 +59,26 @@ enable_service c-vol
 enable_service c-sch
 
 disable_service n-obj
-disable_service g-api
-disable_service g-reg
 disable_service c-bak
 disable_service tempest
 disable_service horizon
+
+CENTRAL_REGION_NAME=CentralRegion
+TRICIRCLE_NEUTRON_PORT=20001
+
+[[post-config|$NEUTRON_CONF]]
+
+[DEFAULT]
+core_plugin=tricircle.network.local_plugin.TricirclePlugin
+
+[client]
+admin_username=admin
+admin_password=$ADMIN_PASSWORD
+admin_tenant=demo
+auto_refresh_endpoint=True
+top_pod_name=$CENTRAL_REGION_NAME
+
+[tricircle]
+real_core_plugin=neutron.plugins.ml2.plugin.Ml2Plugin
+# change the ip to the ip of the machine hosting central Neutron server
+central_neutron_url=http://10.250.201.24:$TRICIRCLE_NEUTRON_PORT

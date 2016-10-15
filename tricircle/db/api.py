@@ -57,9 +57,8 @@ def get_pod(context, pod_id):
 
 
 def list_pods(context, filters=None, sorts=None):
-    with context.session.begin():
-        return core.query_resource(context, models.Pod, filters or [],
-                                   sorts or [])
+    return core.query_resource(context, models.Pod, filters or [],
+                               sorts or [])
 
 
 def update_pod(context, pod_id, update_dict):
@@ -116,9 +115,8 @@ def get_pod_service_configuration(context, config_id):
 
 
 def list_pod_service_configurations(context, filters=None, sorts=None):
-    with context.session.begin():
-        return core.query_resource(context, models.PodServiceConfiguration,
-                                   filters or [], sorts or [])
+    return core.query_resource(context, models.PodServiceConfiguration,
+                               filters or [], sorts or [])
 
 
 def update_pod_service_configuration(context, config_id, update_dict):

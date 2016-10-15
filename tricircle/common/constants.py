@@ -59,6 +59,7 @@ ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
 
 dhcp_port_name = 'dhcp_port_%s'  # subnet_id
 interface_port_name = 'interface_%s_%s'  # b_pod_id t_subnet_id
+interface_port_device_id = 'reserved_gateway_port'
 
 MAX_INT = 0x7FFFFFFF
 expire_time = datetime.datetime(2000, 1, 1)

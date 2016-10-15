@@ -386,6 +386,19 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             context, subnet_id, subnet)
 
     def create_port(self, context, port):
+        port_body = port['port']
+        if port_body['device_id'] == t_constants.interface_port_device_id:
+            _, region_name, subnet_id = port_body['name'].split('_')
+            gateway_port_body = self.helper.get_create_interface_body(
+                port_body['tenant_id'], port_body['network_id'], region_name,
+                subnet_id)
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            pod = db_api.get_pod_by_name(t_ctx, region_name)
+            _, t_gateway_id = self.helper.prepare_top_element(
+                t_ctx, context, port_body['tenant_id'], pod,
+                {'id': port_body['name']}, t_constants.RT_PORT,
+                gateway_port_body)
+            return super(TricirclePlugin, self).get_port(context, t_gateway_id)
         db_port = super(TricirclePlugin, self).create_port_db(context, port)
         return self._make_port_dict(db_port)
 
@@ -414,6 +427,20 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 db_api.create_resource_mapping(t_ctx, resource_id, resource_id,
                                                pod['pod_id'], res['tenant_id'],
                                                resource_type)
+
+            interfaces = super(TricirclePlugin, self).get_ports(
+                context,
+                {'network_id': [res['network_id']],
+                 'device_owner': [constants.DEVICE_OWNER_ROUTER_INTF]})
+            interfaces = [inf for inf in interfaces if inf['device_id']]
+            if interfaces:
+                # request may be come from service, we use an admin context
+                # to run the xjob
+                admin_context = t_context.get_admin_context()
+                self.xjob_handler.setup_bottom_router(
+                    admin_context, res['network_id'],
+                    interfaces[0]['device_id'], pod['pod_id'])
+
         return res
 
     def delete_port(self, context, port_id, l3_port_check=True):

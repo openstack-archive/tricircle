@@ -28,7 +28,9 @@ from tricircle.common import client  # noqa
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
 from tricircle.common.i18n import _
+
 from tricircle.common import resource_handle
+import tricircle.common.utils as t_utils
 import tricircle.network.exceptions as t_exceptions
 from tricircle.network import helper
 
@@ -58,6 +60,18 @@ class TricirclePlugin(plugin.Ml2Plugin):
             cfg.CONF.client.auth_url)
         self.neutron_handle.endpoint_url = \
             cfg.CONF.tricircle.central_neutron_url
+
+    def start_rpc_listeners(self):
+        return self.core_plugin.start_rpc_listeners()
+
+    def start_rpc_state_reports_listener(self):
+        return self.core_plugin.start_rpc_state_reports_listener()
+
+    def rpc_workers_supported(self):
+        return self.core_plugin.rpc_workers_supported()
+
+    def rpc_state_report_workers_supported(self):
+        return self.core_plugin.rpc_state_report_workers_supported()
 
     @staticmethod
     def _adapt_network_body(network):
@@ -147,6 +161,43 @@ class TricirclePlugin(plugin.Ml2Plugin):
         dhcp_port_body['port']['id'] = t_ports[0]['id']
         self.core_plugin.create_port(q_ctx, dhcp_port_body)
 
+    def _ensure_gateway_port(self, t_ctx, t_subnet):
+        region_name = cfg.CONF.nova.region_name
+        gateway_port_name = t_constants.interface_port_name % (region_name,
+                                                               t_subnet['id'])
+        gateway_port_body = {
+            'port': {'tenant_id': t_subnet['tenant_id'],
+                     'admin_state_up': True,
+                     'name': gateway_port_name,
+                     'network_id': t_subnet['network_id'],
+                     'device_id': t_constants.interface_port_device_id}}
+        try:
+            return self.neutron_handle.handle_create(
+                t_ctx, t_constants.RT_PORT, gateway_port_body)
+        except Exception:
+            raw_client = self.neutron_handle._get_client(t_ctx)
+            params = {'name': gateway_port_name}
+            t_ports = raw_client.list_ports(**params)['ports']
+            if not t_ports:
+                raise t_exceptions.GatewayPortNotFound(
+                    subnet_id=t_subnet['id'], region=region_name)
+            return t_ports[0]
+
+    def create_network(self, context, network):
+        # this method is overwritten for bottom bridge network and external
+        # network creation, for internal network, get_network and get_networks
+        # will do the trick
+        net_body = network['network']
+        self._adapt_network_body(net_body)
+        if net_body['name']:
+            net_id = t_utils.get_id_from_name(t_constants.RT_NETWORK,
+                                              net_body['name'])
+            if net_id:
+                net_body['id'] = net_id
+        b_network = self.core_plugin.create_network(context,
+                                                    {'network': net_body})
+        return b_network
+
     def get_network(self, context, _id, fields=None):
         try:
             b_network = self.core_plugin.get_network(context, _id, fields)
@@ -174,12 +225,14 @@ class TricirclePlugin(plugin.Ml2Plugin):
             return self.core_plugin.get_networks(
                 context, filters, fields, sorts, limit, marker, page_reverse)
 
-        b_networks = self.core_plugin.get_networks(
-            context, filters, fields, sorts, limit, marker, page_reverse)
-        for b_network in b_networks:
+        b_full_networks = self.core_plugin.get_networks(
+            context, filters, None, sorts, limit, marker, page_reverse)
+        b_networks = []
+        for b_network in b_full_networks:
             subnet_ids = self._ensure_subnet(context, b_network, False)
             if subnet_ids:
                 b_network['subnets'] = subnet_ids
+            b_networks.append(self._fields(b_network, fields))
 
         if len(b_networks) == len(filters['id']):
             return b_networks
@@ -206,6 +259,31 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 b_networks.append(self._fields(b_network, fields))
         return b_networks
 
+    def create_subnet(self, context, subnet):
+        # this method is overwritten for bottom bridge subnet and external
+        # subnet creation, for internal subnet, get_subnet and get_subnets
+        # will do the trick
+        subnet_body = subnet['subnet']
+        if subnet_body['name']:
+            subnet_id = t_utils.get_id_from_name(t_constants.RT_SUBNET,
+                                                 subnet_body['name'])
+            if subnet_id:
+                subnet_body['id'] = subnet_id
+        b_subnet = self.core_plugin.create_subnet(context,
+                                                  {'subnet': subnet_body})
+        return b_subnet
+
+    def _create_bottom_subnet(self, t_ctx, q_ctx, t_subnet):
+        gateway_port = self._ensure_gateway_port(t_ctx, t_subnet)
+        subnet_body = helper.NetworkHelper.get_create_subnet_body(
+            gateway_port['tenant_id'], t_subnet, t_subnet['network_id'],
+            gateway_port['fixed_ips'][0]['ip_address'])['subnet']
+        t_subnet['gateway_ip'] = subnet_body['gateway_ip']
+        t_subnet['allocation_pools'] = subnet_body['allocation_pools']
+
+        b_subnet = self.core_plugin.create_subnet(q_ctx, {'subnet': t_subnet})
+        return b_subnet
+
     def get_subnet(self, context, _id, fields=None):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
@@ -214,11 +292,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
             t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', _id)
             if not t_subnet:
                 raise q_exceptions.SubnetNotFound(subnet_id=_id)
-            b_subnet = self.core_plugin.create_subnet(context,
-                                                      {'subnet': t_subnet})
+            b_subnet = self._create_bottom_subnet(t_ctx, context, t_subnet)
         if b_subnet['enable_dhcp']:
             self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
-
         return self._fields(b_subnet, fields)
 
     def get_subnets(self, context, filters=None, fields=None, sorts=None,
@@ -232,10 +308,13 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 context, filters, fields, sorts, limit, marker, page_reverse)
 
         t_ctx = t_context.get_context_from_neutron_context(context)
-        b_subnets = self.core_plugin.get_subnets(
-            context, filters, fields, sorts, limit, marker, page_reverse)
-        for b_subnet in b_subnets:
-            self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
+        b_full_subnets = self.core_plugin.get_subnets(
+            context, filters, None, sorts, limit, marker, page_reverse)
+        b_subnets = []
+        for b_subnet in b_full_subnets:
+            if b_subnet['enable_dhcp']:
+                self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
+            b_subnets.append(self._fields(b_subnet, fields))
         if len(b_subnets) == len(filters['id']):
             return b_subnets
 
@@ -251,12 +330,18 @@ class TricirclePlugin(plugin.Ml2Plugin):
             missing_subnets = [subnet for subnet in t_subnets if (
                 subnet['id'] in missing_id_set)]
             for subnet in missing_subnets:
-                b_subnet = self.core_plugin.create_subnet(
-                    context, {'subnet': subnet})
+                b_subnet = self._create_bottom_subnet(t_ctx, context, subnet)
                 if b_subnet['enable_dhcp']:
                     self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
                 b_subnets.append(self._fields(b_subnet, fields))
         return b_subnets
+
+    @staticmethod
+    def _is_special_port(port):
+        return port.get('device_owner') in (
+            q_constants.DEVICE_OWNER_ROUTER_INTF,
+            q_constants.DEVICE_OWNER_FLOATINGIP,
+            q_constants.DEVICE_OWNER_ROUTER_GW)
 
     def create_port(self, context, port):
         port_body = port['port']
@@ -268,25 +353,34 @@ class TricirclePlugin(plugin.Ml2Plugin):
         raw_client = self.neutron_handle._get_client(t_ctx)
 
         if port_body['fixed_ips'] is not q_constants.ATTR_NOT_SPECIFIED:
-            fixed_ip = port_body['fixed_ips'][0]
-            ip_address = fixed_ip.get('ip_address')
-            if not ip_address:
-                # dhcp agent may request to create a dhcp port without
-                # specifying ip address, we just raise an exception to reject
-                # this request
-                raise q_exceptions.InvalidIpForNetwork(ip_address='None')
-            params = {'fixed_ips': 'ip_address=%s' % ip_address}
-            t_ports = raw_client.list_ports(**params)['ports']
-            if not t_ports:
-                raise q_exceptions.InvalidIpForNetwork(
-                    ip_address=fixed_ip['ip_address'])
-            t_port = t_ports[0]
+            if not self._is_special_port(port_body):
+                fixed_ip = port_body['fixed_ips'][0]
+                ip_address = fixed_ip.get('ip_address')
+                if not ip_address:
+                    # dhcp agent may request to create a dhcp port without
+                    # specifying ip address, we just raise an exception to
+                    # reject this request
+                    raise q_exceptions.InvalidIpForNetwork(ip_address='None')
+                params = {'fixed_ips': 'ip_address=%s' % ip_address}
+                t_ports = raw_client.list_ports(**params)['ports']
+                if not t_ports:
+                    raise q_exceptions.InvalidIpForNetwork(
+                        ip_address=fixed_ip['ip_address'])
+                t_port = t_ports[0]
+            else:
+                t_port = port_body
         else:
             self._adapt_port_body_for_client(port['port'])
             t_port = raw_client.create_port(port)['port']
-        subnet_id = t_port['fixed_ips'][0]['subnet_id']
-        # get_subnet will create bottom subnet if it doesn't exist
-        self.get_subnet(context, subnet_id)
+
+        if not self._is_special_port(port_body):
+            subnet_id = t_port['fixed_ips'][0]['subnet_id']
+            # get_subnet will create bottom subnet if it doesn't exist
+            self.get_subnet(context, subnet_id)
+
+        for field in ('name', 'device_id'):
+            if port_body.get(field):
+                t_port[field] = port_body[field]
         b_port = self.core_plugin.create_port(context, {'port': t_port})
         return b_port
 

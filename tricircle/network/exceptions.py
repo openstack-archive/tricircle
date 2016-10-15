@@ -32,3 +32,8 @@ class BottomPodOperationFailure(exceptions.NeutronException):
 
 class DhcpPortNotFound(exceptions.NotFound):
     message = _('Dhcp port for subnet %(subnet_id)s not found')
+
+
+class GatewayPortNotFound(exceptions.NotFound):
+    message = _('Gateway port for subnet %(subnet_id)s and region %(region)s '
+                'not found')
