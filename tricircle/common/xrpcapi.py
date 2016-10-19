@@ -94,3 +94,8 @@ class XJobAPI(object):
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'delete_server_port',
             payload={constants.JT_PORT_DELETE: port_id})
+
+    def configure_security_group_rules(self, ctxt, project_id):
+        self.client.prepare(exchange='openstack').cast(
+            ctxt, 'configure_security_group_rules',
+            payload={constants.JT_SEG_RULE_SETUP: project_id})

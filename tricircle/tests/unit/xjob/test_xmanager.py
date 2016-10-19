@@ -30,33 +30,42 @@ from tricircle.xjob import xmanager
 from tricircle.xjob import xservice
 
 
+TOP_NETWORK = []
 BOTTOM1_NETWORK = []
 BOTTOM2_NETWORK = []
+TOP_SUBNET = []
 BOTTOM1_SUBNET = []
 BOTTOM2_SUBNET = []
 BOTTOM1_PORT = []
 BOTTOM2_PORT = []
 BOTTOM1_ROUTER = []
 BOTTOM2_ROUTER = []
-RES_LIST = [BOTTOM1_NETWORK, BOTTOM2_NETWORK, BOTTOM1_SUBNET, BOTTOM2_SUBNET,
-            BOTTOM1_PORT, BOTTOM2_PORT, BOTTOM1_ROUTER, BOTTOM2_ROUTER]
-RES_MAP = {'pod_1': {'network': BOTTOM1_NETWORK,
+TOP_SG = []
+BOTTOM1_SG = []
+BOTTOM2_SG = []
+RES_LIST = [TOP_NETWORK, BOTTOM1_NETWORK, BOTTOM2_NETWORK, TOP_SUBNET,
+            BOTTOM1_SUBNET, BOTTOM2_SUBNET, BOTTOM1_PORT, BOTTOM2_PORT,
+            BOTTOM1_ROUTER, BOTTOM2_ROUTER, TOP_SG, BOTTOM1_SG, BOTTOM2_SG]
+RES_MAP = {'top': {'network': TOP_NETWORK,
+                   'subnet': TOP_SUBNET,
+                   'security_group': TOP_SG},
+           'pod_1': {'network': BOTTOM1_NETWORK,
                      'subnet': BOTTOM1_SUBNET,
                      'port': BOTTOM1_PORT,
-                     'router': BOTTOM1_ROUTER},
+                     'router': BOTTOM1_ROUTER,
+                     'security_group': BOTTOM1_SG},
            'pod_2': {'network': BOTTOM2_NETWORK,
                      'subnet': BOTTOM2_SUBNET,
                      'port': BOTTOM2_PORT,
-                     'router': BOTTOM2_ROUTER}}
+                     'router': BOTTOM2_ROUTER,
+                     'security_group': BOTTOM2_SG}}
 
 
 class FakeXManager(xmanager.XManager):
     def __init__(self):
-        self.clients = {'pod_1': FakeClient('pod_1'),
+        self.clients = {'top': FakeClient(),
+                        'pod_1': FakeClient('pod_1'),
                         'pod_2': FakeClient('pod_2')}
-
-    def _get_client(self, pod_name=None):
-        return self.clients[pod_name]
 
 
 class FakeClient(object):
@@ -85,12 +94,29 @@ class FakeClient(object):
     def list_ports(self, cxt, filters=None):
         return self.list_resources('port', cxt, filters)
 
+    def list_subnets(self, cxt, filters=None):
+        return self.list_resources('subnet', cxt, filters)
+
     def get_subnets(self, cxt, subnet_id):
         return self.list_resources(
             'subnet', cxt,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
 
     def update_routers(self, cxt, *args, **kwargs):
+        pass
+
+    def list_security_groups(self, cxt, filters=None):
+        return self.list_resources('security_group', cxt, filters)
+
+    def get_security_groups(self, cxt, sg_id):
+        return self.list_resources(
+            'security_group', cxt,
+            [{'key': 'id', 'comparator': 'eq', 'value': sg_id}])[0]
+
+    def delete_security_group_rules(self, cxt, sg_id):
+        pass
+
+    def create_security_group_rules(self, cxt, *args, **kwargs):
         pass
 
 
@@ -105,6 +131,7 @@ class XManagerTest(unittest.TestCase):
                             'worker_sleep_time'):
                 cfg.CONF.register_opt(opt)
         self.context = context.Context()
+        self.xmanager = FakeXManager()
         self.xmanager = FakeXManager()
 
     @patch.object(FakeClient, 'update_routers')
@@ -206,6 +233,77 @@ class XManagerTest(unittest.TestCase):
         called = called or (mock_update.call_args_list[1] == calls[2])
         called = called and (mock_update.call_args_list[0] == calls[0])
         self.assertTrue(called)
+
+    @patch.object(FakeClient, 'delete_security_group_rules')
+    @patch.object(FakeClient, 'create_security_group_rules')
+    def test_configure_security_group_rules(self, mock_create, mock_delete):
+        project_id = uuidutils.generate_uuid()
+        sg_id = uuidutils.generate_uuid()
+        sg_rule_id = uuidutils.generate_uuid()
+        sg = {'id': sg_id,
+              'tenant_id': project_id,
+              'name': 'default',
+              'security_group_rules': [{
+                  'id': sg_rule_id,
+                  'remote_group_id': sg_id,
+                  'direction': 'ingress',
+                  'remote_ip_prefix': None,
+                  'protocol': None,
+                  'ethertype': 'IPv4',
+                  'port_range_max': -1,
+                  'port_range_min': -1,
+                  'security_group_id': sg_id}]}
+        RES_MAP['top']['security_group'].append(sg)
+
+        for i in xrange(1, 3):
+            pod_dict = {'pod_id': 'pod_id_%d' % i,
+                        'pod_name': 'pod_%d' % i,
+                        'az_name': 'az_name_%d' % i}
+            db_api.create_pod(self.context, pod_dict)
+
+            network = {'id': 'network_%d_id' % i,
+                       'tenant_id': project_id}
+            subnet = {'id': 'subnet_%d_id' % i,
+                      'network_id': network['id'],
+                      'cidr': '10.0.%d.0/24' % i,
+                      'gateway_ip': '10.0.%d.1' % i,
+                      'tenant_id': project_id}
+            RES_MAP['top']['network'].append(network)
+            RES_MAP['top']['subnet'].append(subnet)
+
+            pod_name = 'pod_%d' % i
+            RES_MAP[pod_name]['security_group'].append(sg)
+            route = {'top_id': sg_id, 'bottom_id': sg_id,
+                     'pod_id': pod_dict['pod_id'],
+                     'resource_type': 'security_group'}
+            with self.context.session.begin():
+                core.create_resource(self.context, models.ResourceRouting,
+                                     route)
+
+        self.xmanager.configure_security_group_rules(
+            self.context, payload={'seg_rule_setup': project_id})
+
+        calls = [mock.call(self.context, sg_rule_id)]
+        mock_delete.assert_has_calls(calls)
+        calls = [mock.call(self.context,
+                           {'security_group_rules': [
+                               {'remote_group_id': None,
+                                'direction': 'ingress',
+                                'remote_ip_prefix': '10.0.1.0/24',
+                                'protocol': None,
+                                'ethertype': 'IPv4',
+                                'port_range_max': -1,
+                                'port_range_min': -1,
+                                'security_group_id': sg_id},
+                               {'remote_group_id': None,
+                                'direction': 'ingress',
+                                'remote_ip_prefix': '10.0.2.0/24',
+                                'protocol': None,
+                                'ethertype': 'IPv4',
+                                'port_range_max': -1,
+                                'port_range_min': -1,
+                                'security_group_id': sg_id}]})]
+        mock_create.assert_has_calls(calls)
 
     def test_job_handle(self):
         @xmanager._job_handle('fake_resource')

@@ -62,7 +62,13 @@ client_opts = [
     cfg.StrOpt('admin_tenant_domain_name',
                default='Default',
                help='tenant domain name of admin account, needed when'
-                    ' auto_refresh_endpoint set to True')
+                    ' auto_refresh_endpoint set to True'),
+    cfg.StrOpt('ew_bridge_cidr',
+               default='100.0.0.0/9',
+               help='cidr pool of the east-west bridge network'),
+    cfg.StrOpt('ns_bridge_cidr',
+               default='100.128.0.0/9',
+               help='cidr pool of the north-south bridge network')
 ]
 client_opt_group = cfg.OptGroup('client')
 cfg.CONF.register_group(client_opt_group)

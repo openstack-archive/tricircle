@@ -33,14 +33,17 @@ import tricircle.network.local_plugin as plugin
 TOP_NETS = []
 TOP_SUBNETS = []
 TOP_PORTS = []
+TOP_SGS = []
 BOTTOM_NETS = []
 BOTTOM_SUBNETS = []
 BOTTOM_PORTS = []
-RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS,
-            BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS]
+BOTTOM_SGS = []
+RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS,
+            BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS, BOTTOM_SGS]
 RES_MAP = {'network': {True: TOP_NETS, False: BOTTOM_NETS},
            'subnet': {True: TOP_SUBNETS, False: BOTTOM_SUBNETS},
-           'port': {True: TOP_PORTS, False: BOTTOM_PORTS}}
+           'port': {True: TOP_PORTS, False: BOTTOM_PORTS},
+           'security_group': {True: TOP_SGS, False: BOTTOM_SGS}}
 
 
 def create_resource(_type, is_top, body):
@@ -117,6 +120,14 @@ class FakeCorePlugin(object):
                   limit=None, marker=None, page_reverse=False):
         return list_resource('port', False, filters)
 
+    def create_security_group(self, context, security_group, default_sg=False):
+        create_resource('security_group', False,
+                        security_group['security_group'])
+        return security_group['security_group']
+
+    def get_security_group(self, context, _id, fields=None, tenant_id=None):
+        return get_resource('security_group', False, _id)
+
 
 class FakeSession(object):
     class WithWrapper(object):
@@ -176,6 +187,10 @@ class FakeClient(object):
                 ports.append(copy.deepcopy(port))
         return {'ports': ports}
 
+    def list_security_groups(self, **kwargs):
+        return {'security_groups': list_resource('security_group',
+                                                 True, kwargs)}
+
 
 class FakeNeutronHandle(object):
     def _get_client(self, context):
@@ -210,6 +225,7 @@ class PluginTest(unittest.TestCase):
         network_id = uuidutils.generate_uuid()
         subnet_id = uuidutils.generate_uuid()
         port_id = uuidutils.generate_uuid()
+        sg_id = uuidutils.generate_uuid()
         t_net = {'id': network_id,
                  'tenant_id': self.tenant_id,
                  'name': 'net1',
@@ -235,10 +251,25 @@ class PluginTest(unittest.TestCase):
                   'fixed_ips': [{'subnet_id': subnet_id,
                                  'ip_address': '10.0.1.2'}],
                   'binding:profile': {}}
+        t_sg = {
+            'id': sg_id,
+            'tenant_id': self.tenant_id,
+            'name': 'default',
+            'security_group_rules': [{
+                'remote_group_id': sg_id,
+                'direction': 'ingress',
+                'remote_ip_prefix': None,
+                'protocol': None,
+                'ethertype': 'IPv4',
+                'port_range_max': -1,
+                'port_range_min': -1,
+                'security_group_id': sg_id}]
+        }
         TOP_NETS.append(t_net)
         TOP_SUBNETS.append(t_subnet)
         TOP_PORTS.append(t_port)
-        return t_net, t_subnet, t_port
+        TOP_SGS.append(t_sg)
+        return t_net, t_subnet, t_port, t_sg
 
     def _validate(self, net, subnet, port):
         b_net = self.plugin.get_network(self.context, net['id'])
@@ -273,13 +304,13 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network(self):
-        t_net, t_subnet, t_port = self._prepare_resource()
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
         self._validate(t_net, t_subnet, t_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_networks(self):
-        t_net1, t_subnet1, t_port1 = self._prepare_resource()
-        t_net2, t_subnet2, t_port2 = self._prepare_resource()
+        t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
+        t_net2, t_subnet2, t_port2, _ = self._prepare_resource()
         self.plugin.get_networks(self.context,
                                  {'id': [t_net1['id'], t_net2['id'],
                                          'fake_net_id']})
@@ -288,10 +319,11 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port(self):
-        t_net, t_subnet, t_port = self._prepare_resource()
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
         port = {
             'port': {'network_id': t_net['id'],
-                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED}
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'security_groups': []}
         }
         t_port = self.plugin.create_port(self.context, port)
         b_port = get_resource('port', False, t_port['id'])
@@ -299,7 +331,7 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port_ip_specified(self):
-        t_net, t_subnet, t_port = self._prepare_resource()
+        t_net, t_subnet, t_port, t_sg = self._prepare_resource()
         port_body = {
             'port': {'network_id': t_net['id'],
                      'fixed_ips': [{'ip_address': '10.0.1.4'}]}
@@ -315,14 +347,15 @@ class PluginTest(unittest.TestCase):
                   'mac_address': 'fa:16:3e:96:41:04',
                   'fixed_ips': [{'subnet_id': t_subnet['id'],
                                  'ip_address': '10.0.1.4'}],
-                  'binding:profile': {}}
+                  'binding:profile': {},
+                  'security_groups': [t_sg['id']]}
         TOP_PORTS.append(t_port)
         b_port = self.plugin.create_port(self.context, port_body)
         self.assertDictEqual(t_port, b_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_port(self):
-        t_net, t_subnet, t_port = self._prepare_resource()
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
         port_id = uuidutils.generate_uuid()
         t_port = {'id': port_id,
                   'tenant_id': self.tenant_id,
@@ -331,7 +364,8 @@ class PluginTest(unittest.TestCase):
                   'mac_address': 'fa:16:3e:96:41:04',
                   'fixed_ips': [{'subnet_id': t_subnet['id'],
                                  'ip_address': '10.0.1.4'}],
-                  'binding:profile': {}}
+                  'binding:profile': {},
+                  'security_groups': []}
         TOP_PORTS.append(t_port)
         t_port = self.plugin.get_port(self.context, port_id)
         b_port = get_resource('port', False, t_port['id'])
@@ -339,7 +373,7 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_ports(self):
-        t_net, t_subnet, t_port = self._prepare_resource()
+        t_net, t_subnet, t_port, t_sg = self._prepare_resource()
         t_ports = []
         for i in (4, 5):
             port_id = uuidutils.generate_uuid()
@@ -350,7 +384,8 @@ class PluginTest(unittest.TestCase):
                       'mac_address': 'fa:16:3e:96:41:04',
                       'fixed_ips': [{'subnet_id': t_subnet['id'],
                                      'ip_address': '10.0.1.%d' % i}],
-                      'binding:profile': {}}
+                      'binding:profile': {},
+                      'security_groups': [t_sg['id']]}
             TOP_PORTS.append(t_port)
             t_ports.append(t_port)
         self.plugin.get_ports(self.context,

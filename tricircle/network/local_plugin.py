@@ -22,6 +22,7 @@ import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
 from neutron.common import utils
+import neutron.extensions.securitygroup as ext_sg
 from neutron.plugins.ml2 import plugin
 
 from tricircle.common import client  # noqa
@@ -381,6 +382,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         for field in ('name', 'device_id'):
             if port_body.get(field):
                 t_port[field] = port_body[field]
+
+        self._handle_security_group(t_ctx, context, t_port)
         b_port = self.core_plugin.create_port(context, {'port': t_port})
         return b_port
 
@@ -408,6 +411,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 raise q_exceptions.PortNotFound(port_id=_id)
             self._ensure_network_subnet(context, t_port)
             self._adapt_port_body_for_call(t_port)
+            self._handle_security_group(t_ctx, context, t_port)
             b_port = self.core_plugin.create_port(context, {'port': t_port})
         return self._fields(b_port, fields)
 
@@ -446,6 +450,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         for port in t_ports:
             self._ensure_network_subnet(context, port)
             self._adapt_port_body_for_call(port)
+            self._handle_security_group(t_ctx, context, port)
             b_port = self.core_plugin.create_port(context,
                                                   {'port': port})
             b_ports.append(self._fields(b_port, fields))
@@ -455,3 +460,68 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         self.neutron_handle.handle_delete(t_ctx, t_constants.RT_PORT, _id)
         self.core_plugin.delete_port(context, _id, l3_port_check)
+
+    def _handle_security_group(self, t_ctx, q_ctx, port):
+        if not port['security_groups']:
+            raw_client = self.neutron_handle._get_client(t_ctx)
+            params = {'name': 'default'}
+            t_sgs = raw_client.list_security_groups(
+                **params)['security_groups']
+            if t_sgs:
+                port['security_groups'] = [t_sgs[0]['id']]
+        if port['security_groups'] is q_constants.ATTR_NOT_SPECIFIED:
+            return
+        for sg_id in port['security_groups']:
+            self.get_security_group(q_ctx, sg_id)
+
+    def get_security_group(self, context, _id, fields=None, tenant_id=None):
+        try:
+            return self.core_plugin.get_security_group(
+                context, _id, fields, tenant_id)
+        except q_exceptions.NotFound:
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            t_sg = self.neutron_handle.handle_get(t_ctx,
+                                                  'security_group', _id)
+            if not t_sg:
+                raise ext_sg.SecurityGroupNotFound(id=_id)
+            self.core_plugin.create_security_group(context,
+                                                   {'security_group': t_sg})
+            return self.core_plugin.get_security_group(
+                context, _id, fields, tenant_id)
+
+    def get_security_groups(self, context, filters=None, fields=None,
+                            sorts=None, limit=None, marker=None,
+                            page_reverse=False, default_sg=False):
+        # if id is not specified in the filter, we just return security group
+        # data in local Neutron server, otherwise id is specified, we need to
+        # retrieve network data from central Neutron server and create network
+        # which doesn't exist in local Neutron server.
+        if not filters or 'id' not in filters:
+            return self.core_plugin.get_security_groups(
+                context, filters, fields, sorts, limit, marker, page_reverse,
+                default_sg)
+
+        b_sgs = self.core_plugin.get_security_groups(
+            context, filters, fields, sorts, limit, marker, page_reverse,
+            default_sg)
+        if len(b_sgs) == len(filters['id']):
+            return b_sgs
+
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        raw_client = self.neutron_handle._get_client(t_ctx)
+        params = self._construct_params(filters, sorts, limit, marker,
+                                        page_reverse)
+        t_sgs = raw_client.list_security_groups(**params)['security_groups']
+
+        t_id_set = set([sg['id'] for sg in t_sgs])
+        b_id_set = set([sg['id'] for sg in b_sgs])
+        missing_id_set = t_id_set - b_id_set
+        if missing_id_set:
+            missing_sgs = [sg for sg in t_sgs if (
+                sg['id'] in missing_id_set)]
+            for sg in missing_sgs:
+                b_sg = self.core_plugin.create_security_group(
+                    context, {'security_group': sg})
+                b_sgs.append(self.core_plugin.get_security_group(
+                    context, b_sg['id'], fields))
+        return b_sgs
