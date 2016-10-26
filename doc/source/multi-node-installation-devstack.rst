@@ -197,11 +197,20 @@ In node2,
   OVS_PHYSICAL_BRIDGE, eth1 and eth2 are the device names of your VLAN network
   interfaces, for the "bridge" network and the external network.
 
-- 5 Run DevStack. In DevStack folder, run ::
+- 5 In /opt/stack folder (create this folder if it does not exist), then run ::
+
+    git clone https://github.com/openstack/tricircle
+
+- 6 After the Tricircle source code is cloned, install Tricircle manually ::
+
+    cd tricircle/
+    sudo pip install -e .
+
+- 7 Run DevStack. In DevStack folder, run ::
 
     ./stack.sh
 
-- 6 After DevStack successfully starts, the setup is finished.
+- 8 After DevStack successfully starts, the setup is finished.
 
 How to play
 ^^^^^^^^^^^
