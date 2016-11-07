@@ -36,6 +36,7 @@ from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
+from neutron_lib.api import validators
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
 
@@ -179,7 +180,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     @staticmethod
     def _ensure_az_set_for_external_network(context, req_data):
         external = req_data.get(external_net.EXTERNAL)
-        external_set = attributes.is_attr_set(external)
+        external_set = validators.is_attr_set(external)
         if not external_set or not external:
             return False
         if az_ext.AZ_HINTS in req_data and req_data[az_ext.AZ_HINTS]:
@@ -210,7 +211,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         provider_attrs = ('provider:network_type', 'provider:segmentation_id',
                           'provider:physical_network')
         for provider_attr in provider_attrs:
-            if attributes.is_attr_set(net.get(provider_attr)):
+            if validators.is_attr_set(net.get(provider_attr)):
                 body['network'][provider_attr] = net[provider_attr]
 
         self._prepare_bottom_element(
@@ -233,7 +234,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         attrs = ('ip_version', 'cidr', 'gateway_ip', 'allocation_pools',
                  'enable_dhcp')
         for attr in attrs:
-            if attributes.is_attr_set(subnet.get(attr)):
+            if validators.is_attr_set(subnet.get(attr)):
                 body['subnet'][attr] = subnet[attr]
         self._prepare_bottom_element(
             t_ctx, subnet['tenant_id'], pod, {'id': top_id},
@@ -975,10 +976,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 'name': subnet_name,
                 'prefixlen': 24,
                 'ip_version': 4,
-                'allocation_pools': attributes.ATTR_NOT_SPECIFIED,
-                'dns_nameservers': attributes.ATTR_NOT_SPECIFIED,
-                'host_routes': attributes.ATTR_NOT_SPECIFIED,
-                'cidr': attributes.ATTR_NOT_SPECIFIED,
+                'allocation_pools': constants.ATTR_NOT_SPECIFIED,
+                'dns_nameservers': constants.ATTR_NOT_SPECIFIED,
+                'host_routes': constants.ATTR_NOT_SPECIFIED,
+                'cidr': constants.ATTR_NOT_SPECIFIED,
                 'subnetpool_id': pool_id,
                 'enable_dhcp': False,
                 'tenant_id': project_id
@@ -1142,7 +1143,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         router_data = copy.deepcopy(router['router'])
         need_update_bottom = False
         is_add = False
-        if attributes.is_attr_set(router_data.get(l3.EXTERNAL_GW_INFO)):
+        if validators.is_attr_set(router_data.get(l3.EXTERNAL_GW_INFO)):
             need_update_bottom = True
             ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
             if ext_net_id:
