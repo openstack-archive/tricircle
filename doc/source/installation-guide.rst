@@ -12,3 +12,4 @@ step by step without DevStack for users who install OpenStack manually.
 
 .. include:: ./single-pod-installation-devstack.rst
 .. include:: ./multi-pod-installation-devstack.rst
+.. include:: ./installation-manual.rst
