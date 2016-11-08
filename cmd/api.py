@@ -16,7 +16,6 @@
 # Much of this module is based on the work of the Ironic team
 # see http://git.openstack.org/cgit/openstack/ironic/tree/ironic/cmd/api.py
 
-import logging as std_logging
 import sys
 
 from oslo_config import cfg
@@ -53,7 +52,7 @@ def main():
     restapp.serve(service, CONF, workers)
 
     LOG.info(_LI("Configuration:"))
-    CONF.log_opt_values(LOG, std_logging.INFO)
+    CONF.log_opt_values(LOG, logging.INFO)
 
     restapp.wait()
 
