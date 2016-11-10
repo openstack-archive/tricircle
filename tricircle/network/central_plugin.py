@@ -16,6 +16,7 @@
 import copy
 
 from oslo_config import cfg
+from oslo_db.sqlalchemy import utils as sa_utils
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
@@ -31,7 +32,6 @@ from neutron.db import l3_agentschedulers_db  # noqa
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.db import sqlalchemyutils
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
@@ -553,11 +553,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if search_step < 100:
             search_step = 100
         query = self._apply_ports_filters(query, models_v2.Port, filters)
-        query = sqlalchemyutils.paginate_query(
-            query, models_v2.Port, search_step, [('id', False)],
+        query = sa_utils.paginate_query(
+            query, models_v2.Port, search_step,
             # create a dummy port object
-            marker_obj=models_v2.Port(
-                id=last_port_id) if last_port_id else None)
+            marker=models_v2.Port(
+                id=last_port_id) if last_port_id else None,
+            sort_keys=['id'],
+            sort_dirs=['desc-nullsfirst'])
         total = 0
         ret = []
         for port in query:
