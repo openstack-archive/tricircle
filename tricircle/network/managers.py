@@ -16,9 +16,9 @@
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron.api.v2 import attributes
 from neutron.extensions import external_net
 from neutron.plugins.ml2 import managers
+from neutron_lib.api import validators
 
 from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
@@ -69,7 +69,7 @@ class TricircleTypeManager(managers.TypeManager):
     @staticmethod
     def _is_external_network(network):
         external = network.get(external_net.EXTERNAL)
-        external_set = attributes.is_attr_set(external)
+        external_set = validators.is_attr_set(external)
         if not external_set or not external:
             return False
         else:
