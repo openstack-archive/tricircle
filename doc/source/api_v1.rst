@@ -1,8 +1,8 @@
 =======================
 The Tricircle Admin API
 =======================
-This Admin API describes the ways of interacting with the Tricircle service
-via HTTP protocol using Representational State Transfer(ReST).
+This Admin API documentation describes the ways of interacting with the
+Tricircle service via HTTP protocol using Representational State Transfer(ReST).
 
 API Versions
 ============
@@ -35,21 +35,22 @@ Pod
 ===
 A pod represents a region in Keystone. When operating a pod, the Tricircle
 decides the correct endpoints to send request based on the region of the pod.
-Considering the 2-layers architecture of the Tricircle, we also have two kinds
-of pods: top pod and bottom pod.
+Considering the architecture of the Tricircle, we have two kinds of pods: pod
+for central Neutron and pod for local Neutron.
 
 
 +------------------+---------+-----------------------------------+------------------------+
 |**GET**           |/pods    |                                   |Retrieve Pod List       |
 +------------------+---------+-----------------------------------+------------------------+
 
-This fetches all the pods including top pod and bottom pod(s).
+This fetches all the pods, including pod for central Neutron and pod(s) for
+local Neutron.
 
 Normal Response Code: 200
 
 **Response**
 
-Pods contains a list of pod instance whose attributes are described in the
+Pods contains a list of pod instances whose attributes are described in the
 following table.
 
 +-----------+-------+---------------+-----------------------------------------------------+
@@ -59,26 +60,28 @@ following table.
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_name   |body   | string        |pod_name is specified by user but must match the     |
 |           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |bottom pod, the Tricircle automatically creates a    |
-|           |       |               |host aggregation and assigns the new availability    |
-|           |       |               |zone id to it.                                       |
+|           |       |               |pod for local Neutron, the Tricircle automatically   |
+|           |       |               |creates a host aggregation and assigns the new       |
+|           |       |               |availability zone id to it.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|az_name    |body   | string        |When az_name is empty, it means this pod is a top    |
-|           |       |               |region, no host aggregation will be generated. If    |
-|           |       |               |az_name is not empty, it means the pod will belong   |
-|           |       |               |to this availability zone. Multiple pods with the    |
-|           |       |               |same az_name means that these pods are under the same|
-|           |       |               |availability zone.                                   |
+|az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
+|           |       |               |central Neutron, no host aggregation will be         |
+|           |       |               |generated. If az_name is not empty, it means the pod |
+|           |       |               |will belong to this availability zone. Multiple pods |
+|           |       |               |with the same az_name means that these pods are under|
+|           |       |               |the same availability zone.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_az_name|body   | string        |pod_az_name is the az name in the bottom pod, it     |
+|pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
+|           |       |               |Neutron when creating network, router objects. It    |
 |           |       |               |could be empty. If it's empty, then no az parameter  |
-|           |       |               |will be added to the request to the bottom pod. If   |
-|           |       |               |the pod_az_name is different from az_name, then the  |
-|           |       |               |az parameter will be replaced with the pod_az_name   |
-|           |       |               |when the request is forwarded to relevant bottom pod.|
+|           |       |               |will be added to the request forwarded to the pod for|
+|           |       |               |local Neutron. If the pod_az_name is different from  |
+|           |       |               |az_name, then the az parameter will be replaced with |
+|           |       |               |the pod_az_name when the request is forwarded to     |
+|           |       |               |relevant pod for local Neutron.                      |
 +-----------+-------+---------------+-----------------------------------------------------+
 |dc_name    |body   | string        |dc_name is the name of the data center where the pod |
-|           |       |               |is located at.                                       |
+|           |       |               |is located.                                          |
 +-----------+-------+---------------+-----------------------------------------------------+
 
 **Response Example**
@@ -117,7 +120,7 @@ This is an example of response information for GET /pods.
 |**GET**           |/pods/{pod_id}     |                       |Retrieve a Single Pod          |
 +------------------+-------------------+-----------------------+-------------------------------+
 
-This fetches a single pod such as a top pod or a bottom pod.
+This fetches a pod for central Neutron or a pod for local Neutron.
 
 Normal Response Code: 200
 
@@ -131,9 +134,10 @@ Normal Response Code: 200
 
 **Response**
 
-Here are two kinds of pods, including top pod and bottom pod. az_name is one
-of its attributes. If the az_name is empty, it means a top pod otherwise it
-means a bottom pod. All of its attributes are described in the following table.
+Here are two kinds of pods, including pod for central Neutron and pod for local
+Neutron. az_name is one of its attributes. A pod with empty az_name is for
+central Neutron, otherwise a pod with az_name specified is for local Neutron.
+All of its attributes are described in the following table.
 
 +-----------+-------+---------------+-----------------------------------------------------+
 |Name       |In     |   Type        |    Description                                      |
@@ -142,26 +146,28 @@ means a bottom pod. All of its attributes are described in the following table.
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_name   |body   | string        |pod_name is specified by user but must match the     |
 |           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |bottom pod, the Tricircle automatically creates a    |
-|           |       |               |host aggregation and assigns the new availability    |
-|           |       |               |zone id to it.                                       |
+|           |       |               |pod for local Neutron, the Tricircle automatically   |
+|           |       |               |creates a host aggregation and assigns the new       |
+|           |       |               |availability zone id to it.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|az_name    |body   | string        |When az_name is empty, it means this pod is a top    |
-|           |       |               |region, no host aggregation will be generated. If    |
-|           |       |               |az_name is not empty, it means the pod will belong   |
-|           |       |               |to this availability zone. Multiple pods with the    |
-|           |       |               |same az_name means that these pods are under the same|
-|           |       |               |availability zone.                                   |
+|az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
+|           |       |               |central Neutron, no host aggregation will be         |
+|           |       |               |generated. If az_name is not empty, it means the pod |
+|           |       |               |will belong to this availability zone. Multiple pods |
+|           |       |               |with the same az_name means that these pods are under|
+|           |       |               |the same availability zone.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_az_name|body   | string        |pod_az_name is the az name in the bottom pod, it     |
+|pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
+|           |       |               |Neutron when creating network, router objects. It    |
 |           |       |               |could be empty. If it's empty, then no az parameter  |
-|           |       |               |will be added to the request to the bottom pod. If   |
-|           |       |               |the pod_az_name is different from az_name, then the  |
-|           |       |               |az parameter will be replaced with the pod_az_name   |
-|           |       |               |when the request is forwarded to relevant bottom pod.|
+|           |       |               |will be added to the request forwarded to the pod for|
+|           |       |               |local Neutron. If the pod_az_name is different from  |
+|           |       |               |az_name, then the az parameter will be replaced with |
+|           |       |               |the pod_az_name when the request is forwarded to     |
+|           |       |               |relevant pod for local Neutron.                      |
 +-----------+-------+---------------+-----------------------------------------------------+
 |dc_name    |body   | string        |dc_name is the name of the data center where the pod |
-|           |       |               |is located at.                                       |
+|           |       |               |is located.                                          |
 +-----------+-------+---------------+-----------------------------------------------------+
 
 **Response Example**
@@ -184,7 +190,7 @@ This is an example of response information for GET /pods/{pod_id}.
 |**POST**       |/pods  |                                    |Create a Pod        |
 +---------------+-------+------------------------------------+--------------------+
 
-This creates a pod such as a top pod or a bottom pod.
+This creates a pod for central Neutron or a pod for local Neutron.
 
 Normal Response Code: 200
 
@@ -198,26 +204,28 @@ in the following table.
 +===========+=======+===============+=====================================================+
 |pod_name   |body   | string        |pod_name is specified by user but must match the     |
 |           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |bottom pod, the Tricircle automatically creates a    |
-|           |       |               |host aggregation and assigns the new availability    |
-|           |       |               |zone id to it.                                       |
+|           |       |               |pod for local Neutron, the Tricircle automatically   |
+|           |       |               |creates a host aggregation and assigns the new       |
+|           |       |               |availability zone id to it.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|az_name    |body   | string        |When az_name is empty, it means this pod is a top    |
-|           |       |               |region, no host aggregation will be generated. If    |
-|           |       |               |az_name is not empty, it means the pod will belong   |
-|           |       |               |to this availability zone. Multiple pods with the    |
-|           |       |               |same az_name means that these pods are under the same|
-|           |       |               |availability zone.                                   |
+|az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
+|           |       |               |central Neutron, no host aggregation will be         |
+|           |       |               |generated. If az_name is not empty, it means the pod |
+|           |       |               |will belong to this availability zone. Multiple pods |
+|           |       |               |with the same az_name means that these pods are under|
+|           |       |               |the same availability zone.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_az_name|body   | string        |pod_az_name is the az name in the bottom pod, it     |
+|pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
+|           |       |               |Neutron when creating network, router objects. It    |
 |           |       |               |could be empty. If it's empty, then no az parameter  |
-|           |       |               |will be added to the request to the bottom pod. If   |
-|           |       |               |the pod_az_name is different from az_name, then the  |
-|           |       |               |az parameter will be replaced with the pod_az_name   |
-|           |       |               |when the request is forwarded to relevant bottom pod.|
+|           |       |               |will be added to the request forwarded to the pod for|
+|           |       |               |local Neutron. If the pod_az_name is different from  |
+|           |       |               |az_name, then the az parameter will be replaced with |
+|           |       |               |the pod_az_name when the request is forwarded to     |
+|           |       |               |relevant pod for local Neutron.                      |
 +-----------+-------+---------------+-----------------------------------------------------+
 |dc_name    |body   | string        |dc_name is the name of the data center where the pod |
-|           |       |               |is located at.                                       |
+|           |       |               |is located.                                          |
 +-----------+-------+---------------+-----------------------------------------------------+
 
 **Response**
@@ -232,26 +240,28 @@ are listed below.
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_name   |body   | string        |pod_name is specified by user but must match the     |
 |           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |bottom pod, the Tricircle automatically creates a    |
-|           |       |               |host aggregation and assigns the new availability    |
-|           |       |               |zone id to it.                                       |
+|           |       |               |pod for local Neutron, the Tricircle automatically   |
+|           |       |               |creates a host aggregation and assigns the new       |
+|           |       |               |availability zone id to it.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|az_name    |body   | string        |When az_name is empty, it means this pod is a top    |
-|           |       |               |region, no host aggregation will be generated. If    |
-|           |       |               |az_name is not empty, it means the pod will belong   |
-|           |       |               |to this availability zone. Multiple pods with the    |
-|           |       |               |same az_name means that these pods are under the same|
-|           |       |               |availability zone.                                   |
+|az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
+|           |       |               |central Neutron, no host aggregation will be         |
+|           |       |               |generated. If az_name is not empty, it means the pod |
+|           |       |               |will belong to this availability zone. Multiple pods |
+|           |       |               |with the same az_name means that these pods are under|
+|           |       |               |the same availability zone.                          |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_az_name|body   | string        |pod_az_name is the az name in the bottom pod, it     |
+|pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
+|           |       |               |Neutron when creating network, router objects. It    |
 |           |       |               |could be empty. If it's empty, then no az parameter  |
-|           |       |               |will be added to the request to the bottom pod. If   |
-|           |       |               |the pod_az_name is different from az_name, then the  |
-|           |       |               |az parameter will be replaced with the pod_az_name   |
-|           |       |               |when the request is forwarded to relevant bottom pod.|
+|           |       |               |will be added to the request forwarded to the pod for|
+|           |       |               |local Neutron. If the pod_az_name is different from  |
+|           |       |               |az_name, then the az parameter will be replaced with |
+|           |       |               |the pod_az_name when the request is forwarded to     |
+|           |       |               |relevant pod for local Neutron.                      |
 +-----------+-------+---------------+-----------------------------------------------------+
 |dc_name    |body   | string        |dc_name is the name of the data center where the pod |
-|           |       |               |is located at.                                       |
+|           |       |               |is located.                                          |
 +-----------+-------+---------------+-----------------------------------------------------+
 
 **Request Example**
@@ -290,7 +300,8 @@ This is an example of response information for POST /pods.
 |**DELETE**        |/pods/{pod_id}   |                        |Delete a Pod             |
 +------------------+-----------------+------------------------+-------------------------+
 
-This deletes a pod such as a top pod or a bottom pod from availability-zone.
+This deletes a pod for central Neutron or a pod for local Neutron from
+availability-zone.
 
 Normal Response Code: 200
 
@@ -310,8 +321,10 @@ specific pod has been deleted or not.
 Pod Binding
 ===========
 A pod binding represents a mapping relationship between tenant and pod. Pods
-are classified into different categories. A tenant will be bound to different
-pod groups for different purposes.
+for local Neutron are classified into different categories. A tenant will be
+bound to different pod groups for different purposes. Only the pod for local
+Neutron could be bound with a tenant. Pod for central Neutron serves as the
+coordinator of networking automation across local Neutron servers.
 
 +------------------+------------+---------------------+-------------------------------------+
 |**GET**           |/bindings   |                     |Retrieve Pod Binding List            |
@@ -341,9 +354,9 @@ are listed in the following table.
 |             |       |               |automatically generated when new binding relation    |
 |             |       |               |happens between tenant and pod.                      |
 +-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | date          |created time of the pod binding.                     |
+|created_at   |body   | timestamp     |created time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | date          |updated time of the pod binding.                     |
+|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
 
 **Response Example**
@@ -410,9 +423,9 @@ of its attributes are described in the following table.
 |             |       |               |automatically generated when new binding relation    |
 |             |       |               |happens between tenant and pod.                      |
 +-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | date          |created time of the pod binding.                     |
+|created_at   |body   | timestamp     |created time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | date          |updated time of the pod binding.                     |
+|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
 
 **Response Example**
@@ -477,9 +490,9 @@ attribute values are given meanwhile. All of its fields are listed below.
 |             |       |               |automatically generated when new binding relation    |
 |             |       |               |happens between tenant and pod.                      |
 +-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | date          |created time of the pod binding.                     |
+|created_at   |body   | timestamp     |created time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | date          |updated time of the pod binding.                     |
+|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
 +-------------+-------+---------------+-----------------------------------------------------+
 
 **Request Example**
@@ -533,3 +546,410 @@ Normal Response Code: 200
 
 There is no response. But we can list all the pod bindings to verify
 whether the specific pod binding has been deleted or not.
+
+Resource Routing
+================
+The Tricircle is responsible for resource(for example, network, subnet, port,
+router, etc) creation both in local Neutron and central Neutron.
+
+In order to dispatch resource operation request to the proper local Neutron,
+we need a resource routing table, which maps a resource from the central
+Neutron to local Neutron where it's located.
+
+When user issues a resource update, query or delete request, central Neutron
+will capture this request and extract resource id from the request, then
+dispatch the request to target local Neutron on the basis of the routing table.
+
+
++------------------+-------------+--------------------+---------------------------------+
+|**GET**           |/routings    |                    |Retrieve All Resource Routings   |
++------------------+-------------+--------------------+---------------------------------+
+
+This fetches all the resource routing entries by default, but we can
+apply filter(s) on the returned values to only show the specific routing
+entries. Accordingly the filtering condition(s) will be added to the tail of
+the service url separated by question mark. For example, the default service
+url is GET /routings, when filtering is applied, the service url becomes
+GET /routings?attribute=attribute_value. One or multiple conditions are
+supported.
+
+Normal Response Code: 200
+
+**Response**
+
+The resource routing set contains a list of resource routing entries whose
+attributes are described in the following table.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |body   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+|created_at   |body   | timestamp     |created time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+|updated_at   |body   | timestamp     |updated time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /routings. By default, all
+the resource routing entries will be returned.
+
+::
+
+    {
+        "routings": [
+           {
+                "updated_at": "2016-09-25 03:16:31"",
+                "created_at": "2016-09-25 03:16:30",
+                "top_id": "4487087e-34c7-40d8-8553-3a4206d0591b",
+                "id": 2,
+                "bottom_id": "834ef10b-a96f-460c-b448-b39b9f3e6b52",
+                "project_id": "d937fe2ad1064a37968885a58808f7a3",
+                "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+                "resource_type": "security_group"
+            },
+            {
+                "updated_at": "2016-09-25 03:16:33",
+                "created_at": "2016-09-25 03:16:32",
+                "top_id": "a4d786fd-0511-4fac-be45-8b9ee447324b",
+                "id": 3,
+                "bottom_id": "7a05748c-5d1a-485e-bd5c-e52bc39b5414",
+                "project_id": "d937fe2ad1064a37968885a58808f7a3",
+                "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+                "resource_type": "network"
+            }
+        ]
+    }
+
+This is an example of response information for GET /routings?id=2. When a
+filter is applied to the list request, only the specific routing entry is
+retrieved.
+
+::
+
+    {
+        "routings": [
+           {
+                "updated_at": "2016-09-25 03:16:31"",
+                "created_at": "2016-09-25 03:16:30",
+                "top_id": "4487087e-34c7-40d8-8553-3a4206d0591b",
+                "id": 2,
+                "bottom_id": "834ef10b-a96f-460c-b448-b39b9f3e6b52",
+                "project_id": "d937fe2ad1064a37968885a58808f7a3",
+                "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+                "resource_type": "security_group"
+            }
+        ]
+    }
+
++------------------+---------------+---------------+-------------------------------------+
+|**GET**           |/routings/{id} |               |Retrieve a Single Resource Routing   |
++------------------+---------------+---------------+-------------------------------------+
+
+This fetches a single resource routing entry.
+
+Normal Response Code: 200
+
+**Request**
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |path   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+A kind of resource in central Neutron, when it is created by the Tricircle, is
+mapped to the same resource in local Neutron. Resource routing records this
+mapping relationship. All of its attributes are described in the following
+table.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |body   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+|created_at   |body   | timestamp     |created time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+|updated_at   |body   | timestamp     |updated time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /routings/{id}.
+
+::
+
+    {
+        "routing": {
+            "updated_at": null,
+            "created_at": "2016-10-25 13:10:26",
+            "top_id": "09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe",
+            "id": 43,
+            "bottom_id": "dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef",
+            "project_id": "d937fe2ad1064a37968885a58808f7a3",
+            "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+            "resource_type": "subnet"
+        }
+    }
+
++------------------+---------------+-----------------+-----------------------------------+
+|**POST**          |/routings      |                 |Create a Resource Routing          |
++------------------+---------------+-----------------+-----------------------------------+
+
+This creates a resource routing. For a kind of resource created in central
+Neutron, it is mapped to the same resource in local Neutron.
+
+Normal Response Code: 200
+
+**Request**
+
+Some essential fields of the resource routing entry are required and described
+in the following table.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+An id is assigned to the resource routing when it's created. All routing
+entry's attributes are listed below.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |body   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+|created_at   |body   | timestamp     |created time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+|updated_at   |body   | timestamp     |updated time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Request Example**
+
+This is an example of request information for POST /routings.
+
+::
+
+    {
+        "routing": {
+            "top_id": "09fd7cc9-d169-4b5a-88e8-436ecf4d0bfg",
+            "bottom_id": "dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ek",
+            "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+            "project_id": "d937fe2ad1064a37968885a58808f7a3",
+            "resource_type": "subnet"
+        }
+    }
+
+**Response Example**
+
+This is an example of response information for POST /routings.
+
+::
+
+    {
+        "routing": {
+            "updated_at": null,
+            "created_at": "2016-11-03 03:06:38",
+            "top_id": "09fd7cc9-d169-4b5a-88e8-436ecf4d0bfg",
+            "id": 45,
+            "bottom_id": "dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ek",
+            "project_id": "d937fe2ad1064a37968885a58808f7a3",
+            "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+            "resource_type": "subnet"
+        }
+    }
+
++------------------+---------------+-----------------+-----------------------------------+
+|**DELETE**        |/routings/{id} |                 |Delete a Resource Routing          |
++------------------+---------------+-----------------+-----------------------------------+
+
+This deletes a resource routing entry. But deleting an existing routing entry
+created by Tricircle itself may cause problem: Central Neutron may make wrong
+judgement on whether the resource exists or not without this routing entry.
+Moreover, related request can't be forwarded to the proper local Neutron
+either.
+
+Normal Response Code: 200
+
+**Request**
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |path   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+There is no response. But we can list all the resource routing entries to
+verify whether the specific routing entry has been deleted or not.
+
++------------------+---------------+-----------------+-----------------------------------+
+|**PUT**           |/routings/{id} |                 |Update a Resource Routing          |
++------------------+---------------+-----------------+-----------------------------------+
+
+This updates an existing resource routing entry. But updating an existing
+routing entry created by Tricircle itself may cause problem: Central Neutron
+may make wrong judgement on whether the resource exists or not without this
+routing entry. Moreover, related request can't be forwarded to the proper local
+Neutron either.
+
+Normal Response Code: 200
+
+**Request**
+
+Some specific attributes of the resource routing entry can be updated, but they
+are only limited to the fields in the following table, other fields can not be
+updated manually.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+Some specific fields of the resource routing entry will be updated. All
+attributes of routing entry are listed below.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |body   | uuid          |id is the unique identification of the resource      |
+|             |       |               |routing.                                             |
++-------------+-------+---------------+-----------------------------------------------------+
+|top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|bottom_id    |body   | string        |bottom_id denotes the resource id on local Neutron.  |
++-------------+-------+---------------+-----------------------------------------------------+
+|pod_id       |body   | string        |pod_id is the uuid of one pod(i.e., one region).     |
++-------------+-------+---------------+-----------------------------------------------------+
+|project_id   |body   | string        |project_id is the uuid of a project object in        |
+|             |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|             |       |               |Keystone. Starting in API version 3, "project" is the|
+|             |       |               |preferred term. They are identical in the context.   |
++-------------+-------+---------------+-----------------------------------------------------+
+|resource_type|body   | string        |resource_type denotes one of the available resource  |
+|             |       |               |types, including network, subnet, port, router and   |
+|             |       |               |security_group.                                      |
++-------------+-------+---------------+-----------------------------------------------------+
+|created_at   |body   | timestamp     |created time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+|updated_at   |body   | timestamp     |updated time of the resource routing.                |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Request Example**
+
+This is an example of request information for PUT /routings/{id}.
+
+::
+
+    {
+        "routing": {
+            "resource_type": "router"
+        }
+    }
+
+**Response Example**
+
+This is an example of response information for PUT /routings/{id}. The change
+of the field updated_at will be showed next time we retrieve this routing entry
+from the database.
+
+::
+
+    {
+        "routing": {
+            "updated_at": null,
+            "created_at": "2016-11-03 03:06:38",
+            "top_id": "09fd7cc9-d169-4b5a-88e8-436ecf4d0bfg",
+            "id": 45,
+            "bottom_id": "dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ek",
+            "project_id": "d937fe2ad1064a37968885a58808f7a3",
+            "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
+            "resource_type": "router"
+        }
+    }
