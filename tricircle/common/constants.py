@@ -30,9 +30,13 @@ RT_VOl_METADATA = 'volume_metadata'
 RT_BACKUP = 'backup'
 RT_SNAPSHOT = 'snapshot'
 RT_NETWORK = 'network'
+RT_SD_NETWORK = 'shadow_network'
 RT_SUBNET = 'subnet'
+RT_SD_SUBNET = 'shadow_subnet'
 RT_PORT = 'port'
+RT_SD_PORT = 'shadow_port'
 RT_ROUTER = 'router'
+RT_NS_ROUTER = 'ns_router'
 RT_SG = 'security_group'
 
 
@@ -52,23 +56,23 @@ R_LIBERTY = 'liberty'
 R_MITAKA = 'mitaka'
 
 # l3 bridge networking elements
-ew_bridge_subnet_pool_name = 'ew_bridge_subnet_pool'
-ew_bridge_net_name = 'ew_bridge_net_%s'  # project_id
-ew_bridge_subnet_name = 'ew_bridge_subnet_%s'  # project_id
-ew_bridge_port_name = 'ew_bridge_port_%s_%s'  # project_id b_router_id
+bridge_subnet_pool_name = 'bridge_subnet_pool'
+bridge_net_name = 'bridge_net_%s'  # project_id
+bridge_subnet_name = 'bridge_subnet_%s'  # project_id
+bridge_port_name = 'bridge_port_%s_%s'  # project_id b_router_id
 
-ns_bridge_subnet_pool_name = 'ns_bridge_subnet_pool'
-ns_bridge_net_name = 'ns_bridge_net_%s'  # project_id
-ns_bridge_subnet_name = 'ns_bridge_subnet_%s'  # project_id
 # for external gateway port: project_id b_router_id None
 # for floating ip port: project_id None b_internal_port_id
 ns_bridge_port_name = 'ns_bridge_port_%s_%s_%s'
+ns_router_name = 'ns_router_%s'
 
+shadow_port_name = 'shadow_port_%s'
 dhcp_port_name = 'dhcp_port_%s'  # subnet_id
 interface_port_name = 'interface_%s_%s'  # b_pod_id t_subnet_id
 interface_port_device_id = 'reserved_gateway_port'
 
 MAX_INT = 0x7FFFFFFF
+DEFAULT_DESTINATION = '0.0.0.0/0'
 expire_time = datetime.datetime(2000, 1, 1)
 
 # job status

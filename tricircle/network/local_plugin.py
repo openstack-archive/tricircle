@@ -480,10 +480,15 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
             b_port = self.core_plugin.get_port(context, _id)
+            # to support floating ip, we create a copy port if the target port
+            # is not in the pod where the real external network is located. to
+            # distinguish it from normal port, we name it with a prefix
+            do_top_delete = b_port['device_owner'].startswith(
+                q_constants.DEVICE_OWNER_COMPUTE_PREFIX)
+            skip_top_delete = t_constants.RT_SD_PORT in b_port['name']
         except q_exceptions.NotFound:
             return
-        if b_port['device_owner'].startswith(
-                q_constants.DEVICE_OWNER_COMPUTE_PREFIX):
+        if do_top_delete and not skip_top_delete:
             self.neutron_handle.handle_delete(t_ctx, t_constants.RT_PORT, _id)
         self.core_plugin.delete_port(context, _id, l3_port_check)
 

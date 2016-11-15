@@ -117,7 +117,7 @@ class NetworkHelper(object):
                 t_ctx, q_ctx, project_id, pod, ele, _type, body)
 
     def get_bridge_interface(self, t_ctx, q_ctx, project_id, pod,
-                             t_net_id, b_router_id, b_port_id, is_ew):
+                             t_net_id, b_router_id):
         """Get or create top bridge interface
 
         :param t_ctx: tricircle context
@@ -126,19 +126,10 @@ class NetworkHelper(object):
         :param pod: dict of top pod
         :param t_net_id: top bridge network id
         :param b_router_id: bottom router id
-        :param b_port_id: needed when creating bridge interface for south-
-               north network, id of the internal port bound to floating ip
-        :param is_ew: create the bridge interface for east-west network or
-               south-north network
         :return: bridge interface id
         """
-        if is_ew:
-            port_name = t_constants.ew_bridge_port_name % (project_id,
-                                                           b_router_id)
-        else:
-            port_name = t_constants.ns_bridge_port_name % (project_id,
-                                                           b_router_id,
-                                                           b_port_id)
+        port_name = t_constants.bridge_port_name % (project_id,
+                                                    b_router_id)
         port_ele = {'id': port_name}
         port_body = {
             'port': {
@@ -174,7 +165,13 @@ class NetworkHelper(object):
         """
         def list_resources(t_ctx_, q_ctx, pod_, ele_, _type_):
             client = self._get_client(pod_['region_name'])
-            if _type_ == t_constants.RT_NETWORK:
+            if _type_ == t_constants.RT_NS_ROUTER:
+                _type_ = t_constants.RT_ROUTER
+                value = t_constants.ns_router_name % ele_['id']
+            elif _type_ == t_constants.RT_SD_PORT:
+                _type_ = t_constants.RT_PORT
+                value = t_constants.shadow_port_name % ele_['id']
+            elif _type_ == t_constants.RT_NETWORK:
                 value = utils.get_bottom_network_name(ele_)
             else:
                 value = ele_['id']
@@ -183,6 +180,10 @@ class NetworkHelper(object):
                                            'value': value}])
 
         def create_resources(t_ctx_, q_ctx, pod_, body_, _type_):
+            if _type_ == t_constants.RT_NS_ROUTER:
+                _type_ = t_constants.RT_ROUTER
+            elif _type_ == t_constants.RT_SD_PORT:
+                _type_ = t_constants.RT_PORT
             client = self._get_client(pod_['region_name'])
             return client.create_resources(_type_, t_ctx_, body_)
 
@@ -421,14 +422,6 @@ class NetworkHelper(object):
                                   'cidr': t_subnet['cidr'],
                                   'enable_dhcp': False,
                                   'tenant_id': project_id}}
-        # In the pod hosting external network, where ns bridge network is used
-        # as an internal network, need to allocate ip address from .3 because
-        # .2 is used by the router gateway port in the pod hosting servers,
-        # where ns bridge network is used as an external network.
-        # if t_subnet['name'].startswith('ns_bridge_') and not is_external:
-        #     prefix = t_subnet['cidr'][:t_subnet['cidr'].rindex('.')]
-        #     subnet_body['subnet']['allocation_pools'] = [
-        #         {'start': prefix + '.3', 'end': prefix + '.254'}]
         _, b_subnet_id = self.prepare_bottom_element(
             t_ctx, project_id, pod, t_subnet, 'subnet', subnet_body)
 
