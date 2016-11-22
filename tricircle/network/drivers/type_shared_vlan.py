@@ -46,15 +46,15 @@ class SharedVLANTypeDriver(type_vlan.VlanTypeDriver):
     def get_type(self):
         return constants.NT_SHARED_VLAN
 
-    def reserve_provider_segment(self, session, segment):
+    def reserve_provider_segment(self, context, segment):
         res = super(SharedVLANTypeDriver,
-                    self).reserve_provider_segment(session, segment)
+                    self).reserve_provider_segment(context, segment)
         res[driver_api.NETWORK_TYPE] = constants.NT_SHARED_VLAN
         return res
 
-    def allocate_tenant_segment(self, session):
+    def allocate_tenant_segment(self, context):
         res = super(SharedVLANTypeDriver,
-                    self).allocate_tenant_segment(session)
+                    self).allocate_tenant_segment(context)
         res[driver_api.NETWORK_TYPE] = constants.NT_SHARED_VLAN
         return res
 
