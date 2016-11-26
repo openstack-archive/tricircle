@@ -25,6 +25,7 @@ from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
 
 import neutron_lib.constants as q_constants
+from neutron_lib.plugins import directory
 
 import neutron.conf.common as q_config
 from neutron.db import db_base_plugin_common
@@ -1014,6 +1015,10 @@ def fake_get_instance(cls, subnet_pool, context):
     return FakePool(subnet_pool, context)
 
 
+def fake_get_plugin(alias=q_constants.CORE):
+    return FakePlugin()
+
+
 class PluginTest(unittest.TestCase,
                  test_security_groups.TricircleSecurityGroupTestMixin):
     def setUp(self):
@@ -1255,6 +1260,7 @@ class PluginTest(unittest.TestCase,
             'availability_zone_hints': ['az_name_1', 'az_name_2']}}
         fake_plugin.create_network(neutron_context, network)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1410,6 +1416,7 @@ class PluginTest(unittest.TestCase,
 
         return t_net_id, t_subnet_id, t_router_id, b_net_id, b_subnet_id
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1450,6 +1457,7 @@ class PluginTest(unittest.TestCase,
         # check pre-created ports are all deleted
         self.assertEqual(port_num - pre_created_port_num, len(TOP_PORTS))
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1521,6 +1529,7 @@ class PluginTest(unittest.TestCase,
 
         self.assertEqual(device_ids, [b_router_id, b_router_id, b_router_id])
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1653,6 +1662,7 @@ class PluginTest(unittest.TestCase,
                 device_ids[1] = port['device_id']
         self.assertEqual(device_ids, [b_router_id, b_router_id])
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1710,6 +1720,7 @@ class PluginTest(unittest.TestCase,
             # three more entries, for top and bottom dhcp ports, top interface
             self.assertEqual(entry_num + 2 + 3, len(entries))
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1744,6 +1755,7 @@ class PluginTest(unittest.TestCase,
         # bottom dhcp port, bottom interface and bridge port
         self.assertEqual(3, len(BOTTOM1_PORTS))
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1781,6 +1793,7 @@ class PluginTest(unittest.TestCase,
             t_ctx, b_router_id, {'port_id': b_interface_id})
         mock_rpc.assert_called_with(t_ctx, t_router_id)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network_no_az_pod(self, mock_context):
         self._basic_pod_route_setup()
@@ -1809,6 +1822,7 @@ class PluginTest(unittest.TestCase,
             t_ctx, top_net['id'], constants.RT_NETWORK)
         self.assertEqual(mappings[0][1], bottom_net['id'])
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_external_network(self, mock_context):
         self._basic_pod_route_setup()
@@ -1846,6 +1860,7 @@ class PluginTest(unittest.TestCase,
             t_ctx, top_net['id'], constants.RT_NETWORK)
         self.assertEqual(mappings[0][1], bottom_net['id'])
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1928,6 +1943,7 @@ class PluginTest(unittest.TestCase,
                            {'subnet_id': b_ns_bridge_subnet_id})]
         mock_action.assert_has_calls(calls)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2076,6 +2092,7 @@ class PluginTest(unittest.TestCase,
 
         return t_port_id, b_port_id, fip, e_net
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2124,6 +2141,7 @@ class PluginTest(unittest.TestCase,
                                'port_id': ns_bridge_port['id']}})]
         mock_create.assert_has_calls(calls)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2160,6 +2178,7 @@ class PluginTest(unittest.TestCase,
                 'router_id': None}
         mock_rollback.assert_called_once_with(q_ctx, fip['id'], data)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2215,6 +2234,7 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2261,6 +2281,7 @@ class PluginTest(unittest.TestCase,
         # check routing for bridge port in top pod is deleted
         self.assertIsNone(mapping)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
