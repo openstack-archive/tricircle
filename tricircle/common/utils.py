@@ -17,15 +17,12 @@ import six
 
 import pecan
 
-from oslo_log import log as logging
 from oslo_utils import uuidutils
 
 from tricircle.common import constants as cons
 import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 import tricircle.db.api as db_api
-
-LOG = logging.getLogger(__name__)
 
 
 def get_import_path(cls):

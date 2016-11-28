@@ -23,10 +23,6 @@ from tricircle.common import policy
 from tricircle.db import api as db_api
 from tricircle.db import core
 
-from oslo_log import log as logging
-
-LOG = logging.getLogger(__name__)
-
 
 class FakeResponse(object):
     def __new__(cls, code=500):
