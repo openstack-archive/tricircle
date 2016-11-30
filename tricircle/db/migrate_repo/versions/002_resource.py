@@ -249,6 +249,10 @@ def upgrade(migrate_engine):
         sql.Column('resource_type', sql.String(length=64), nullable=False),
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
+        migrate.UniqueConstraint(
+            'top_id', 'pod_id',
+            name='cascaded_pods_resource_routing0top_id0pod_id'
+        ),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
