@@ -50,6 +50,7 @@ import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
+from tricircle.common.i18n import _LW
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
@@ -1395,7 +1396,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # top and bottom internal port, this is an inconsistent state,
             # but since bottom internal port does not exist, no operation
             # in bottom pod is required
-            LOG.warning(_LI('Internal port associated with floating ip '
+            LOG.warning(_LW('Internal port associated with floating ip '
                             'does not exist in bottom pod.'))
             return
 
