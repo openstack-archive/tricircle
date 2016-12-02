@@ -17,7 +17,6 @@ Client side of the job daemon RPC API.
 """
 
 from oslo_config import cfg
-from oslo_log import log as logging
 import oslo_messaging as messaging
 
 import rpc
@@ -34,8 +33,6 @@ rpcapi_cap_opt = cfg.StrOpt('xjobapi',
                             help='Set a version cap for messages sent to the'
                                  'xjob api in any service')
 CONF.register_opt(rpcapi_cap_opt, 'upgrade_levels')
-
-LOG = logging.getLogger(__name__)
 
 
 class XJobAPI(object):
