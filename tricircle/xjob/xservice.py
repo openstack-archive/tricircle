@@ -24,9 +24,7 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import service as srv
 
-from tricircle.common.i18n import _
-from tricircle.common.i18n import _LE
-from tricircle.common.i18n import _LI
+from tricircle.common.i18n import _, _LE, _LI
 
 from tricircle.common import baserpc
 from tricircle.common import context

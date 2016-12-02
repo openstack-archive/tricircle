@@ -23,8 +23,7 @@ from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_vlan
 
 from tricircle.common import constants
-from tricircle.common.i18n import _LE
-from tricircle.common.i18n import _LI
+from tricircle.common.i18n import _LE, _LI
 
 LOG = log.getLogger(__name__)
 

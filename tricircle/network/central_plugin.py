@@ -47,10 +47,7 @@ import tricircle.common.client as t_client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exceptions
-from tricircle.common.i18n import _
-from tricircle.common.i18n import _LE
-from tricircle.common.i18n import _LI
-from tricircle.common.i18n import _LW
+from tricircle.common.i18n import _, _LE, _LI, _LW
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
