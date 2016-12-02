@@ -28,8 +28,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from tricircle.common import config
-from tricircle.common.i18n import _LI
-from tricircle.common.i18n import _LW
+from tricircle.common.i18n import _LI, _LW
 
 from tricircle.xjob import xservice
 
