@@ -16,16 +16,13 @@ function is_tricircle_enabled {
 function create_tricircle_accounts {
     if [[ "$ENABLED_SERVICES" =~ "t-api" ]]; then
         create_service_user "tricircle"
-
-        if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-            local tricircle_api=$(get_or_create_service "tricircle" \
-                "Tricircle" "Cross Neutron Networking Automation Service")
-            get_or_create_endpoint $tricircle_api \
-                "$CENTRAL_REGION_NAME" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
-                "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0"
-        fi
+        local tricircle_api=$(get_or_create_service "tricircle" \
+            "Tricircle" "Cross Neutron Networking Automation Service")
+        get_or_create_endpoint $tricircle_api \
+            "$CENTRAL_REGION_NAME" \
+            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
+            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
+            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0"
     fi
 }
 
