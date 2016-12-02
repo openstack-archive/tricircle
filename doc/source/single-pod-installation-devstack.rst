@@ -1,9 +1,9 @@
-======================================
-Single node installation with DevStack
-======================================
+=====================================
+Single pod installation with DevStack
+=====================================
 
-Now the Tricircle can be played with all-in-one single node DevStack. For
-the resource requirement to setup single node DevStack, please refer
+Now the Tricircle can be played with all-in-one single pod DevStack. For
+the resource requirement to setup single pod DevStack, please refer
 to `All-In-One Single Machine <http://docs.openstack.org/developer/devstack/guides/single-machine.html>`_ for
 installing DevStack in physical machine
 or `All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_ for

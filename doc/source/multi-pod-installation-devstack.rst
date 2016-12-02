@@ -1,19 +1,19 @@
-=====================================
-Multi-node Installation with DevStack
-=====================================
+====================================
+Multi-pod Installation with DevStack
+====================================
 
 Introduction
 ^^^^^^^^^^^^
 
-In the single node installation guide, we discuss how to deploy the Tricircle in
-one single node with DevStack. Besides the Tricircle API and the central Neutron
+In the single pod installation guide, we discuss how to deploy the Tricircle in
+one single pod with DevStack. Besides the Tricircle API and the central Neutron
 server, only one pod(one pod means one OpenStack instance) is running. Network
 is created with the default network type: local. Local type network will be only
 presented in one pod. If a local type network is already hosting virtual machines
 in one pod, you can not use it to boot virtual machine in another pod. That is
 to say, local type network doesn't support cross-pod l2 networking.
 
-With multi-node installation of the Tricircle, you can try out cross-pod l2
+With multi-pod installation of the Tricircle, you can try out cross-pod l2
 networking and cross-pod l3 networking features.
 
 As the first step to support cross-pod l2 networking, we have added shared VLAN
@@ -83,7 +83,7 @@ for installing DevStack in virtual machine.
 Setup
 ^^^^^
 
-In node1,
+In pod1 in node1,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
@@ -132,7 +132,7 @@ In node1,
 
 - 6 After DevStack successfully starts, begin to setup node2.
 
-In node2,
+In pod2 in node2,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
