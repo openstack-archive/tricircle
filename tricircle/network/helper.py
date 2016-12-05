@@ -292,17 +292,17 @@ class NetworkHelper(object):
             body['port']['security_groups'] = b_security_group_ids
         return body
 
-    def get_create_interface_body(self, project_id, t_net_id, b_pod_id,
+    def get_create_interface_body(self, project_id, t_net_id, b_pod_name,
                                   t_subnet_id):
         """Get request body to create top interface
 
         :param project_id: project id
         :param t_net_id: top network id
-        :param b_pod_id: bottom pod id
+        :param b_pod_name: bottom pod name
         :param t_subnet_id: top subnet id
         :return:
         """
-        t_interface_name = t_constants.interface_port_name % (b_pod_id,
+        t_interface_name = t_constants.interface_port_name % (b_pod_name,
                                                               t_subnet_id)
         t_interface_body = {
             'port': {
@@ -354,10 +354,10 @@ class NetworkHelper(object):
         for subnet in t_subnets:
             # gateway
             t_interface_name = t_constants.interface_port_name % (
-                pod['pod_id'], subnet['id'])
+                pod['pod_name'], subnet['id'])
 
             t_interface_body = self.get_create_interface_body(
-                project_id, t_net['id'], pod['pod_id'], subnet['id'])
+                project_id, t_net['id'], pod['pod_name'], subnet['id'])
 
             _, t_interface_id = self.prepare_top_element(
                 t_ctx, q_ctx, project_id, pod, {'id': t_interface_name},

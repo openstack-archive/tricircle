@@ -486,6 +486,13 @@ class XManager(PeriodicTasks):
                      {'key': 'pod_id', 'comparator': 'eq',
                       'value': b_ext_pod['pod_id']}], [])
                 t_ns_bridge_port_id = entries[0]['top_id']
+                top_entries = core.query_resource(
+                    ctx, models.ResourceRouting,
+                    [{'key': 'bottom_id', 'comparator': 'eq',
+                      'value': t_ns_bridge_port_id},
+                     {'key': 'pod_id', 'comparator': 'eq',
+                      'value': t_pod['pod_id']}], [])
+                t_ns_bridge_port_name = top_entries[0]['top_id']
                 b_int_fips = b_client.list_floatingips(
                     ctx,
                     [{'key': 'floating_ip_address',
@@ -514,7 +521,9 @@ class XManager(PeriodicTasks):
                     core.update_resources(
                         ctx, models.ResourceRouting,
                         [{'key': 'bottom_id', 'comparator': 'eq',
-                          'value': t_ns_bridge_port_id}],
+                          'value': t_ns_bridge_port_id},
+                         {'key': 'pod_id', 'comparator': 'eq',
+                          'value': t_pod['pod_id']}],
                         {'bottom_id': None,
                          'created_at': constants.expire_time,
                          'updated_at': constants.expire_time})
@@ -524,9 +533,9 @@ class XManager(PeriodicTasks):
                 # still have a chance that lock_handle module will delete it
                 with ctx.session.begin():
                     core.delete_resources(ctx, models.ResourceRouting,
-                                          [{'key': 'bottom_id',
+                                          [{'key': 'top_id',
                                             'comparator': 'eq',
-                                            'value': t_ns_bridge_port_id}])
+                                            'value': t_ns_bridge_port_name}])
             b_ext_client.delete_floatingips(ctx, fip['id'])
 
     @_job_handle(constants.JT_ROUTER_SETUP)
@@ -652,8 +661,9 @@ class XManager(PeriodicTasks):
 
     @_job_handle(constants.JT_PORT_DELETE)
     def delete_server_port(self, ctx, payload):
-        t_port_id = payload[constants.JT_PORT_DELETE]
-        self._get_client().delete_ports(ctx, t_port_id)
+        b_pod_id, b_port_id = payload[constants.JT_PORT_DELETE].split('#')
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        self._get_client(b_pod['pod_name']).delete_ports(ctx, b_port_id)
 
     @staticmethod
     def _safe_create_security_group_rule(context, client, body):

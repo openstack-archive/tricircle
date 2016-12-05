@@ -119,6 +119,10 @@ class TricirclePlugin(plugin.Ml2Plugin):
             params['marker'] = marker
         return params
 
+    @staticmethod
+    def _skip_non_api_query(context):
+        return not context.auth_token
+
     def _ensure_network_subnet(self, context, port):
         network_id = port['network_id']
         # get_network will create bottom network if it doesn't exist, also
@@ -132,6 +136,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 return subnet_ids
             else:
                 t_ctx = t_context.get_context_from_neutron_context(context)
+                if self._skip_non_api_query(t_ctx):
+                    return []
                 t_network = self.neutron_handle.handle_get(
                     t_ctx, 'network', network['id'])
                 return self._ensure_subnet(context, t_network)
@@ -148,6 +154,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
             q_ctx, filters={'network_id': [b_subnet['network_id']],
                             'device_owner': ['network:dhcp']})
         if b_dhcp_ports:
+            return
+        if self._skip_non_api_query(t_ctx):
             return
         raw_client = self.neutron_handle._get_client(t_ctx)
         params = {'name': t_constants.dhcp_port_name % b_subnet['id']}
@@ -205,6 +213,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
             subnet_ids = self._ensure_subnet(context, b_network, False)
         except q_exceptions.NotFound:
             t_ctx = t_context.get_context_from_neutron_context(context)
+            if self._skip_non_api_query(t_ctx):
+                raise q_exceptions.NetworkNotFound(net_id=_id)
             t_network = self.neutron_handle.handle_get(t_ctx, 'network', _id)
             if not t_network:
                 raise q_exceptions.NetworkNotFound(net_id=_id)
@@ -239,6 +249,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
             return b_networks
 
         t_ctx = t_context.get_context_from_neutron_context(context)
+        if self._skip_non_api_query(t_ctx):
+            return b_networks
         raw_client = self.neutron_handle._get_client(t_ctx)
         params = self._construct_params(filters, sorts, limit, marker,
                                         page_reverse)
@@ -290,6 +302,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         try:
             b_subnet = self.core_plugin.get_subnet(context, _id, fields)
         except q_exceptions.NotFound:
+            if self._skip_non_api_query(t_ctx):
+                raise q_exceptions.SubnetNotFound(subnet_id=_id)
             t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', _id)
             if not t_subnet:
                 raise q_exceptions.SubnetNotFound(subnet_id=_id)
@@ -319,6 +333,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         if len(b_subnets) == len(filters['id']):
             return b_subnets
 
+        if self._skip_non_api_query(t_ctx):
+            return b_subnets
         raw_client = self.neutron_handle._get_client(t_ctx)
         params = self._construct_params(filters, sorts, limit, marker,
                                         page_reverse)
@@ -406,6 +422,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
             b_port = self.core_plugin.get_port(context, _id, fields)
         except q_exceptions.NotFound:
             t_ctx = t_context.get_context_from_neutron_context(context)
+            if self._skip_non_api_query(t_ctx):
+                raise q_exceptions.PortNotFound(port_id=_id)
             t_port = self.neutron_handle.handle_get(t_ctx, 'port', _id)
             if not t_port:
                 raise q_exceptions.PortNotFound(port_id=_id)
@@ -434,6 +452,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         b_id_set = set([port['id'] for port in b_ports])
         missing_id_set = id_set - b_id_set
         t_ctx = t_context.get_context_from_neutron_context(context)
+        if self._skip_non_api_query(t_ctx):
+            return b_ports
         raw_client = self.neutron_handle._get_client(t_ctx)
         t_ports = []
         for port_id in missing_id_set:
@@ -458,7 +478,13 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
     def delete_port(self, context, _id, l3_port_check=True):
         t_ctx = t_context.get_context_from_neutron_context(context)
-        self.neutron_handle.handle_delete(t_ctx, t_constants.RT_PORT, _id)
+        try:
+            b_port = self.core_plugin.get_port(context, _id)
+        except q_exceptions.NotFound:
+            return
+        if b_port['device_owner'].startswith(
+                q_constants.DEVICE_OWNER_COMPUTE_PREFIX):
+            self.neutron_handle.handle_delete(t_ctx, t_constants.RT_PORT, _id)
         self.core_plugin.delete_port(context, _id, l3_port_check)
 
     def _handle_security_group(self, t_ctx, q_ctx, port):

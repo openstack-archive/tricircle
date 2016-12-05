@@ -21,7 +21,6 @@ import oslo_log.helpers as log_helpers
 from oslo_log import log
 
 from neutron.api.v2 import attributes
-from neutron.common import exceptions
 from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
@@ -38,6 +37,7 @@ from neutron.extensions import l3
 from neutron.extensions import providernet as provider
 from neutron_lib.api import validators
 from neutron_lib import constants
+from neutron_lib import exceptions
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
@@ -364,7 +364,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 self._get_client(pod_name).delete_subnets(
                     t_ctx, bottom_subnet_id)
                 interface_name = t_constants.interface_port_name % (
-                    mapping[0]['pod_id'], subnet_id)
+                    mapping[0]['pod_name'], subnet_id)
                 self._delete_pre_created_port(t_ctx, context, interface_name)
                 with t_ctx.session.begin():
                     core.delete_resources(
@@ -453,24 +453,28 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def delete_port(self, context, port_id, l3_port_check=True):
         t_ctx = t_context.get_context_from_neutron_context(context)
         port = super(TricirclePlugin, self).get_port(context, port_id)
-        # NOTE(zhiyuan) for none vm ports like router interfaces and dhcp
-        # ports, we just remove records in top pod and leave deletion of
-        # ports and routing entries in bottom pods to xjob
+        # NOTE(zhiyuan) the deletion of non vm ports like router interfaces
+        # and dhcp ports is handled by "setup_bottom_router" job, this job
+        # will issue request to delete central ports, local ports and routing
+        # entries, so here we just remove database records for central ports.
+        # the deletion of vm ports is different since both users and nova are
+        # involved. nova may delete vm ports via local neutron so local neutron
+        # needs to send request to central neutron to delete the corresponding
+        # central ports; users may delete a pre-created vm ports via central
+        # neutron so central neutron needs to send request to local neutron to
+        # delete the corresponding local ports. to avoid infinite api calls,
+        # we use a "delete_server_port" job to delete the local ports.
         if port.get('device_owner') not in NON_VM_PORT_TYPES:
-            if cfg.CONF.tricircle.enable_api_gateway:
-                # NOTE(zhiyuan) this is a temporary check, after we remove all
-                # the networking process from nova api gateway, we can remove
-                # this option
-                try:
-                    mappings = db_api.get_bottom_mappings_by_top_id(
-                        t_ctx, port_id, t_constants.RT_PORT)
-                    if mappings:
-                        pod_name = mappings[0][0]['pod_name']
-                        bottom_port_id = mappings[0][1]
-                        self._get_client(pod_name).delete_ports(
-                            t_ctx, bottom_port_id)
-                except Exception:
-                    raise
+            try:
+                mappings = db_api.get_bottom_mappings_by_top_id(
+                    t_ctx, port_id, t_constants.RT_PORT)
+                if mappings:
+                    pod_id = mappings[0][0]['pod_id']
+                    bottom_port_id = mappings[0][1]
+                    self.xjob_handler.delete_server_port(t_ctx, bottom_port_id,
+                                                         pod_id)
+            except Exception:
+                raise
             with t_ctx.session.begin():
                 core.delete_resources(t_ctx, models.ResourceRouting,
                                       filters=[{'key': 'top_id',
@@ -686,6 +690,37 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def get_ports(self, context, filters=None, fields=None, sorts=None,
                   limit=None, marker=None, page_reverse=False):
+        # Directly sending list request with "id" filter to local Neutron
+        # server will cause problems. Because when local Neutron server
+        # receives list request with "id" filter, it will query central
+        # Neutron server and try to create the port. Here we introduce a
+        # special handle for "id" filter
+        if not filters or 'id' not in filters:
+            # if filter is empty or "id" is not in the filter, no special
+            # handle is required
+            return self._get_ports(context, filters, fields, sorts, limit,
+                                   marker, page_reverse)
+        if len(filters) == 1:
+            # only "id" is in the filter, we use get_port to get all the ports
+            ports = []
+            for port_id in filters['id']:
+                try:
+                    ports.append(self.get_port(context, port_id, fields))
+                except exceptions.PortNotFound:
+                    continue
+            return ports
+        else:
+            # other filters are also specified, we first get the ports with
+            # other filters, then filter the ports again with "id"
+            id_filters = filters.pop('id')
+            ports = self._get_ports(context, filters, None, sorts, limit,
+                                    marker, page_reverse)
+            return [super(TricirclePlugin,
+                          self)._fields(
+                p, fields) for p in ports if p['id'] in id_filters]
+
+    def _get_ports(self, context, filters=None, fields=None, sorts=None,
+                   limit=None, marker=None, page_reverse=False):
         t_ctx = t_context.get_context_from_neutron_context(context)
 
         non_vm_ports = super(TricirclePlugin, self).get_ports(
@@ -795,7 +830,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             core.update_resources(
                 t_ctx, models.ResourceRouting,
                 [{'key': 'bottom_id', 'comparator': 'eq',
-                  'value': resource_id}],
+                  'value': resource_id},
+                 {'key': 'top_id', 'comparator': 'eq',
+                  'value': resource_name}],
                 {'bottom_id': None,
                  'created_at': t_constants.expire_time,
                  'updated_at': t_constants.expire_time})

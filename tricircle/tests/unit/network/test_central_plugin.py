@@ -487,7 +487,7 @@ class FakeClient(object):
         pass
 
     def delete_floatingips(self, ctx, _id):
-        pass
+        self.delete_resources('floatingip', ctx, _id)
 
     def create_security_group_rules(self, ctx, body):
         sg_id = body['security_group_rule']['security_group_id']
@@ -868,6 +868,9 @@ class FakeRPCAPI(FakeBaseRPCAPI):
         self.xmanager.setup_bottom_router(
             ctxt, payload={constants.JT_ROUTER_SETUP: combine_id})
 
+    def delete_server_port(self, ctxt, port_id, pod_id):
+        pass
+
 
 class FakeExtension(object):
     def __init__(self, ext_obj):
@@ -1195,7 +1198,7 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'delete_port')
-    @patch.object(FakeClient, 'delete_ports')
+    @patch.object(FakeRPCAPI, 'delete_server_port')
     def test_delete_port(self, mock_client_method, mock_plugin_method,
                          mock_context_method):
         self._basic_pod_route_setup()
@@ -1213,7 +1216,7 @@ class PluginTest(unittest.TestCase,
                  mock.call(neutron_context, 'top_id_1')]
         mock_plugin_method.assert_has_calls(calls)
         mock_client_method.assert_called_once_with(tricircle_context,
-                                                   'bottom_id_1')
+                                                   'bottom_id_1', 'pod_id_1')
 
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_network')

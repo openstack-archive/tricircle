@@ -87,10 +87,11 @@ class XJobAPI(object):
             ctxt, 'configure_extra_routes',
             payload={constants.JT_ROUTER: router_id})
 
-    def delete_server_port(self, ctxt, port_id):
+    def delete_server_port(self, ctxt, port_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, port_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'delete_server_port',
-            payload={constants.JT_PORT_DELETE: port_id})
+            payload={constants.JT_PORT_DELETE: combine_id})
 
     def configure_security_group_rules(self, ctxt, project_id):
         self.client.prepare(exchange='openstack').cast(
