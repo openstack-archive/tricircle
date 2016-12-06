@@ -149,7 +149,8 @@ class XManager(PeriodicTasks):
             constants.JT_ROUTER: self.configure_extra_routes,
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port,
-            constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules}
+            constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
+            constants.JT_NETWORK_UPDATE: self.update_network}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -769,3 +770,54 @@ class XManager(PeriodicTasks):
                             rule_body['security_group_rules'].append(add_rule)
                         self._safe_create_security_group_rule(
                             ctx, client, rule_body)
+
+    @_job_handle(constants.JT_NETWORK_UPDATE)
+    def update_network(self, ctx, payload):
+        """update bottom network
+
+        if bottom pod id equal to POD_NOT_SPECIFIED, dispatch jobs for every
+        mapped bottom pod via RPC, otherwise update network in the specified
+        pod.
+
+        :param ctx: tricircle context
+        :param payload: dict whose key is JT_NETWORK_UPDATE and value
+        is "top_network_id#bottom_pod_id"
+        :return: None
+        """
+        (b_pod_id, t_network_id) = payload[
+            constants.JT_NETWORK_UPDATE].split('#')
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_network_id, constants.RT_NETWORK)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                self.xjob_handler.update_network(ctx, t_network_id,
+                                                 b_pod['pod_id'])
+            return
+
+        t_client = self._get_client()
+        t_network = t_client.get_networks(ctx, t_network_id)
+        if not t_network:
+            return
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_pod_name = b_pod['pod_name']
+        b_client = self._get_client(pod_name=b_pod_name)
+        b_network_id = db_api.get_bottom_id_by_top_id_pod_name(
+            ctx, t_network_id, b_pod_name, constants.RT_NETWORK)
+        # name is not allowed to be updated, because it is used by
+        # lock_handle to retrieve bottom/local resources that have been
+        # created but not registered in the resource routing table
+        body = {
+            'network': {
+                'description': t_network['description'],
+                'admin_state_up': t_network['admin_state_up'],
+                'shared': t_network['shared']
+            }
+        }
+
+        try:
+            b_client.update_networks(ctx, b_network_id, body)
+        except q_cli_exceptions.NotFound:
+            LOG.error(_LE('network: %(net_id)s not found,'
+                          'pod name: %(name)s'),
+                      {'net_id': b_network_id, 'name': b_pod_name})

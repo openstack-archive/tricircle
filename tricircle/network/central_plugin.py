@@ -301,14 +301,45 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.type_manager.release_network_segments(context, network_id)
             super(TricirclePlugin, self).delete_network(context, network_id)
 
+    def _raise_if_updates_external_attribute(self, attrs):
+        """Raise exception if external attributes are present.
+
+        This method is used for plugins that do not support
+        updating external attributes.
+        """
+        if validators.is_attr_set(attrs.get(external_net.EXTERNAL)):
+            msg = _("Plugin does not support updating network's "
+                    "router:external attribute")
+            raise exceptions.InvalidInput(error_message=msg)
+
     def update_network(self, context, network_id, network):
+        """update top network
+
+        update top network and trigger asynchronous job via RPC to update
+        bottom network
+
+        :param context: neutron context
+        :param network_id: top network id
+        :param network: updated body
+        :return: updated network
+        """
         net_data = network[attributes.NETWORK]
         provider._raise_if_updates_provider_attributes(net_data)
+        self._raise_if_updates_external_attribute(net_data)
 
-        net = super(TricirclePlugin, self).update_network(
-            context, network_id, network)
-        self.type_manager.extend_network_dict_provider(context, net)
-        return net
+        with context.session.begin():
+            net = super(TricirclePlugin, self).update_network(context,
+                                                              network_id,
+                                                              network)
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                t_ctx, network_id, t_constants.RT_NETWORK)
+            if mappings:
+                self.xjob_handler.update_network(
+                    t_ctx, network_id, t_constants.POD_NOT_SPECIFIED)
+
+            self.type_manager.extend_network_dict_provider(context, net)
+            return net
 
     def get_network(self, context, network_id, fields=None):
         net = super(TricirclePlugin, self).get_network(context, network_id,
