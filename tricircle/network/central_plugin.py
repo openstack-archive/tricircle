@@ -441,8 +441,39 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         super(TricirclePlugin, self).delete_subnet(context, subnet_id)
 
     def update_subnet(self, context, subnet_id, subnet):
-        return super(TricirclePlugin, self).update_subnet(
-            context, subnet_id, subnet)
+        """update top subnet
+
+        update top subnet and trigger asynchronous job via RPC to update
+        bottom subnet.
+        :param context: neutron context
+        :param subnet_id: top subnet id
+        :param subnet: updated subnet body
+        :return: updated subnet
+        """
+        with context.session.begin():
+            subnet_data = subnet[attributes.SUBNET]
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            # update top subnet
+            result = super(TricirclePlugin, self).update_subnet(
+                context, subnet_id, subnet)
+            # prepare top dhcp port if user enables dhcp,
+            # the top pre-created dhcp port will not be deleted even
+            # "enable_dhcp" is updated from True to False
+            enable_dhcp = subnet_data.get('enable_dhcp', False)
+            if enable_dhcp:
+                subnet = super(TricirclePlugin, self).get_subnet(
+                    context, subnet_id)
+                self.helper.prepare_top_dhcp_port(t_ctx, context,
+                                                  t_ctx.project_id,
+                                                  subnet['network_id'],
+                                                  subnet_id)
+            # update bottom pod subnet if exist
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                t_ctx, subnet_id, t_constants.RT_SUBNET)
+            if mappings:
+                self.xjob_handler.update_subnet(t_ctx, subnet_id,
+                                                t_constants.POD_NOT_SPECIFIED)
+            return result
 
     def create_port(self, context, port):
         port_body = port['port']

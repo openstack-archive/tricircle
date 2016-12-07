@@ -1,0 +1,21 @@
+---
+features:
+  - |
+    Network
+
+    * Update networks
+
+      * qos-policy not supported
+
+  - |
+    Subnet
+
+    * Update subnets
+
+issues:
+  - |
+    Update network or subnet may not lead to the expected result if an
+    instance is being booted at the same time. You can redo the update
+    operation later to make it execute correctly.
+
+

@@ -82,7 +82,7 @@ JT_ROUTER_SETUP = 'router_setup'
 JT_PORT_DELETE = 'port_delete'
 JT_SEG_RULE_SETUP = 'seg_rule_setup'
 JT_NETWORK_UPDATE = 'update_network'
-
+JT_SUBNET_UPDATE = 'subnet_update'
 # network type
 NT_LOCAL = 'local'
 NT_VLAN = 'vlan'

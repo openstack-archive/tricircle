@@ -150,7 +150,8 @@ class XManager(PeriodicTasks):
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port,
             constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
-            constants.JT_NETWORK_UPDATE: self.update_network}
+            constants.JT_NETWORK_UPDATE: self.update_network,
+            constants.JT_SUBNET_UPDATE: self.update_subnet}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -849,3 +850,64 @@ class XManager(PeriodicTasks):
             LOG.error(_LE('network: %(net_id)s not found,'
                           'pod name: %(name)s'),
                       {'net_id': b_network_id, 'name': b_region_name})
+
+    @_job_handle(constants.JT_SUBNET_UPDATE)
+    def update_subnet(self, ctx, payload):
+        """update bottom subnet
+
+        if bottom pod id equal to POD_NOT_SPECIFIED, dispatch jobs for every
+        mapped bottom pod via RPC, otherwise update subnet in the specified
+        pod.
+
+        :param ctx: tricircle context
+        :param payload: dict whose key is JT_SUBNET_UPDATE and value
+        is "top_subnet_id#bottom_pod_id"
+        :return: None
+        """
+        (b_pod_id, t_subnet_id) = payload[
+            constants.JT_SUBNET_UPDATE].split('#')
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_subnet_id, constants.RT_SUBNET)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                self.xjob_handler.update_subnet(ctx, t_subnet_id,
+                                                b_pod['pod_id'])
+            return
+
+        t_client = self._get_client()
+        t_subnet = t_client.get_subnets(ctx, t_subnet_id)
+        if not t_subnet:
+            return
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_region_name = b_pod['region_name']
+        b_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_subnet_id, b_region_name, constants.RT_SUBNET)
+        b_client = self._get_client(region_name=b_region_name)
+        b_subnet = b_client.get_subnets(ctx, b_subnet_id)
+        b_gateway_ip = b_subnet['gateway_ip']
+
+        # we need to remove the bottom subnet gateway ip from the top subnet
+        # allaction pools
+        b_allocation_pools = helper.NetworkHelper.get_bottom_subnet_pools(
+            t_subnet, b_gateway_ip)
+
+        # bottom gateway_ip doesn't need to be updated, because it is reserved
+        # by top pod.
+        # name is not allowed to be updated, because it is used by
+        # lock_handle to retrieve bottom/local resources that have been
+        # created but not registered in the resource routing table
+        body = {
+            'subnet':
+                {'description': t_subnet['description'],
+                 'enable_dhcp': t_subnet['enable_dhcp'],
+                 'allocation_pools': b_allocation_pools,
+                 'host_routes': t_subnet['host_routes'],
+                 'dns_nameservers': t_subnet['dns_nameservers']}
+        }
+        try:
+            b_client.update_subnets(ctx, b_subnet_id, body)
+        except q_cli_exceptions.NotFound:
+            LOG.error(_LE('subnet: %(subnet_id)s not found, '
+                          'pod name: %(name)s'),
+                      {'subnet_id': b_subnet_id, 'name': b_region_name})

@@ -227,14 +227,12 @@ class NetworkHelper(object):
         return body
 
     @staticmethod
-    def get_create_subnet_body(project_id, t_subnet, b_net_id, gateway_ip):
-        """Get request body to create bottom subnet
+    def get_bottom_subnet_pools(t_subnet, gateway_ip):
+        """Get bottom subnet allocation pools
 
-        :param project_id: project id
-        :param t_subnet: top subnet dict
-        :param b_net_id: bottom network id
-        :param gateway_ip: bottom gateway ip
-        :return: request body to create bottom subnet
+        :param t_subnet: top subnet
+        :param gateway_ip: bottom subnet gateway ip
+        :return: bottom subnet allocation pools
         """
         pools = t_subnet['allocation_pools']
         t_gateway_ip = t_subnet['gateway_ip']
@@ -263,6 +261,24 @@ class NetworkHelper(object):
                         new_pools.append(
                             {'start': ip_range[i + 1].format(),
                              'end': ip_range[ip_num - 1].format()})
+                    break
+        if not ip_found:
+            new_pools.extend(pools)
+        if not ip_merged:
+            new_pools.insert(0, {'start': t_gateway_ip, 'end': t_gateway_ip})
+        return new_pools
+
+    @staticmethod
+    def get_create_subnet_body(project_id, t_subnet, b_net_id, gateway_ip):
+        """Get request body to create bottom subnet
+
+        :param project_id: project id
+        :param t_subnet: top subnet dict
+        :param b_net_id: bottom network id
+        :param gateway_ip: bottom gateway ip
+        :return: request body to create bottom subnet
+        """
+        new_pools = NetworkHelper.get_bottom_subnet_pools(t_subnet, gateway_ip)
         body = {
             'subnet': {
                 'network_id': b_net_id,
@@ -287,7 +303,7 @@ class NetworkHelper(object):
         :param subnet_map: dict with top subnet id as key and bottom subnet
                id as value
         :param b_net_id: bottom network id
-        :param security_group_ids: list of bottom security group id
+        :param b_security_group_ids: list of bottom security group id
         :return: request body to create bottom port
         """
         b_fixed_ips = []

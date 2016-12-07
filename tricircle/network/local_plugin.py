@@ -210,7 +210,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
     def get_network(self, context, _id, fields=None):
         try:
-            b_network = self.core_plugin.get_network(context, _id, fields)
+            b_network = self.core_plugin.get_network(context, _id)
             subnet_ids = self._ensure_subnet(context, b_network, False)
         except q_exceptions.NotFound:
             t_ctx = t_context.get_context_from_neutron_context(context)
@@ -301,7 +301,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def get_subnet(self, context, _id, fields=None):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
-            b_subnet = self.core_plugin.get_subnet(context, _id, fields)
+            b_subnet = self.core_plugin.get_subnet(context, _id)
         except q_exceptions.NotFound:
             if self._skip_non_api_query(t_ctx):
                 raise q_exceptions.SubnetNotFound(subnet_id=_id)
@@ -353,6 +353,32 @@ class TricirclePlugin(plugin.Ml2Plugin):
                     self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
                 b_subnets.append(self._fields(b_subnet, fields))
         return b_subnets
+
+    def update_subnet(self, context, _id, subnet):
+        """update bottom subnet
+
+        Can not directly use ML2 plugin's update_subnet function,
+        because it will call local plugin's get_subnet in a transaction,
+        the local plugin's get_subnet will create a dhcp port when subnet's
+        enable_dhcp attribute is changed from False to True, but neutron
+        doesn't allow calling create_port in a transaction and will raise an
+        exception.
+
+        :param context: neutron context
+        :param _id: subnet_id
+        :param subnet: update body
+        :return: updated subnet
+        """
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        b_subnet = self.core_plugin.get_subnet(context, _id)
+        origin_enable_dhcp = b_subnet['enable_dhcp']
+        req_enable_dhcp = subnet['subnet']['enable_dhcp']
+        # when request enable dhcp, and origin dhcp is disabled,
+        # ensure subnet dhcp port is created
+        if req_enable_dhcp and not origin_enable_dhcp:
+            self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
+        res = self.core_plugin.update_subnet(context, _id, subnet)
+        return res
 
     @staticmethod
     def _is_special_port(port):

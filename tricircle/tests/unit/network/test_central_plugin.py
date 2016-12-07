@@ -49,6 +49,7 @@ from neutron.ipam import driver
 from neutron.ipam import exceptions as ipam_exc
 from neutron.ipam import requests
 import neutron.ipam.utils as ipam_utils
+
 from neutron import manager
 import neutronclient.common.exceptions as q_exceptions
 
@@ -232,7 +233,7 @@ class FakePool(driver.Pool):
                 return FakeIpamSubnet(subnet_request)
 
         raise ipam_exc.InvalidSubnetRequest(
-            reason=_("updated subnet id no not found"))
+            reason=_("updated subnet id not found"))
 
     def remove_subnet(self, subnet_id):
         pass
@@ -473,7 +474,20 @@ class FakeClient(object):
                 return
 
     def update_subnets(self, ctx, subnet_id, body):
-        pass
+        subnet_data = body[neutron_attributes.SUBNET]
+        if self.region_name == 'pod_1':
+            subnets = BOTTOM1_SUBNETS
+        else:
+            subnets = BOTTOM2_SUBNETS
+
+        for subnet in subnets:
+            if subnet['id'] == subnet_id:
+                for key in subnet_data:
+                    subnet[key] = subnet_data[key]
+                return
+
+        raise ipam_exc.InvalidSubnetRequest(
+            reason=_("updated subnet id not found"))
 
     def create_ports(self, ctx, body):
         return self.create_resources('port', ctx, body)
@@ -987,6 +1001,11 @@ class FakeBaseRPCAPI(object):
         combine_id = '%s#%s' % (pod_id, network_id)
         self.xmanager.update_network(
             ctxt, payload={constants.JT_NETWORK_UPDATE: combine_id})
+
+    def update_subnet(self, ctxt, subnet_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, subnet_id)
+        self.xmanager.update_subnet(
+            ctxt, payload={constants.JT_SUBNET_UPDATE: combine_id})
 
 
 class FakeRPCAPI(FakeBaseRPCAPI):
@@ -1719,7 +1738,10 @@ class PluginTest(unittest.TestCase,
             'gateway_ip': '10.0.%d.1' % index,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
-            'tenant_id': tenant_id
+            'tenant_id': tenant_id,
+            'description': 'description',
+            'host_routes': [],
+            'dns_nameservers': []
         }
         TOP_NETS.append(DotDict(t_net))
         TOP_SUBNETS.append(DotDict(t_subnet))
@@ -1740,10 +1762,13 @@ class PluginTest(unittest.TestCase,
             'cidr': '10.0.%d.0/24' % index,
             'allocation_pools': [],
             'enable_dhcp': enable_dhcp,
-            'gateway_ip': '10.0.%d.1' % index,
+            'gateway_ip': '10.0.%d.25' % index,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
-            'tenant_id': tenant_id
+            'tenant_id': tenant_id,
+            'description': 'description',
+            'host_routes': [],
+            'dns_nameservers': []
         }
         if region_name == 'pod_1':
             BOTTOM1_NETS.append(DotDict(b_net))
@@ -1827,6 +1852,125 @@ class PluginTest(unittest.TestCase,
 
         # check pre-created ports are all deleted
         self.assertEqual(port_num - pre_created_port_num, len(TOP_PORTS))
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_subnet(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        _, t_subnet_id, _, b_subnet_id = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        mock_context.return_value = t_ctx
+        update_body = {
+            'subnet':
+                {'name': 'new_name',
+                 'description': 'new_description',
+                 'allocation_pools': [{"start": "10.0.1.10",
+                                      "end": "10.0.1.254"}],
+                 'gateway_ip': '10.0.1.2',
+                 'host_routes': [{"nexthop": "10.1.0.1",
+                                 "destination": "10.1.0.0/24"},
+                                 {"nexthop": "10.2.0.1",
+                                  "destination": "10.2.0.0/24"}],
+                 'dns_nameservers': ['114.114.114.114', '8.8.8.8']}
+        }
+        body_copy = copy.deepcopy(update_body)
+        fake_plugin.update_subnet(neutron_context, t_subnet_id, update_body)
+        top_subnet = fake_plugin.get_subnet(neutron_context, t_subnet_id)
+        self.assertEqual(top_subnet['name'], body_copy['subnet']['name'])
+        self.assertEqual(top_subnet['description'],
+                         body_copy['subnet']['description'])
+        self.assertEqual(top_subnet['allocation_pools'],
+                         body_copy['subnet']['allocation_pools'])
+        six.assertCountEqual(self, top_subnet['host_routes'],
+                             body_copy['subnet']['host_routes'])
+        six.assertCountEqual(self, top_subnet['dns_nameservers'],
+                             body_copy['subnet']['dns_nameservers'])
+        self.assertEqual(top_subnet['gateway_ip'],
+                         body_copy['subnet']['gateway_ip'])
+
+        bottom_subnet = fake_client.get_subnets(t_ctx, b_subnet_id)
+        # name is set to top resource id, which is used by lock_handle to
+        # retrieve bottom/local resources that have been created but not
+        # registered in the resource routing table, so it's not allowed
+        # to be updated
+        self.assertEqual(bottom_subnet['name'], b_subnet_id)
+        self.assertEqual(bottom_subnet['description'],
+                         body_copy['subnet']['description'])
+        bottom_allocation_pools = [{'start': '10.0.1.2', 'end': '10.0.1.2'},
+                                   {'start': '10.0.1.10', 'end': '10.0.1.24'},
+                                   {'start': '10.0.1.26', 'end': '10.0.1.254'}]
+        self.assertEqual(bottom_subnet['allocation_pools'],
+                         bottom_allocation_pools)
+        six.assertCountEqual(self,
+                             bottom_subnet['host_routes'],
+                             body_copy['subnet']['host_routes'])
+        six.assertCountEqual(self,
+                             bottom_subnet['dns_nameservers'],
+                             body_copy['subnet']['dns_nameservers'])
+        # gateway ip is set to origin gateway ip ,because it is reserved
+        # by top pod, so it's not allowed to be updated
+        self.assertEqual(bottom_subnet['gateway_ip'], '10.0.1.25')
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_subnet_enable_disable_dhcp(self, mock_context):
+
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        _, t_subnet_id, _, b_subnet_id = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, enable_dhcp=False)
+
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        mock_context.return_value = t_ctx
+
+        self.assertEqual(0, len(TOP_PORTS))
+        self.assertEqual(0, len(BOTTOM1_PORTS))
+
+        update_body = {
+            'subnet':
+                {'enable_dhcp': 'True'}
+        }
+        body_copy = copy.deepcopy(update_body)
+        # from disable dhcp to enable dhcp, create a new dhcp port
+        fake_plugin.update_subnet(neutron_context, t_subnet_id, update_body)
+        top_subnet = fake_plugin.get_subnet(neutron_context, t_subnet_id)
+        self.assertEqual(top_subnet['enable_dhcp'],
+                         body_copy['subnet']['enable_dhcp'])
+        self.assertEqual(1, len(TOP_PORTS))
+
+        bottom_subnet = fake_client.get_subnets(t_ctx, b_subnet_id)
+        self.assertEqual(bottom_subnet['enable_dhcp'],
+                         body_copy['subnet']['enable_dhcp'])
+
+        update_body = {
+            'subnet':
+                {'enable_dhcp': 'False'}
+        }
+        body_copy = copy.deepcopy(update_body)
+        # from enable dhcp to disable dhcp, reserved dhcp port
+        # previously created
+        fake_plugin.update_subnet(neutron_context, t_subnet_id, update_body)
+        top_subnet = fake_plugin.get_subnet(neutron_context, t_subnet_id)
+        self.assertEqual(top_subnet['enable_dhcp'],
+                         body_copy['subnet']['enable_dhcp'])
+        self.assertEqual(1, len(TOP_PORTS))
+
+        bottom_subnet = fake_client.get_subnets(t_ctx, b_subnet_id)
+        self.assertEqual(bottom_subnet['enable_dhcp'],
+                         body_copy['subnet']['enable_dhcp'])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
