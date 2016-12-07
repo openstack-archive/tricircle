@@ -583,7 +583,7 @@ attributes are described in the following table.
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |body   | uuid          |id is the unique identification of the resource      |
+|id           |body   | biginteger    |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 |top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
@@ -672,7 +672,7 @@ Normal Response Code: 200
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |path   | uuid          |id is the unique identification of the resource      |
+|id           |path   | biginteger    |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 
@@ -686,7 +686,7 @@ table.
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |body   | uuid          |id is the unique identification of the resource      |
+|id           |body   | biginteger    |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 |top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
@@ -769,7 +769,7 @@ entry's attributes are listed below.
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |body   | uuid          |id is the unique identification of the resource      |
+|id           |body   | biginteger    |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 |top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
@@ -844,7 +844,7 @@ Normal Response Code: 200
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |path   | uuid          |id is the unique identification of the resource      |
+|id           |path   |  biginteger   |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 
@@ -898,7 +898,7 @@ attributes of routing entry are listed below.
 +-------------+-------+---------------+-----------------------------------------------------+
 |Name         |In     |   Type        |    Description                                      |
 +=============+=======+===============+=====================================================+
-|id           |body   | uuid          |id is the unique identification of the resource      |
+|id           |body   | biginteger    |id is the unique identification of the resource      |
 |             |       |               |routing.                                             |
 +-------------+-------+---------------+-----------------------------------------------------+
 |top_id       |body   | string        |top_id denotes the resource id on central Neutron.   |
@@ -953,3 +953,4 @@ from the database.
             "resource_type": "router"
         }
     }
+

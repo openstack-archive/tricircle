@@ -241,7 +241,7 @@ def upgrade(migrate_engine):
 
     cascaded_pods_resource_routing = sql.Table(
         'cascaded_pods_resource_routing', meta,
-        sql.Column('id', sql.Integer, primary_key=True),
+        sql.Column('id', sql.BigInteger, primary_key=True),
         sql.Column('top_id', sql.String(length=127), nullable=False),
         sql.Column('bottom_id', sql.String(length=36)),
         sql.Column('pod_id', sql.String(length=64), nullable=False),

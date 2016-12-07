@@ -13,13 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_db.sqlalchemy import models
+from oslo_utils import timeutils
+
 import sqlalchemy as sql
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import relationship
 from sqlalchemy import schema
-
-from oslo_db.sqlalchemy import models
-from oslo_utils import timeutils
 
 from tricircle.db import core
 
@@ -442,7 +442,10 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
     attributes = ['id', 'top_id', 'bottom_id', 'pod_id', 'project_id',
                   'resource_type', 'created_at', 'updated_at']
 
-    id = sql.Column('id', sql.Integer, primary_key=True)
+    # sqlite doesn't support auto increment on big integers so we use big int
+    # for everything but sqlite
+    id = sql.Column(sql.BigInteger().with_variant(sql.Integer(), 'sqlite'),
+                    primary_key=True, autoincrement=True)
     top_id = sql.Column('top_id', sql.String(length=127), nullable=False)
     bottom_id = sql.Column('bottom_id', sql.String(length=36))
     pod_id = sql.Column('pod_id', sql.String(length=64),
