@@ -12,10 +12,11 @@ Contents:
    :maxdepth: 2
 
    readme
-   installation
    usage
+   installation-guide
    api_v1
    contributing
+
 
 Indices and tables
 ==================
