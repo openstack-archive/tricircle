@@ -238,11 +238,14 @@ class XManager(PeriodicTasks):
 
     @staticmethod
     def _get_router_interfaces(cli, cxt, router_id, net_id):
-        return cli.list_ports(
+        interfaces = cli.list_ports(
             cxt, filters=[{'key': 'network_id', 'comparator': 'eq',
                            'value': net_id},
                           {'key': 'device_id', 'comparator': 'eq',
                            'value': router_id}])
+        return [inf for inf in interfaces if inf['device_owner'] in (
+            q_constants.DEVICE_OWNER_ROUTER_INTF,
+            q_constants.DEVICE_OWNER_DVR_INTERFACE)]
 
     @periodic_task.periodic_task
     def redo_failed_job(self, ctx):
@@ -303,8 +306,9 @@ class XManager(PeriodicTasks):
         # pod and we may need to use it later.
         b_client = self._get_client(b_pod['region_name'])
 
+        is_distributed = t_router.get('distributed', False)
         router_body = {'router': {'name': t_router['id'],
-                                  'distributed': False}}
+                                  'distributed': is_distributed}}
         project_id = t_router['tenant_id']
 
         # create bottom router in target bottom pod
@@ -561,11 +565,15 @@ class XManager(PeriodicTasks):
             t_ext_net_id = None
 
         non_vm_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                             q_constants.DEVICE_OWNER_DVR_INTERFACE,
+                             q_constants.DEVICE_OWNER_ROUTER_SNAT,
                              q_constants.DEVICE_OWNER_ROUTER_GW,
                              q_constants.DEVICE_OWNER_DHCP]
         ew_attached_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                                  q_constants.DEVICE_OWNER_DVR_INTERFACE,
                                   q_constants.DEVICE_OWNER_ROUTER_GW]
-        ns_attached_port_types = q_constants.DEVICE_OWNER_ROUTER_INTF
+        ns_attached_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                                  q_constants.DEVICE_OWNER_DVR_INTERFACE]
 
         mappings = db_api.get_bottom_mappings_by_top_id(ctx, t_router_id,
                                                         constants.RT_ROUTER)

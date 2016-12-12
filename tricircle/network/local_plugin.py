@@ -358,7 +358,16 @@ class TricirclePlugin(plugin.Ml2Plugin):
         return port.get('device_owner') in (
             q_constants.DEVICE_OWNER_ROUTER_INTF,
             q_constants.DEVICE_OWNER_FLOATINGIP,
-            q_constants.DEVICE_OWNER_ROUTER_GW)
+            q_constants.DEVICE_OWNER_ROUTER_GW,
+            q_constants.DEVICE_OWNER_ROUTER_SNAT,
+            q_constants.DEVICE_OWNER_DVR_INTERFACE)
+
+    def _handle_dvr_snat_port(self, t_ctx, port):
+        if port.get('device_owner') != q_constants.DEVICE_OWNER_ROUTER_SNAT:
+            return
+        subnet_id = port['fixed_ips'][0]['subnet_id']
+        t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', subnet_id)
+        port['fixed_ips'][0]['ip_address'] = t_subnet['gateway_ip']
 
     def create_port(self, context, port):
         port_body = port['port']
@@ -385,6 +394,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                         ip_address=fixed_ip['ip_address'])
                 t_port = t_ports[0]
             else:
+                self._handle_dvr_snat_port(t_ctx, port_body)
                 t_port = port_body
         else:
             self._adapt_port_body_for_client(port['port'])

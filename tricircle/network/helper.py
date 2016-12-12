@@ -54,6 +54,15 @@ class NetworkHelper(object):
             self.clients[region_name] = client.Client(region_name)
         return self.clients[region_name]
 
+    @staticmethod
+    def _merge_ip_range(ip_range, ip):
+        ip_set = netaddr.IPSet(ip_range)
+        ip_set.add(ip)
+        if ip_set.iscontiguous():
+            return ip_set.iprange(), True
+        else:
+            return ip_range, False
+
     # operate top resource
     def _prepare_top_element_by_call(self, t_ctx, q_ctx,
                                      project_id, pod, ele, _type, body):
@@ -228,15 +237,21 @@ class NetworkHelper(object):
         :return: request body to create bottom subnet
         """
         pools = t_subnet['allocation_pools']
+        t_gateway_ip = t_subnet['gateway_ip']
         new_pools = []
         g_ip = netaddr.IPAddress(gateway_ip)
         ip_found = False
+        ip_merged = False
         for pool in pools:
             if ip_found:
                 new_pools.append({'start': pool['start'],
                                   'end': pool['end']})
                 continue
             ip_range = netaddr.IPRange(pool['start'], pool['end'])
+            if not ip_merged:
+                ip_range, ip_merged = NetworkHelper._merge_ip_range(
+                    ip_range, t_gateway_ip)
+
             ip_num = len(ip_range)
             for i, ip in enumerate(ip_range):
                 if g_ip == ip:

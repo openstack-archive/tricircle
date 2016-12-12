@@ -237,6 +237,7 @@ class PluginTest(unittest.TestCase):
                     'name': 'subnet1',
                     'network_id': network_id,
                     'cidr': '10.0.1.0/24',
+                    'gateway_ip': '10.0.1.1',
                     'ip_version': 4,
                     'allocation_pools': [{'start': '10.0.1.2',
                                           'end': '10.0.1.254'}],
@@ -282,13 +283,15 @@ class PluginTest(unittest.TestCase):
         b_subnet.pop('project_id')
         pool = subnet.pop('allocation_pools')[0]
         b_pools = b_subnet.pop('allocation_pools')
+        t_gateway_ip = subnet.pop('gateway_ip')
         b_gateway_ip = b_subnet.pop('gateway_ip')
 
         def ip_to_digit(ip):
             return int(ip[ip.rindex('.') + 1:])
 
-        pool_range = list(range(ip_to_digit(pool['start']),
+        pool_range = list(range(ip_to_digit(t_gateway_ip),
                                 ip_to_digit(pool['end']) + 1))
+        # we include the top gateway ip in the bottom ip allocation pool
         b_pool_range1 = list(range(ip_to_digit(b_pools[0]['start']),
                                    ip_to_digit(b_pools[0]['end']) + 1))
         b_pool_range2 = list(range(ip_to_digit(b_pools[1]['start']),
