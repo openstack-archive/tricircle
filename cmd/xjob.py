@@ -21,7 +21,6 @@ import eventlet
 if __name__ == "__main__":
     eventlet.monkey_patch()
 
-import logging as std_logging
 import sys
 
 from oslo_config import cfg
@@ -52,7 +51,7 @@ def main():
     xservice.serve(xservice.create_service(), workers)
 
     LOG.info(_LI("Configuration:"))
-    CONF.log_opt_values(LOG, std_logging.INFO)
+    CONF.log_opt_values(LOG, logging.INFO)
 
     xservice.wait()
 
