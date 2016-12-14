@@ -115,130 +115,6 @@ def upgrade(migrate_engine):
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
-    quotas = sql.Table(
-        'quotas', meta,
-        sql.Column('id', sql.Integer, primary_key=True),
-        sql.Column('project_id', sql.String(255), index=True),
-        sql.Column('resource', sql.String(255), nullable=False),
-        sql.Column('hard_limit', sql.Integer),
-        sql.Column('allocated', sql.Integer, default=0),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Integer),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    quota_classes = sql.Table(
-        'quota_classes', meta,
-        sql.Column('id', sql.Integer, primary_key=True),
-        sql.Column('class_name', sql.String(255), index=True),
-        sql.Column('resource', sql.String(255), nullable=False),
-        sql.Column('hard_limit', sql.Integer),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Integer),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    quota_usages = sql.Table(
-        'quota_usages', meta,
-        sql.Column('id', sql.Integer, primary_key=True),
-        sql.Column('project_id', sql.String(255), index=True),
-        sql.Column('user_id', sql.String(255), index=True),
-        sql.Column('resource', sql.String(255), nullable=False),
-        sql.Column('in_use', sql.Integer),
-        sql.Column('reserved', sql.Integer),
-        sql.Column('until_refresh', sql.Integer),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Integer),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    reservations = sql.Table(
-        'reservations', meta,
-        sql.Column('id', sql.Integer(), primary_key=True),
-        sql.Column('uuid', sql.String(length=36), nullable=False),
-        sql.Column('usage_id', sql.Integer(),
-                   sql.ForeignKey('quota_usages.id'),
-                   nullable=False),
-        sql.Column('project_id',
-                   sql.String(length=255),
-                   index=True),
-        sql.Column('resource',
-                   sql.String(length=255)),
-        sql.Column('delta', sql.Integer(), nullable=False),
-        sql.Column('expire', sql.DateTime),
-
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Boolean(create_constraint=True,
-                                          name=None)),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    volume_types = sql.Table(
-        'volume_types', meta,
-        sql.Column('id', sql.String(36), primary_key=True),
-        sql.Column('name', sql.String(255), unique=True),
-        sql.Column('description', sql.String(255)),
-        sql.Column('qos_specs_id', sql.String(36)),
-        sql.Column('is_public', sql.Boolean, default=True),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Boolean),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    volume_type_extra_specs = sql.Table(
-        'volume_type_extra_specs', meta,
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('deleted', sql.Boolean),
-        sql.Column('id', sql.Integer, primary_key=True, nullable=False),
-        sql.Column('volume_type_id', sql.String(36),
-                   sql.ForeignKey('volume_types.id'),
-                   nullable=False),
-        sql.Column('key', sql.String(length=255)),
-        sql.Column('value', sql.String(length=255)),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    volume_type_projects = sql.Table(
-        'volume_type_projects', meta,
-        sql.Column('id', sql.Integer, primary_key=True, nullable=False),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        sql.Column('deleted_at', sql.DateTime),
-        sql.Column('volume_type_id', sql.String(36),
-                   sql.ForeignKey('volume_types.id'),
-                   nullable=False),
-        sql.Column('project_id', sql.String(length=255)),
-        sql.Column('deleted', sql.Boolean(create_constraint=True, name=None)),
-        migrate.UniqueConstraint(
-            'volume_type_id', 'project_id', 'deleted',
-            name='uniq_volume_type_projects0volume_type_id0project_id0deleted'
-        ),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
-    quality_of_service_specs = sql.Table(
-        'quality_of_service_specs', meta,
-        sql.Column('id', sql.String(36), primary_key=True),
-        sql.Column('specs_id', sql.String(36)),
-        sql.Column('key', sql.String(255)),
-        sql.Column('value', sql.String(255)),
-        sql.Column('created_at', sql.DateTime),
-        sql.Column('updated_at', sql.DateTime),
-        mysql_engine='InnoDB',
-        mysql_charset='utf8')
-
     cascaded_pods_resource_routing = sql.Table(
         'cascaded_pods_resource_routing', meta,
         sql.Column('id', sql.BigInteger, primary_key=True),
@@ -273,9 +149,7 @@ def upgrade(migrate_engine):
 
     tables = [aggregates, aggregate_metadata, instance_types,
               instance_type_projects, instance_type_extra_specs, key_pairs,
-              quotas, quota_classes, quota_usages, reservations,
-              volume_types, volume_type_extra_specs, volume_type_projects,
-              job, quality_of_service_specs, cascaded_pods_resource_routing]
+              job, cascaded_pods_resource_routing]
     for table in tables:
         table.create()
 
@@ -285,16 +159,6 @@ def upgrade(migrate_engine):
               'references': [instance_types.c.id]},
              {'columns': [instance_type_extra_specs.c.instance_type_id],
               'references': [instance_types.c.id]},
-             {'columns': [reservations.c.usage_id],
-              'references': [quota_usages.c.id]},
-             {'columns': [volume_types.c.qos_specs_id],
-              'references': [quality_of_service_specs.c.id]},
-             {'columns': [volume_type_extra_specs.c.volume_type_id],
-              'references': [volume_types.c.id]},
-             {'columns': [volume_type_projects.c.volume_type_id],
-              'references': [volume_types.c.id]},
-             {'columns': [quality_of_service_specs.c.specs_id],
-              'references': [quality_of_service_specs.c.id]},
              {'columns': [aggregate_metadata.c.aggregate_id],
               'references': [aggregates.c.id]},
              {'columns': [cascaded_pods_resource_routing.c.pod_id],

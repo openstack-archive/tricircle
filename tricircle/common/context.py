@@ -76,7 +76,7 @@ class ContextBase(oslo_ctx.RequestContext):
     def __init__(self, auth_token=None, user_id=None, tenant_id=None,
                  is_admin=False, read_deleted="no", request_id=None,
                  overwrite=True, user_name=None, tenant_name=None,
-                 quota_class=None, roles=None, **kwargs):
+                 roles=None, **kwargs):
         """Initialize RequestContext.
 
         :param read_deleted: 'no' indicates deleted records are hidden, 'yes'
@@ -101,7 +101,6 @@ class ContextBase(oslo_ctx.RequestContext):
             overwrite=overwrite)
         self.user_name = user_name
         self.tenant_name = tenant_name
-        self.quota_class = quota_class
         self.read_deleted = read_deleted
         self.nova_micro_version = kwargs.get('nova_micro_version',
                                              constants.NOVA_APIGW_MIN_VERSION)
@@ -129,7 +128,6 @@ class ContextBase(oslo_ctx.RequestContext):
             'tenant_name': self.tenant_name,
             'tenant_id': self.tenant_id,
             'project_id': self.project_id,
-            'quota_class': self.quota_class,
             'roles': self.roles,
         })
         return ctx_dict

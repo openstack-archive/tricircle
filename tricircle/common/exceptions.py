@@ -183,72 +183,6 @@ class InvalidInput(Invalid):
     message = _("Invalid input received: %(reason)s")
 
 
-class InvalidMetadata(Invalid):
-    message = _("Invalid metadata: %(reason)s")
-
-
-class InvalidMetadataSize(Invalid):
-    message = _("Invalid metadata size: %(reason)s")
-
-
-class MetadataLimitExceeded(TricircleException):
-    message = _("Maximum number of metadata items exceeds %(allowed)d")
-
-
-class InvalidReservationExpiration(Invalid):
-    message = _("Invalid reservation expiration %(expire)s.")
-
-
-class InvalidQuotaValue(Invalid):
-    message = _("Change would make usage less than 0 for the following "
-                "resources: %(unders)s")
-
-
-class QuotaNotFound(NotFound):
-    message = _("Quota could not be found")
-
-
-class QuotaResourceUnknown(QuotaNotFound):
-    message = _("Unknown quota resources %(unknown)s.")
-
-
-class ProjectQuotaNotFound(QuotaNotFound):
-    message = _("Quota for project %(project_id)s could not be found.")
-
-
-class QuotaClassNotFound(QuotaNotFound):
-    message = _("Quota class %(class_name)s could not be found.")
-
-
-class QuotaUsageNotFound(QuotaNotFound):
-    message = _("Quota usage for project %(project_id)s could not be found.")
-
-
-class ReservationNotFound(QuotaNotFound):
-    message = _("Quota reservation %(uuid)s could not be found.")
-
-
-class OverQuota(TricircleException):
-    message = _("Quota exceeded for resources: %(overs)s")
-
-
-class TooManyInstances(TricircleException):
-    message = _("Quota exceeded for %(overs)s: Requested %(req)s,"
-                " but already used %(used)s of %(allowed)s %(overs)s")
-
-
-class OnsetFileLimitExceeded(TricircleException):
-    message = _("Personality file limit exceeded")
-
-
-class OnsetFilePathLimitExceeded(OnsetFileLimitExceeded):
-    message = _("Personality file path too long")
-
-
-class OnsetFileContentLimitExceeded(OnsetFileLimitExceeded):
-    message = _("Personality file content too long")
-
-
 class ExternalNetPodNotSpecify(TricircleException):
     message = "Pod for external network not specified"
 
@@ -263,10 +197,6 @@ class PodNotFound(NotFound):
         super(PodNotFound, self).__init__(pod_name=pod_name)
 
 
-class ChildQuotaNotZero(TricircleException):
-    message = _("Child projects having non-zero quota")
-
-
 # parameter validation error
 class ValidationError(TricircleException):
     message = _("%(msg)s")
@@ -279,30 +209,8 @@ class HTTPForbiddenError(TricircleException):
     code = 403
 
 
-class VolumeTypeNotFound(NotFound):
-    message = _("Volume type %(volume_type_id)s could not be found.")
-
-
-class VolumeTypeNotFoundByName(VolumeTypeNotFound):
-    message = _("Volume type with name %(volume_type_name)s "
-                "could not be found.")
-
-
-class VolumeTypeExtraSpecsNotFound(NotFound):
-    message = _("Volume Type %(volume_type_id)s has no extra specs with "
-                "key %(extra_specs_key)s.")
-
-
 class Duplicate(TricircleException):
     pass
-
-
-class VolumeTypeExists(Duplicate):
-    message = _("Volume Type %(id)s already exists.")
-
-
-class VolumeTypeUpdateFailed(TricircleException):
-    message = _("Cannot update volume_type %(id)s")
 
 
 class ServerMappingsNotFound(NotFound):
