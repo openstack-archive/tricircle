@@ -17,7 +17,7 @@ across Neutron servers in multi-region OpenStack clouds deployment.
 Each OpenStack cloud includes its own Nova, Cinder and Neutron, the Neutron
 servers in these OpenStack clouds are called local Neuron servers, all these
 local Neutron servers will be configured with the Tricircle Local Neutron
-Plugin. A seperate Neutron server will be installed and run standalone as
+Plugin. A separate Neutron server will be installed and run standalone as
 the coordinator of networking automation across local Neutron servers, this
 Neutron server will be configured with the Tricircle Central Neutron Plugin,
 and is called central Neutron server.

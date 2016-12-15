@@ -473,7 +473,7 @@ class TestPodController(API_FunctionalTest):
 
             _id = ret_pod['pod_id']
 
-            # check ag and az automaticly added
+            # check ag and az automatically added
             ag_name = utils.get_ag_name(ret_pod['pod_name'])
             ag = az_ag.get_ag_by_name(self.context, ag_name)
             self.assertIsNotNone(ag)
