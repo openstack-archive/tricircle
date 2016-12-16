@@ -38,7 +38,7 @@ Problem Description
 When a user wants to create a network in Neutron API Server, the user can
 specify the 'availability_zone_hints'(AZ or az will be used for short for
 availability zone) during network creation[5], in the Tricircle, the
-'az_hints' means which AZ the network should be spreaded into. The 'az_hints'
+'az_hints' means which AZ the network should be spread into. The 'az_hints'
 meaning in Tricircle is a little different from the 'az_hints' meaning in
 Neutron[5]. If no 'az_hints' was specified during network creation, this created
 network will be spread into any AZ. If there is a list of 'az_hints' during the
@@ -300,7 +300,7 @@ checks the configuration, if ``tenant_network_type`` equals ``local_network``,
 it will invoke Local Network type driver. Local Network driver under the
 Tricircle plugin will update ``network_type`` in database.
 
-For exmaple, a user creates VM1 in AZ1 which has only one pod ``POD1``, and
+For example, a user creates VM1 in AZ1 which has only one pod ``POD1``, and
 connects it to network ``Net1``. ``Nova API-GW`` will send network creation
 request to ``POD1`` and the VM will be booted in AZ1 (There should be only one
 pod in AZ1).

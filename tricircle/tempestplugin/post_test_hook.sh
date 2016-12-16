@@ -41,7 +41,7 @@ curl -X POST http://127.0.0.1:19999/v1.0/pods \
 # nova flavor-create [--ephemeral <ephemeral>] [--swap <swap>]
 #                    [--rxtx-factor <factor>] [--is-public <is-public>]
 #                    <name> <id> <ram> <disk> <vcpus>
-# the following command is to create a flavor wih name='test',
+# the following command is to create a flavor with name='test',
 # id=1, ram=1024MB, disk=10GB, vcpu=1
 # nova flavor-create test 1 1024 10 1
 image_id=$(openstack image list | awk 'NR==4 {print $2}')
