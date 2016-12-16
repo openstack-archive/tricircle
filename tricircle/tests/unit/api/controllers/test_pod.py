@@ -43,13 +43,13 @@ class PodsControllerTest(unittest.TestCase):
 
         with self.context.session.begin():
             pod = core.get_resource(self.context, models.Pod, pod_id)
-            self.assertEqual(pod['pod_name'], 'TopPod')
-            self.assertEqual(pod['az_name'], '')
+            self.assertEqual('TopPod', pod['pod_name'])
+            self.assertEqual('', pod['az_name'])
             pods = core.query_resource(self.context, models.Pod,
                                        [{'key': 'pod_name',
                                          'comparator': 'eq',
                                          'value': 'TopPod'}], [])
-            self.assertEqual(len(pods), 1)
+            self.assertEqual(1, len(pods))
 
     @patch.object(context, 'extract_context_from_environ')
     def test_post_bottom_pod(self, mock_context):
@@ -59,27 +59,27 @@ class PodsControllerTest(unittest.TestCase):
 
         with self.context.session.begin():
             pod = core.get_resource(self.context, models.Pod, pod_id)
-            self.assertEqual(pod['pod_name'], 'BottomPod')
-            self.assertEqual(pod['az_name'], 'TopAZ')
+            self.assertEqual('BottomPod', pod['pod_name'])
+            self.assertEqual('TopAZ', pod['az_name'])
             pods = core.query_resource(self.context, models.Pod,
                                        [{'key': 'pod_name',
                                          'comparator': 'eq',
                                          'value': 'BottomPod'}], [])
-            self.assertEqual(len(pods), 1)
+            self.assertEqual(1, len(pods))
             ag_name = utils.get_ag_name('BottomPod')
             aggregates = core.query_resource(self.context, models.Aggregate,
                                              [{'key': 'name',
                                                'comparator': 'eq',
                                                'value': ag_name}], [])
-            self.assertEqual(len(aggregates), 1)
+            self.assertEqual(1, len(aggregates))
             metadatas = core.query_resource(
                 self.context, models.AggregateMetadata,
                 [{'key': 'key', 'comparator': 'eq',
                   'value': 'availability_zone'},
                  {'key': 'aggregate_id', 'comparator': 'eq',
                   'value': aggregates[0]['id']}], [])
-            self.assertEqual(len(metadatas), 1)
-            self.assertEqual(metadatas[0]['value'], 'TopAZ')
+            self.assertEqual(1, len(metadatas))
+            self.assertEqual('TopAZ', metadatas[0]['value'])
 
     @patch.object(context, 'extract_context_from_environ')
     def test_get_one(self, mock_context):
@@ -88,8 +88,8 @@ class PodsControllerTest(unittest.TestCase):
         pod_id = self.controller.post(**kw)['pod']['pod_id']
 
         pod = self.controller.get_one(pod_id)
-        self.assertEqual(pod['pod']['pod_name'], 'TopPod')
-        self.assertEqual(pod['pod']['az_name'], '')
+        self.assertEqual('TopPod', pod['pod']['pod_name'])
+        self.assertEqual('', pod['pod']['az_name'])
 
     @patch.object(context, 'extract_context_from_environ')
     def test_get_all(self, mock_context):
@@ -118,20 +118,20 @@ class PodsControllerTest(unittest.TestCase):
                                        [{'key': 'pod_name',
                                          'comparator': 'eq',
                                          'value': 'BottomPod'}], [])
-            self.assertEqual(len(pods), 0)
+            self.assertEqual(0, len(pods))
             ag_name = utils.get_ag_name('BottomPod')
             aggregates = core.query_resource(self.context, models.Aggregate,
                                              [{'key': 'name',
                                                'comparator': 'eq',
                                                'value': ag_name}], [])
-            self.assertEqual(len(aggregates), 0)
+            self.assertEqual(0, len(aggregates))
             metadatas = core.query_resource(
                 self.context, models.AggregateMetadata,
                 [{'key': 'key', 'comparator': 'eq',
                   'value': 'availability_zone'},
                  {'key': 'value', 'comparator': 'eq',
                   'value': 'TopAZ'}], [])
-            self.assertEqual(len(metadatas), 0)
+            self.assertEqual(0, len(metadatas))
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

@@ -40,7 +40,7 @@ class RoutingControllerTest(unittest.TestCase):
         policy.populate_default_rules()
 
     def _validate_error_code(self, res, code):
-        self.assertEqual(code, res[res.keys()[0]]['code'])
+        self.assertEqual(res[res.keys()[0]]['code'], code)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
@@ -64,13 +64,13 @@ class RoutingControllerTest(unittest.TestCase):
                        }}
         id = self.controller.post(**kw_routing)['routing']['id']
         routing = db_api.get_resource_routing(self.context, id)
-        self.assertEqual(routing['top_id'],
-                         '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe')
-        self.assertEqual(routing['bottom_id'],
-                         'dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef')
-        self.assertEqual(routing['pod_id'], pod_id)
-        self.assertEqual(routing['project_id'], project_id)
-        self.assertEqual(routing['resource_type'], 'subnet')
+        self.assertEqual('09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
+                         routing['top_id'])
+        self.assertEqual('dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
+                         routing['bottom_id'])
+        self.assertEqual(pod_id, routing['pod_id'])
+        self.assertEqual(project_id, routing['project_id'])
+        self.assertEqual('subnet', routing['resource_type'])
 
         routings = db_api.list_resource_routings(self.context,
                                                  [{'key': 'top_id',
@@ -83,7 +83,7 @@ class RoutingControllerTest(unittest.TestCase):
                                                    'comparator': 'eq',
                                                    'value': pod_id}
                                                   ], [])
-        self.assertEqual(len(routings), 1)
+        self.assertEqual(1, len(routings))
 
         # failure case, only admin can create resource routing
         self.context.is_admin = False
@@ -193,15 +193,15 @@ class RoutingControllerTest(unittest.TestCase):
         id = self.controller.post(**kw_routing)['routing']['id']
 
         routing = self.controller.get_one(id)
-        self.assertEqual(routing['routing']['top_id'],
-                         '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe')
-        self.assertEqual(routing['routing']['bottom_id'],
-                         'dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef')
-        self.assertEqual(routing['routing']['pod_id'], pod_id)
-        self.assertEqual(routing['routing']['project_id'],
-                         project_id)
-        self.assertEqual(routing['routing']['resource_type'],
-                         'port')
+        self.assertEqual('09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
+                         routing['routing']['top_id'])
+        self.assertEqual('dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
+                         routing['routing']['bottom_id'])
+        self.assertEqual(pod_id, routing['routing']['pod_id'])
+        self.assertEqual(project_id,
+                         routing['routing']['project_id'])
+        self.assertEqual('port',
+                         routing['routing']['resource_type'])
 
         # failure case, only admin can get resource routing
         self.context.is_admin = False
@@ -277,7 +277,7 @@ class RoutingControllerTest(unittest.TestCase):
         # with []
         kw_filter2 = {'resource_type': 'port2'}
         routings = self.controller.get_all(**kw_filter2)
-        self.assertEqual(routings['routings'], [])
+        self.assertEqual([], routings['routings'])
 
         # apply an illegal filter and it won't take effect
         kw_filter3 = {'resource': 'port'}
@@ -320,7 +320,7 @@ class RoutingControllerTest(unittest.TestCase):
         routing = self.controller.post(**kw_routing)
         id = routing['routing']['id']
         res = self.controller.delete(id)
-        self.assertEqual(res.status, 200)
+        self.assertEqual(200, res.status)
 
         routings = db_api.list_resource_routings(self.context,
                                                  [{'key': 'top_id',
@@ -332,7 +332,7 @@ class RoutingControllerTest(unittest.TestCase):
                                                    'comparator': 'eq',
                                                    'value': pod_id
                                                    }], [])
-        self.assertEqual(len(routings), 0)
+        self.assertEqual(0, len(routings))
 
         # failure case, only admin can delete resource routing
         self.context.is_admin = False
