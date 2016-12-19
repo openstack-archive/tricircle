@@ -22,10 +22,8 @@ from oslo_config import fixture as fixture_config
 import oslo_db.exception as db_exc
 
 from tricircle.api import app
-from tricircle.common import az_ag
 from tricircle.common import context
 from tricircle.common import policy
-from tricircle.common import utils
 from tricircle.db import core
 from tricircle.tests import base
 
@@ -120,26 +118,6 @@ class TestPodController(API_FunctionalTest):
     def fake_create_ag_az(context, ag_name, az_name):
         raise db_exc.DBDuplicateEntry
 
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_admin_context)
-    @patch.object(az_ag, 'create_ag_az',
-                  new=fake_create_ag_az)
-    def test_post_dup_db_exception(self):
-        pods = [
-            {
-                "pod":
-                {
-                    "pod_name": "Pod1",
-                    "pod_az_name": "az1",
-                    "dc_name": "dc1",
-                    "az_name": "AZ1"
-                },
-                "expected_error": 409
-            },
-            ]
-
-        self._test_and_check(pods)
-
     def fake_create_ag_az_exp(context, ag_name, az_name):
         raise Exception
 
@@ -152,7 +130,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod1",
+                    "region_name": "Pod1",
                     "pod_az_name": "az1",
                     "dc_name": "dc1",
                     "az_name": "AZ1"
@@ -205,7 +183,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "",
+                    "region_name": "",
                     "pod_az_name": "az1",
                     "dc_name": "dc1"
                 },
@@ -216,7 +194,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "",
+                    "region_name": "",
                     "pod_az_name": "az1",
                     "dc_name": "dc1",
                     "az_name": ""
@@ -228,7 +206,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "",
+                    "region_name": "",
                     "pod_az_name": "az1",
                     "dc_name": "dc1",
                     "az_name": "az1"
@@ -251,7 +229,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "TopRegion",
+                    "region_name": "TopRegion",
                     "pod_az_name": "az1",
                     "dc_name": "dc1"
                 },
@@ -261,7 +239,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "TopRegion2",
+                    "region_name": "TopRegion2",
                     "pod_az_name": "",
                     "dc_name": "dc1"
                 },
@@ -281,7 +259,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod1",
+                    "region_name": "Pod1",
                     "pod_az_name": "az1",
                     "dc_name": "dc1",
                     "az_name": "AZ1"
@@ -292,7 +270,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod1",
+                    "region_name": "Pod1",
                     "pod_az_name": "az2",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -314,7 +292,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "TopRegion",
+                    "region_name": "TopRegion",
                     "pod_az_name": "az1",
                     "dc_name": "dc1"
                 },
@@ -324,7 +302,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "TopRegion",
+                    "region_name": "TopRegion",
                     "pod_az_name": "az2",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -357,7 +335,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "TopRegion",
+                    "region_name": "TopRegion",
                     "pod_az_name": "",
                     "dc_name": "dc1",
                     "az_name": ""
@@ -368,7 +346,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod1",
+                    "region_name": "Pod1",
                     "pod_az_name": "az1",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -379,7 +357,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod2",
+                    "region_name": "Pod2",
                     "pod_az_name": "az1",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -407,7 +385,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod1",
+                    "region_name": "Pod1",
                     "pod_az_name": "az1",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -418,7 +396,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod2",
+                    "region_name": "Pod2",
                     "pod_az_name": "az1",
                     "dc_name": "dc2",
                     "az_name": "AZ1"
@@ -429,7 +407,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                 {
-                    "pod_name": "Pod3",
+                    "region_name": "Pod3",
                     "pod_az_name": "az1",
                     "dc_name": "dc2",
                     "az_name": "AZ2"
@@ -459,8 +437,8 @@ class TestPodController(API_FunctionalTest):
             self.assertEqual(get_one_pod['pod_id'],
                              ret_pod['pod_id'])
 
-            self.assertEqual(get_one_pod['pod_name'],
-                             ret_pod['pod_name'])
+            self.assertEqual(get_one_pod['region_name'],
+                             ret_pod['region_name'])
 
             self.assertEqual(get_one_pod['pod_az_name'],
                              ret_pod['pod_az_name'])
@@ -471,23 +449,6 @@ class TestPodController(API_FunctionalTest):
             self.assertEqual(get_one_pod['az_name'],
                              ret_pod['az_name'])
 
-            _id = ret_pod['pod_id']
-
-            # check ag and az automatically added
-            ag_name = utils.get_ag_name(ret_pod['pod_name'])
-            ag = az_ag.get_ag_by_name(self.context, ag_name)
-            self.assertIsNotNone(ag)
-            self.assertEqual(ag['name'],
-                             utils.get_ag_name(ret_pod['pod_name']))
-            self.assertEqual(ag['availability_zone'], ret_pod['az_name'])
-
-            single_ret = self.app.delete('/v1.0/pods/' + str(_id))
-            self.assertEqual(single_ret.status_int, 200)
-
-            # make sure ag is deleted
-            ag = az_ag.get_ag_by_name(self.context, ag_name)
-            self.assertIsNone(ag)
-
     @patch.object(context, 'extract_context_from_environ',
                   new=fake_non_admin_context)
     def test_non_admin_action(self):
@@ -496,7 +457,7 @@ class TestPodController(API_FunctionalTest):
             {
                 "pod":
                     {
-                        "pod_name": "Pod1",
+                        "region_name": "Pod1",
                         "pod_az_name": "az1",
                         "dc_name": "dc2",
                         "az_name": "AZ1"
@@ -515,221 +476,5 @@ class TestPodController(API_FunctionalTest):
         self.assertEqual(response.status_int, 401)
 
         response = self.app.delete('/v1.0/pods/1234567890',
-                                   expect_errors=True)
-        self.assertEqual(response.status_int, 401)
-
-
-class TestBindingController(API_FunctionalTest):
-    """Test version listing on root URI."""
-
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_admin_context)
-    def test_post_no_input(self):
-        pod_bindings = [
-            # missing pod_binding
-            {
-                "pod_xxx":
-                {
-                    "tenant_id": "dddddd",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
-                },
-                "expected_error": 400
-            }]
-
-        for test_pod in pod_bindings:
-            response = self.app.post_json(
-                '/v1.0/bindings',
-                dict(pod_xxx=test_pod['pod_xxx']),
-                expect_errors=True)
-
-            self.assertEqual(response.status_int,
-                             test_pod['expected_error'])
-
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_admin_context)
-    def test_post_invalid_input(self):
-
-        pod_bindings = [
-
-            # missing tenant_id and or az_pod_map_id
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "dddddd",
-                    "pod_id": ""
-                },
-                "expected_error": 422
-            },
-
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
-                },
-                "expected_error": 422
-            },
-
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "dddddd",
-                },
-                "expected_error": 422
-            },
-
-            {
-                "pod_binding":
-                {
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
-                },
-                "expected_error": 422
-            }
-
-            ]
-
-        self._test_and_check(pod_bindings)
-
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_admin_context)
-    def test_bindings(self):
-
-        pods = [
-            {
-                "pod":
-                {
-                    "pod_name": "Pod1",
-                    "pod_az_name": "az1",
-                    "dc_name": "dc2",
-                    "az_name": "AZ1"
-                },
-                "expected_error": 200
-            }
-        ]
-
-        pod_bindings = [
-
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "dddddd",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643",
-                    "is_binding": "True"
-                },
-                "expected_error": 200
-            },
-
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "aaaaa",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643",
-                    "is_binding": "True"
-                },
-                "expected_error": 200
-            },
-
-            {
-                "pod_binding":
-                {
-                    "tenant_id": "dddddd",
-                    "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
-                },
-                "expected_error": 409
-            }
-        ]
-
-        self._test_and_check_pod(pods)
-        _id = self._get_az_pod_id()
-        self._test_and_check(pod_bindings, _id)
-
-        # get all
-        response = self.app.get('/v1.0/bindings')
-        self.assertEqual(response.status_int, 200)
-
-        # get one
-        return_pod_bindings = response.json
-
-        for ret_pod in return_pod_bindings['pod_bindings']:
-
-            _id = ret_pod['id']
-            single_ret = self.app.get('/v1.0/bindings/' + str(_id))
-            self.assertEqual(single_ret.status_int, 200)
-
-            one_pot_ret = single_ret.json
-            get_one_pod = one_pot_ret['pod_binding']
-
-            self.assertEqual(get_one_pod['id'],
-                             ret_pod['id'])
-
-            self.assertEqual(get_one_pod['tenant_id'],
-                             ret_pod['tenant_id'])
-
-            self.assertEqual(get_one_pod['pod_id'],
-                             ret_pod['pod_id'])
-
-            _id = ret_pod['id']
-            single_ret = self.app.delete('/v1.0/bindings/' + str(_id))
-            self.assertEqual(single_ret.status_int, 200)
-
-    def _get_az_pod_id(self):
-        response = self.app.get('/v1.0/pods')
-        self.assertEqual(response.status_int, 200)
-        return_pods = response.json
-        for ret_pod in return_pods['pods']:
-            _id = ret_pod['pod_id']
-            return _id
-
-    def _test_and_check(self, pod_bindings, _id=None):
-
-        for test_pod in pod_bindings:
-
-            if _id is not None:
-                test_pod['pod_binding']['pod_id'] = str(_id)
-
-            response = self.app.post_json(
-                '/v1.0/bindings',
-                dict(pod_binding=test_pod['pod_binding']),
-                expect_errors=True)
-
-            self.assertEqual(response.status_int,
-                             test_pod['expected_error'])
-
-    def _test_and_check_pod(self, pods):
-
-        for test_pod in pods:
-            response = self.app.post_json(
-                '/v1.0/pods',
-                dict(pod=test_pod['pod']),
-                expect_errors=True)
-
-            self.assertEqual(response.status_int,
-                             test_pod['expected_error'])
-
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_non_admin_context)
-    def test_non_admin_action(self):
-        pod_bindings = [
-            {
-                "pod_binding":
-                    {
-                        "tenant_id": "dddddd",
-                        "pod_id": "0ace0db2-ef33-43a6-a150-42703ffda643"
-                    },
-                "expected_error": 401
-            },
-        ]
-
-        self._test_and_check(pod_bindings)
-
-        response = self.app.get('/v1.0/bindings/1234567890',
-                                expect_errors=True)
-        self.assertEqual(response.status_int, 401)
-
-        response = self.app.get('/v1.0/bindings',
-                                expect_errors=True)
-        self.assertEqual(response.status_int, 401)
-
-        response = self.app.delete('/v1.0/bindings/1234567890',
                                    expect_errors=True)
         self.assertEqual(response.status_int, 401)

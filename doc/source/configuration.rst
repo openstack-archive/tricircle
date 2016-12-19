@@ -51,7 +51,7 @@ Central Plugin.
      - (Integer) timeout for neutron client in seconds.
    * - ``ns_bridge_cidr`` = ``100.128.0.0/9``
      - (String) cidr pool of the north-south bridge network, for example, 100.128.0.0/9
-   * - ``top_pod_name`` = ``None``
+   * - ``top_region_name`` = ``None``
      - (String) region name of Central Neutron in which client needs to access, for example, CentralRegion.
 
 
@@ -146,6 +146,8 @@ configured in central Neutron's neutron.conf.
      -
    * - ``bridge_network_type`` = ``shared_vlan``
      - (String) Type of l3 bridge network, this type should be enabled in tenant_network_types and is not local type, for example, shared_vlan.
+   * - ``default_region_for_external_network`` = ``RegionOne``
+     - (String) Default region where the external network belongs to, it must exist, for example, RegionOne.
    * - ``network_vlan_ranges`` = ``None``
      - (String) List of <physical_network>:<vlan_min>:<vlan_max> or <physical_network> specifying physical_network names usable for VLAN provider and tenant networks, as well as ranges of VLAN tags on each available for allocation to tenant networks, for example,bridge:2001:3000.
    * - ``tenant_network_types`` = ``local,shared_vlan``

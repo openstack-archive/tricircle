@@ -29,16 +29,16 @@ def get_import_path(cls):
     return cls.__module__ + "." + cls.__name__
 
 
-def get_ag_name(pod_name):
-    return 'ag_%s' % pod_name
+def get_ag_name(region_name):
+    return 'ag_%s' % region_name
 
 
-def get_az_name(pod_name):
-    return 'az_%s' % pod_name
+def get_az_name(region_name):
+    return 'az_%s' % region_name
 
 
-def get_node_name(pod_name):
-    return "cascade_%s" % pod_name
+def get_node_name(region_name):
+    return "cascade_%s" % region_name
 
 
 def validate_required_fields_set(body, fields):

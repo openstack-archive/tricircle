@@ -155,12 +155,12 @@ class XManager(PeriodicTasks):
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
 
-    def _get_client(self, pod_name=None):
-        if not pod_name:
+    def _get_client(self, region_name=None):
+        if not region_name:
             return self.clients[constants.TOP]
-        if pod_name not in self.clients:
-            self.clients[pod_name] = client.Client(pod_name)
-        return self.clients[pod_name]
+        if region_name not in self.clients:
+            self.clients[region_name] = client.Client(region_name)
+        return self.clients[region_name]
 
     def periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
@@ -279,7 +279,7 @@ class XManager(PeriodicTasks):
                 # this is rare case that we got IpAddressInUseClient exception
                 # a second ago but now the floating ip is missing
                 raise t_network_exc.BottomPodOperationFailure(
-                    resource='floating ip', pod_name=pod['pod_name'])
+                    resource='floating ip', region_name=pod['region_name'])
             associated_port_id = fips[0].get('port_id')
             if associated_port_id == port_id:
                 # if the internal port associated with the existing fip is what
@@ -296,7 +296,7 @@ class XManager(PeriodicTasks):
     def _setup_router_one_pod(self, ctx, t_pod, b_pod, t_client, t_net,
                               t_router, t_ew_bridge_net, t_ew_bridge_subnet,
                               need_ns_bridge):
-        b_client = self._get_client(b_pod['pod_name'])
+        b_client = self._get_client(b_pod['region_name'])
 
         router_body = {'router': {'name': t_router['id'],
                                   'distributed': False}}
@@ -364,8 +364,8 @@ class XManager(PeriodicTasks):
         # attach internal port to bottom router
         t_ports = self._get_router_interfaces(t_client, ctx, t_router['id'],
                                               t_net['id'])
-        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            ctx, t_net['id'], b_pod['pod_name'], constants.RT_NETWORK)
+        b_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_net['id'], b_pod['region_name'], constants.RT_NETWORK)
         if b_net_id:
             b_ports = self._get_router_interfaces(b_client, ctx, b_router_id,
                                                   b_net_id)
@@ -415,7 +415,7 @@ class XManager(PeriodicTasks):
                                                         constants.RT_NETWORK)
         # bottom external network should exist
         b_ext_pod, b_ext_net_id = mappings[0]
-        b_ext_client = self._get_client(b_ext_pod['pod_name'])
+        b_ext_client = self._get_client(b_ext_pod['region_name'])
         b_fips = b_ext_client.list_floatingips(
             ctx, [{'key': 'floating_network_id', 'comparator': 'eq',
                    'value': b_ext_net_id}])
@@ -427,8 +427,8 @@ class XManager(PeriodicTasks):
         for add_fip in add_fips:
             fip = t_ip_fip_map[add_fip]
             t_int_port_id = fip['port_id']
-            b_int_port_id = db_api.get_bottom_id_by_top_id_pod_name(
-                ctx, t_int_port_id, b_pod['pod_name'], constants.RT_PORT)
+            b_int_port_id = db_api.get_bottom_id_by_top_id_region_name(
+                ctx, t_int_port_id, b_pod['region_name'], constants.RT_PORT)
             if not b_int_port_id:
                 LOG.warning(_LW('Port %(port_id)s associated with floating ip '
                                 '%(fip)s is not mapped to bottom pod'),
@@ -444,9 +444,10 @@ class XManager(PeriodicTasks):
                     ctx, q_ctx, project_id, t_pod, t_ns_bridge_net['id'], None,
                     b_int_port_id, False)
                 t_ns_bridge_port = t_client.get_ports(ctx, t_ns_bridge_port_id)
-                b_ext_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-                    ctx, t_ns_bridge_net['id'], b_ext_pod['pod_name'],
-                    constants.RT_NETWORK)
+                b_ext_bridge_net_id = \
+                    db_api.get_bottom_id_by_top_id_region_name(
+                        ctx, t_ns_bridge_net['id'], b_ext_pod['region_name'],
+                        constants.RT_NETWORK)
                 port_body = {
                     'port': {
                         'tenant_id': project_id,
@@ -580,12 +581,12 @@ class XManager(PeriodicTasks):
                                           filters=[{'key': 'router:external',
                                                     'comparator': 'eq',
                                                     'value': True}])
-        ext_net_pod_names = set(
+        ext_net_region_names = set(
             [ext_net[AZ_HINTS][0] for ext_net in ext_nets])
 
-        if not ext_net_pod_names:
+        if not ext_net_region_names:
             need_ns_bridge = False
-        elif b_pod['pod_name'] in ext_net_pod_names:
+        elif b_pod['region_name'] in ext_net_region_names:
             need_ns_bridge = False
         else:
             need_ns_bridge = True
@@ -609,7 +610,7 @@ class XManager(PeriodicTasks):
         router_bridge_ip_map = {}
         router_ips_map = {}
         for i, b_pod in enumerate(b_pods):
-            bottom_client = self._get_client(pod_name=b_pod['pod_name'])
+            bottom_client = self._get_client(region_name=b_pod['region_name'])
             b_interfaces = bottom_client.list_ports(
                 ctx, filters=[{'key': 'device_id',
                                'comparator': 'eq',
@@ -641,7 +642,8 @@ class XManager(PeriodicTasks):
                 router_ips_map[b_router_ids[i]][b_subnet['cidr']] = ips
 
         for i, b_router_id in enumerate(b_router_ids):
-            bottom_client = self._get_client(pod_name=b_pods[i]['pod_name'])
+            bottom_client = self._get_client(
+                region_name=b_pods[i]['region_name'])
             extra_routes = []
             if not router_ips_map[b_router_id]:
                 bottom_client.update_routers(
@@ -664,7 +666,7 @@ class XManager(PeriodicTasks):
     def delete_server_port(self, ctx, payload):
         b_pod_id, b_port_id = payload[constants.JT_PORT_DELETE].split('#')
         b_pod = db_api.get_pod(ctx, b_pod_id)
-        self._get_client(b_pod['pod_name']).delete_ports(ctx, b_port_id)
+        self._get_client(b_pod['region_name']).delete_ports(ctx, b_port_id)
 
     @staticmethod
     def _safe_create_security_group_rule(context, client, body):
@@ -742,7 +744,7 @@ class XManager(PeriodicTasks):
                 mappings = db_api.get_bottom_mappings_by_top_id(
                     ctx, top_sg['id'], constants.RT_SG)
                 for pod, b_sg_id in mappings:
-                    client = self._get_client(pod['pod_name'])
+                    client = self._get_client(pod['region_name'])
                     b_sg = client.get_security_groups(ctx, b_sg_id)
                     add_rules = []
                     del_rules = []
@@ -800,10 +802,10 @@ class XManager(PeriodicTasks):
         if not t_network:
             return
         b_pod = db_api.get_pod(ctx, b_pod_id)
-        b_pod_name = b_pod['pod_name']
-        b_client = self._get_client(pod_name=b_pod_name)
-        b_network_id = db_api.get_bottom_id_by_top_id_pod_name(
-            ctx, t_network_id, b_pod_name, constants.RT_NETWORK)
+        b_region_name = b_pod['region_name']
+        b_client = self._get_client(region_name=b_region_name)
+        b_network_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_network_id, b_region_name, constants.RT_NETWORK)
         # name is not allowed to be updated, because it is used by
         # lock_handle to retrieve bottom/local resources that have been
         # created but not registered in the resource routing table
@@ -820,4 +822,4 @@ class XManager(PeriodicTasks):
         except q_cli_exceptions.NotFound:
             LOG.error(_LE('network: %(net_id)s not found,'
                           'pod name: %(name)s'),
-                      {'net_id': b_network_id, 'name': b_pod_name})
+                      {'net_id': b_network_id, 'name': b_region_name})

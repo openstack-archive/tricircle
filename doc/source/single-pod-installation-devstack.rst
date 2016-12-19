@@ -68,12 +68,12 @@ installing DevStack in virtual machine.
   step 7::
 
       curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
-          -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "CentralRegion"}}'
+          -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "CentralRegion"}}'
 
       curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
-          -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne", "az_name": "az1"}}'
+          -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
 
-  Pay attention to "pod_name" parameter we specify when creating pod. Pod name
+  Pay attention to "region_name" parameter we specify when creating pod. Pod name
   should exactly match the region name registered in Keystone. In the above
   commands, we create pods named "CentralRegion" and "RegionOne".
 

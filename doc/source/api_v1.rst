@@ -58,18 +58,14 @@ following table.
 +===========+=======+===============+=====================================================+
 |pod_id     |body   | string        |pod_id is a uuid attribute of the pod object.        |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_name   |body   | string        |pod_name is specified by user but must match the     |
-|           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |pod for local Neutron, the Tricircle automatically   |
-|           |       |               |creates a host aggregation and assigns the new       |
-|           |       |               |availability zone id to it.                          |
+|region_name|body   | string        |region_name is specified by user but must match the  |
+|           |       |               |region name registered in Keystone.                  |
 +-----------+-------+---------------+-----------------------------------------------------+
 |az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
-|           |       |               |central Neutron, no host aggregation will be         |
-|           |       |               |generated. If az_name is not empty, it means the pod |
-|           |       |               |will belong to this availability zone. Multiple pods |
-|           |       |               |with the same az_name means that these pods are under|
-|           |       |               |the same availability zone.                          |
+|           |       |               |central Neutron. If az_name is not empty, it means   |
+|           |       |               |the pod will belong to this availability zone.       |
+|           |       |               |Multiple pods with the same az_name means that these |
+|           |       |               |pods are under the same availability zone.           |
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
 |           |       |               |Neutron when creating network, router objects. It    |
@@ -97,21 +93,21 @@ This is an example of response information for GET /pods.
                 "pod_az_name": "",
                 "pod_id": "1a51bee7-10f0-47e8-bb4a-70f51394069c",
                 "az_name": "",
-                "pod_name": "RegionOne"
+                "region_name": "RegionOne"
             },
             {
                 "dc_name": "",
                 "pod_az_name": "",
                 "pod_id": "22cca6ad-b791-4805-af14-923c5224fcd2",
                 "az_name": "az2",
-                "pod_name": "Pod2"
+                "region_name": "Pod2"
             },
             {
                 "dc_name": "",
                 "pod_az_name": "",
                 "pod_id": "3c22e5d4-5fed-45ed-a1e9-d532668cedc2",
                 "az_name": "az1",
-                "pod_name": "Pod1"
+                "region_name": "Pod1"
             }
         ]
     }
@@ -144,18 +140,14 @@ All of its attributes are described in the following table.
 +===========+=======+===============+=====================================================+
 |pod_id     |body   | string        |pod_id is a uuid attribute of the pod object.        |
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_name   |body   | string        |pod_name is specified by user but must match the     |
-|           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |pod for local Neutron, the Tricircle automatically   |
-|           |       |               |creates a host aggregation and assigns the new       |
-|           |       |               |availability zone id to it.                          |
+|region_name|body   | string        |region_name is specified by user but must match the  |
+|           |       |               |region name registered in Keystone.                  |
 +-----------+-------+---------------+-----------------------------------------------------+
 |az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
-|           |       |               |central Neutron, no host aggregation will be         |
-|           |       |               |generated. If az_name is not empty, it means the pod |
-|           |       |               |will belong to this availability zone. Multiple pods |
-|           |       |               |with the same az_name means that these pods are under|
-|           |       |               |the same availability zone.                          |
+|           |       |               |central Neutron. If az_name is not empty, it means   |
+|           |       |               |the pod will belong to this availability zone.       |
+|           |       |               |Multiple pods with the same az_name means that these |
+|           |       |               |pods are under the same availability zone.           |
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
 |           |       |               |Neutron when creating network, router objects. It    |
@@ -182,7 +174,7 @@ This is an example of response information for GET /pods/{pod_id}.
             "pod_az_name": "",
             "pod_id": "3c22e5d4-5fed-45ed-a1e9-d532668cedc2",
             "az_name": "az1",
-            "pod_name": "Pod1"
+            "region_name": "Pod1"
         }
     }
 
@@ -202,18 +194,14 @@ in the following table.
 +-----------+-------+---------------+-----------------------------------------------------+
 |Name       |In     |   Type        |    Description                                      |
 +===========+=======+===============+=====================================================+
-|pod_name   |body   | string        |pod_name is specified by user but must match the     |
-|           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |pod for local Neutron, the Tricircle automatically   |
-|           |       |               |creates a host aggregation and assigns the new       |
-|           |       |               |availability zone id to it.                          |
+|region_name|body   | string        |region_name is specified by user but must match the  |
+|           |       |               |region name registered in Keystone.                  |
 +-----------+-------+---------------+-----------------------------------------------------+
 |az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
-|           |       |               |central Neutron, no host aggregation will be         |
-|           |       |               |generated. If az_name is not empty, it means the pod |
-|           |       |               |will belong to this availability zone. Multiple pods |
-|           |       |               |with the same az_name means that these pods are under|
-|           |       |               |the same availability zone.                          |
+|           |       |               |central Neutron. If az_name is not empty, it means   |
+|           |       |               |the pod will belong to this availability zone.       |
+|           |       |               |Multiple pods with the same az_name means that these |
+|           |       |               |pods are under the same availability zone.           |
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
 |           |       |               |Neutron when creating network, router objects. It    |
@@ -238,18 +226,14 @@ are listed below.
 +===========+=======+===============+=====================================================+
 |pod_id     |body   | string        |pod_id is automatically generated when creating a pod|
 +-----------+-------+---------------+-----------------------------------------------------+
-|pod_name   |body   | string        |pod_name is specified by user but must match the     |
-|           |       |               |region name registered in Keystone. When creating a  |
-|           |       |               |pod for local Neutron, the Tricircle automatically   |
-|           |       |               |creates a host aggregation and assigns the new       |
-|           |       |               |availability zone id to it.                          |
+|region_name|body   | string        |region_name is specified by user but must match the  |
+|           |       |               |region name registered in Keystone.                  |
 +-----------+-------+---------------+-----------------------------------------------------+
 |az_name    |body   | string        |When az_name is empty, it means this is a pod for    |
-|           |       |               |central Neutron, no host aggregation will be         |
-|           |       |               |generated. If az_name is not empty, it means the pod |
-|           |       |               |will belong to this availability zone. Multiple pods |
-|           |       |               |with the same az_name means that these pods are under|
-|           |       |               |the same availability zone.                          |
+|           |       |               |central Neutron. If az_name is not empty, it means   |
+|           |       |               |the pod will belong to this availability zone.       |
+|           |       |               |Multiple pods with the same az_name means that these |
+|           |       |               |pods are under the same availability zone.           |
 +-----------+-------+---------------+-----------------------------------------------------+
 |pod_az_name|body   | string        |pod_az_name is the az name used in the pod for local |
 |           |       |               |Neutron when creating network, router objects. It    |
@@ -272,7 +256,7 @@ This is an example of request information for POST /pods.
 
     {
         "pod": {
-            "pod_name": "Pod3",
+            "region_name": "Pod3",
             "az_name": "az1",
             "pod_az_name": "az1",
             "dc_name": "data center 1"
@@ -291,7 +275,7 @@ This is an example of response information for POST /pods.
             "pod_az_name": "az1",
             "pod_id": "e02e03b8-a94f-4eb1-991e-a8a271cc2313",
             "az_name": "az1",
-            "pod_name": "Pod3"
+            "region_name": "Pod3"
         }
     }
 
@@ -317,235 +301,6 @@ Normal Response Code: 200
 
 There is no response. But we can list all the pods to verify whether the
 specific pod has been deleted or not.
-
-Pod Binding
-===========
-A pod binding represents a mapping relationship between tenant and pod. Pods
-for local Neutron are classified into different categories. A tenant will be
-bound to different pod groups for different purposes. Only the pod for local
-Neutron could be bound with a tenant. Pod for central Neutron serves as the
-coordinator of networking automation across local Neutron servers.
-
-+------------------+------------+---------------------+-------------------------------------+
-|**GET**           |/bindings   |                     |Retrieve Pod Binding List            |
-+------------------+------------+---------------------+-------------------------------------+
-
-This fetches all the pod bindings.
-
-Normal Response Code: 200
-
-**Response**
-
-Pod bindings contain one or more binding instances whose attributes
-are listed in the following table.
-
-+-------------+-------+---------------+-----------------------------------------------------+
-|Name         |In     |   Type        |    Description                                      |
-+=============+=======+===============+=====================================================+
-|tenant_id    |body   | string        |tenant_id is automatically generated when adding a   |
-|             |       |               |uuid of a project object in KeyStone. "Tenant" is an |
-|             |       |               |old term for a project in Keystone. Starting in API  |
-|             |       |               |version 3, "project" is the preferred term.          |
-|             |       |               |Accordingly, project_id is used instead of tenant_id.|
-+-------------+-------+---------------+-----------------------------------------------------+
-|pod_id       |body   | string        |pod_id is a uuid attribute of the pod object.        |
-+-------------+-------+---------------+-----------------------------------------------------+
-|id           |body   | string        |id is a uuid attribute of the pod binding. It is     |
-|             |       |               |automatically generated when new binding relation    |
-|             |       |               |happens between tenant and pod.                      |
-+-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | timestamp     |created time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-
-**Response Example**
-
-This is an example of response information for GET /bindings.
-
-::
-
-    {
-        "pod_bindings": [
-            {
-                "updated_at": null,
-                "tenant_id": "1782b3310f144836aa73c1ac5117d8da",
-                "created_at": "2016-06-03 07:37:50",
-                "id": "6ba7510c-baeb-44ad-8815-c4d229b52e46",
-                "pod_id": "22cca6ad-b791-4805-af14-923c5224fcd2"
-            },
-            {
-                "updated_at": null,
-                "tenant_id": "1782b3310f144836aa73c1ac5117d8da",
-                "created_at": "2016-06-03 07:37:06",
-                "id": "f0a54f30-6208-499d-b087-0ac64f6f2756",
-                "pod_id": "3c22e5d4-5fed-45ed-a1e9-d532668cedc2"
-            }
-       ]
-    }
-
-
-+------------------+---------------+-------------+---------------------------------------+
-|**GET**           |/bindings/{id} |             |Retrieve a Single Pod Binding          |
-+------------------+---------------+-------------+---------------------------------------+
-
-This fetches a single pod binding.
-
-Normal Response Code: 200
-
-**Request**
-
-+-------------+-------+---------------+-----------------------------------------------------+
-|Name         |In     |   Type        |    Description                                      |
-+=============+=======+===============+=====================================================+
-|id           |path   | string        |id is a uuid attribute of the pod binding. It is     |
-|             |       |               |automatically generated when new binding relation    |
-|             |       |               |happens between tenant and pod.                      |
-+-------------+-------+---------------+-----------------------------------------------------+
-
-**Response**
-
-Pod binding represents a mapping relationship between tenant and pod. All
-of its attributes are described in the following table.
-
-+-------------+-------+---------------+-----------------------------------------------------+
-|Name         |In     |   Type        |    Description                                      |
-+=============+=======+===============+=====================================================+
-|tenant_id    |body   | string        |tenant_id is automatically generated when adding a   |
-|             |       |               |uuid of a project object in KeyStone. "Tenant" is an |
-|             |       |               |old term for a project in Keystone. Starting in API  |
-|             |       |               |version 3, "project" is the preferred term.          |
-|             |       |               |Accordingly, project_id is used instead of tenant_id.|
-+-------------+-------+---------------+-----------------------------------------------------+
-|pod_id       |body   | string        |pod_id is a uuid attribute of the pod object.        |
-+-------------+-------+---------------+-----------------------------------------------------+
-|id           |body   | string        |id is a uuid attribute of the pod binding. It is     |
-|             |       |               |automatically generated when new binding relation    |
-|             |       |               |happens between tenant and pod.                      |
-+-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | timestamp     |created time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-
-**Response Example**
-
-This is an example of response information for GET /bindings/{id}.
-
-::
-
-    {
-        "pod_binding": {
-            "updated_at": null,
-            "tenant_id": "1782b3310f144836aa73c1ac5117d8da",
-            "created_at": "2016-06-03 07:37:06",
-            "id": "f0a54f30-6208-499d-b087-0ac64f6f2756",
-            "pod_id": "3c22e5d4-5fed-45ed-a1e9-d532668cedc2"
-        }
-    }
-
-
-+---------------+-----------+--------------------+------------------------------------------+
-|**POST**       |/bindings  |                    |Create a Pod Binding                      |
-+---------------+-----------+--------------------+------------------------------------------+
-
-This creates a pod binding.
-
-Normal Response Code: 200
-
-**Request**
-
-Some essential attributes of the pod binding instance are required and
-described in the following table.
-
-+-------------+-------+---------------+-----------------------------------------------------+
-|Name         |In     |   Type        |    Description                                      |
-+=============+=======+===============+=====================================================+
-|tenant_id    |body   | string        |tenant_id is automatically generated when adding a   |
-|             |       |               |uuid of a project object in KeyStone. "Tenant" is an |
-|             |       |               |old term for a project in Keystone. Starting in API  |
-|             |       |               |version 3, "project" is the preferred term.          |
-|             |       |               |Accordingly, project_id is used instead of tenant_id.|
-+-------------+-------+---------------+-----------------------------------------------------+
-|pod_id       |body   | string        |pod_id is a uuid attribute of the pod object.        |
-+-------------+-------+---------------+-----------------------------------------------------+
-
-**Response**
-
-An id is assigned to a pod binding instance when it is created, and some other
-attribute values are given meanwhile. All of its fields are listed below.
-
-+-------------+-------+---------------+-----------------------------------------------------+
-|Name         |In     |   Type        |    Description                                      |
-+=============+=======+===============+=====================================================+
-|tenant_id    |body   | string        |tenant_id is automatically generated when adding a   |
-|             |       |               |uuid of a project object in KeyStone. "Tenant" is an |
-|             |       |               |old term for a project in Keystone. Starting in API  |
-|             |       |               |version 3, "project" is the preferred term.          |
-|             |       |               |Accordingly, project_id is used instead of tenant_id.|
-+-------------+-------+---------------+-----------------------------------------------------+
-|pod_id       |body   | string        |pod_id is a uuid attribute of the pod object.        |
-+-------------+-------+---------------+-----------------------------------------------------+
-|id           |body   | string        |id is a uuid attribute of the pod binding. It is     |
-|             |       |               |automatically generated when new binding relation    |
-|             |       |               |happens between tenant and pod.                      |
-+-------------+-------+---------------+-----------------------------------------------------+
-|created_at   |body   | timestamp     |created time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-|updated_at   |body   | timestamp     |updated time of the pod binding.                     |
-+-------------+-------+---------------+-----------------------------------------------------+
-
-**Request Example**
-
-This is an example of request information for POST /bindings.
-
-::
-
-    {
-        "pod_binding": {
-            "tenant_id": "1782b3310f144836aa73c1ac5117d8da",
-            "pod_id": "e02e03b8-a94f-4eb1-991e-a8a271cc2313"
-        }
-    }
-
-**Response Example**
-
-This is an example of response information for POST /bindings.
-
-::
-
-    {
-        "pod_binding": {
-            "updated_at": null,
-            "tenant_id": "1782b3310f144836aa73c1ac5117d8da",
-            "created_at": "2016-08-18 14:06:33",
-            "id": "b17ac347-c898-4cea-a09d-7b0a6ec34f56",
-            "pod_id": "e02e03b8-a94f-4eb1-991e-a8a271cc2313"
-        }
-    }
-
-+---------------+----------------+---------------+------------------------------------------+
-|**DELETE**     |/bindings/{id}  |               |Delete a Pod Binding                      |
-+---------------+----------------+---------------+------------------------------------------+
-
-This deletes a pod binding.
-
-Normal Response Code: 200
-
-**Request**
-
-+-----------+-------+---------------+-----------------------------------------------------+
-|Name       |In     |   Type        |    Description                                      |
-+===========+=======+===============+=====================================================+
-|id         |path   | string        |id is a uuid attribute of the pod binding. It is     |
-|           |       |               |automatically generated when new binding relation    |
-|           |       |               |happens between tenant and pod.                      |
-+-----------+-------+---------------+-----------------------------------------------------+
-
-**Response**
-
-There is no response. But we can list all the pod bindings to verify
-whether the specific pod binding has been deleted or not.
 
 Resource Routing
 ================
@@ -953,4 +708,5 @@ from the database.
             "resource_type": "router"
         }
     }
+
 

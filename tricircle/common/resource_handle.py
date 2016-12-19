@@ -212,7 +212,6 @@ class NovaResourceHandle(ResourceHandle):
     service_type = cons.ST_NOVA
     support_resource = {'flavor': LIST,
                         'server': LIST | CREATE | DELETE | GET | ACTION,
-                        'aggregate': LIST | CREATE | DELETE | ACTION,
                         'server_volume': ACTION}
 
     def _get_client(self, cxt):

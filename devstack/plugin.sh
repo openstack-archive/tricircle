@@ -49,7 +49,7 @@ function init_common_tricircle_conf {
     iniset $conf_file client admin_password $ADMIN_PASSWORD
     iniset $conf_file client admin_tenant demo
     iniset $conf_file client auto_refresh_endpoint True
-    iniset $conf_file client top_pod_name $CENTRAL_REGION_NAME
+    iniset $conf_file client top_region_name $CENTRAL_REGION_NAME
 
     iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 }
@@ -115,7 +115,7 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client admin_password $ADMIN_PASSWORD
     iniset $NEUTRON_CONF.$server_index client admin_tenant demo
     iniset $NEUTRON_CONF.$server_index client auto_refresh_endpoint True
-    iniset $NEUTRON_CONF.$server_index client top_pod_name $CENTRAL_REGION_NAME
+    iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
 
     if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
         iniset $NEUTRON_CONF.$server_index tricircle type_drivers local,shared_vlan

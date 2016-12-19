@@ -45,7 +45,7 @@ client_opts = [
                 default=False,
                 help='if set to True, endpoint will be automatically'
                      'refreshed if timeout accessing endpoint'),
-    cfg.StrOpt('top_pod_name',
+    cfg.StrOpt('top_region_name',
                help='name of top pod which client needs to access'),
     cfg.StrOpt('admin_username',
                help='username of admin account, needed when'
@@ -167,14 +167,14 @@ class Client(object):
     you can call create_resources(self, resource, cxt, body) directly to create
     a network, or use create_networks(self, cxt, body) for short.
     """
-    def __init__(self, pod_name=None):
+    def __init__(self, region_name=None):
         self.auth_url = cfg.CONF.client.auth_url
         self.resource_service_map = {}
         self.operation_resources_map = collections.defaultdict(set)
         self.service_handle_map = {}
-        self.pod_name = pod_name
-        if not self.pod_name:
-            self.pod_name = cfg.CONF.client.top_pod_name
+        self.region_name = region_name
+        if not self.region_name:
+            self.region_name = cfg.CONF.client.top_region_name
         for _, handle_class in inspect.getmembers(resource_handle):
             if not inspect.isclass(handle_class):
                 continue
@@ -238,7 +238,7 @@ class Client(object):
         return region_service_endpoint_map
 
     def _get_config_with_retry(self, cxt, filters, pod, service, retry):
-        conf_list = api.list_pod_service_configurations(cxt, filters)
+        conf_list = api.list_cached_endpoints(cxt, filters)
         if len(conf_list) == 0:
             if not retry:
                 raise exceptions.EndpointNotFound(pod, service)
@@ -250,14 +250,14 @@ class Client(object):
     def _ensure_endpoint_set(self, cxt, service):
         handle = self.service_handle_map[service]
         if not handle.is_endpoint_url_set():
-            pod_filters = [{'key': 'pod_name',
+            pod_filters = [{'key': 'region_name',
                             'comparator': 'eq',
-                            'value': self.pod_name}]
+                            'value': self.region_name}]
             pod_list = api.list_pods(cxt, pod_filters)
             if len(pod_list) == 0:
                 raise exceptions.ResourceNotFound(models.Pod,
-                                                  self.pod_name)
-            # pod_name is unique key, safe to get the first element
+                                                  self.region_name)
+            # region_name is unique key, safe to get the first element
             pod_id = pod_list[0]['pod_id']
             config_filters = [
                 {'key': 'pod_id', 'comparator': 'eq', 'value': pod_id},
@@ -287,7 +287,7 @@ class Client(object):
 
         for region in endpoint_map:
             # use region name to query pod
-            pod_filters = [{'key': 'pod_name', 'comparator': 'eq',
+            pod_filters = [{'key': 'region_name', 'comparator': 'eq',
                             'value': region}]
             pod_list = api.list_pods(cxt, pod_filters)
             # skip region/pod not registered in cascade service
@@ -299,7 +299,7 @@ class Client(object):
                                    'value': pod_id},
                                   {'key': 'service_type', 'comparator': 'eq',
                                    'value': service}]
-                config_list = api.list_pod_service_configurations(
+                config_list = api.list_cached_endpoints(
                     cxt, config_filters)
 
                 if len(config_list) > 1:
@@ -308,7 +308,7 @@ class Client(object):
                     config_id = config_list[0]['service_id']
                     update_dict = {
                         'service_url': endpoint_map[region][service]}
-                    api.update_pod_service_configuration(
+                    api.update_cached_endpoints(
                         cxt, config_id, update_dict)
                 else:
                     config_dict = {
@@ -317,7 +317,7 @@ class Client(object):
                         'service_type': service,
                         'service_url': endpoint_map[region][service]
                     }
-                    api.create_pod_service_configuration(
+                    api.create_cached_endpoints(
                         cxt, config_dict)
 
     def get_endpoint(self, cxt, pod_id, service):

@@ -78,7 +78,7 @@ Installation with Central Neutron Server
    [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
    [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
    [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
-   [client] top_pod_name, "name of central region which client needs to access", CentralRegion
+   [client] top_region_name, "name of central region which client needs to access", CentralRegion
    [client] admin_username, "username of admin account", admin
    [client] admin_password, "password of admin account", password
    [client] admin_tenant, "project name of admin account", demo
@@ -118,7 +118,7 @@ Installation with Central Neutron Server
    [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
    [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
    [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
-   [client] top_pod_name, "name of central region which client needs to access", CentralRegion
+   [client] top_region_name, "name of central region which client needs to access", CentralRegion
    [client] admin_username, "username of admin account", admin
    [client] admin_password, "password of admin account", password
    [client] admin_tenant, "project name of admin account", demo
@@ -161,7 +161,7 @@ Installation with Central Neutron Server
      [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
      [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
-     [client] top_pod_name, "name of central region which client needs to access", CentralRegion
+     [client] top_region_name, "name of central region which client needs to access", CentralRegion
      [client] admin_username, "username of admin account", admin
      [client] admin_password, "password of admin account", password
      [client] admin_tenant, "project name of admin account", demo
@@ -211,7 +211,7 @@ Installation with Local Neutron Server
      [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
      [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
-     [client] top_pod_name, "name of central region which client needs to access", CentralRegion
+     [client] top_region_name, "name of central region which client needs to access", CentralRegion
      [client] admin_username, "username of admin account", admin
      [client] admin_password, "password of admin account", password
      [client] admin_tenant, "project name of admin account", demo

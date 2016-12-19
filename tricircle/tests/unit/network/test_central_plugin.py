@@ -52,7 +52,6 @@ from oslo_utils import uuidutils
 from tricircle.common import client
 from tricircle.common import constants
 from tricircle.common import context
-from tricircle.common import exceptions
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
@@ -238,12 +237,12 @@ class FakeNeutronClient(object):
                 'pod_1': {'port': BOTTOM1_PORTS},
                 'pod_2': {'port': BOTTOM2_PORTS}}
 
-    def __init__(self, pod_name):
-        self.pod_name = pod_name
+    def __init__(self, region_name):
+        self.region_name = region_name
         self.ports_path = ''
 
     def _get(self, params=None):
-        port_list = self._res_map[self.pod_name]['port']
+        port_list = self._res_map[self.region_name]['port']
 
         if not params:
             return {'ports': port_list}
@@ -267,11 +266,11 @@ class FakeNeutronClient(object):
         return {'ports': port_list}
 
     def get(self, path, params=None):
-        if self.pod_name in ['pod_1', 'pod_2', 'top']:
+        if self.region_name in ['pod_1', 'pod_2', 'top']:
             res_list = self._get(params)['ports']
             return_list = []
             for res in res_list:
-                if self.pod_name != 'top':
+                if self.region_name != 'top':
                     res = copy.copy(res)
                 return_list.append(res)
             return {'ports': return_list}
@@ -295,12 +294,12 @@ class FakeClient(object):
                           'security_group': BOTTOM2_SGS,
                           'floatingip': BOTTOM2_FIPS}}
 
-    def __init__(self, pod_name):
-        if not pod_name:
-            self.pod_name = 'top'
+    def __init__(self, region_name):
+        if not region_name:
+            self.region_name = 'top'
         else:
-            self.pod_name = pod_name
-        self.client = FakeNeutronClient(self.pod_name)
+            self.region_name = region_name
+        self.client = FakeNeutronClient(self.region_name)
 
     def get_native_client(self, resource, ctx):
         return self.client
@@ -310,7 +309,7 @@ class FakeClient(object):
         pass
 
     def _allocate_ip(self, port_body):
-        subnet_list = self._res_map[self.pod_name]['subnet']
+        subnet_list = self._res_map[self.region_name]['subnet']
         for subnet in subnet_list:
             if subnet['network_id'] == port_body['port']['network_id']:
                 cidr = subnet['cidr']
@@ -320,7 +319,7 @@ class FakeClient(object):
 
     def create_resources(self, _type, ctx, body):
         if _type == 'port':
-            res_list = self._res_map[self.pod_name][_type]
+            res_list = self._res_map[self.region_name][_type]
             subnet_ips_map = {}
             for res in res_list:
                 fixed_ips = res.get('fixed_ips', [])
@@ -331,7 +330,7 @@ class FakeClient(object):
                         fixed_ip['ip_address'])
             fixed_ips = body[_type].get('fixed_ips', [])
             for fixed_ip in fixed_ips:
-                for subnet in self._res_map[self.pod_name]['subnet']:
+                for subnet in self._res_map[self.region_name]['subnet']:
                     ip_range = netaddr.IPNetwork(subnet['cidr'])
                     ip = netaddr.IPAddress(fixed_ip['ip_address'])
                     if ip in ip_range:
@@ -350,16 +349,16 @@ class FakeClient(object):
                 body[_type]['gateway_ip'] = cidr[:cidr.rindex('.')] + '.1'
         if 'id' not in body[_type]:
             body[_type]['id'] = uuidutils.generate_uuid()
-        res_list = self._res_map[self.pod_name][_type]
+        res_list = self._res_map[self.region_name][_type]
         res = dict(body[_type])
         res_list.append(res)
         return res
 
     def list_resources(self, _type, ctx, filters=None):
-        if self.pod_name == 'top':
-            res_list = self._res_map[self.pod_name][_type + 's']
+        if self.region_name == 'top':
+            res_list = self._res_map[self.region_name][_type + 's']
         else:
-            res_list = self._res_map[self.pod_name][_type]
+            res_list = self._res_map[self.region_name][_type]
         ret_list = []
         for res in res_list:
             is_selected = True
@@ -376,10 +375,10 @@ class FakeClient(object):
 
     def delete_resources(self, _type, ctx, _id):
         index = -1
-        if self.pod_name == 'top':
-            res_list = self._res_map[self.pod_name][_type + 's']
+        if self.region_name == 'top':
+            res_list = self._res_map[self.region_name][_type + 's']
         else:
-            res_list = self._res_map[self.pod_name][_type]
+            res_list = self._res_map[self.region_name][_type]
         for i, res in enumerate(res_list):
             if res['id'] == _id:
                 index = i
@@ -388,7 +387,7 @@ class FakeClient(object):
 
     def list_networks(self, ctx, filters=None):
         networks = self.list_resources('network', ctx, filters)
-        if self.pod_name != 'top':
+        if self.region_name != 'top':
             return networks
         ret_list = []
         for network in networks:
@@ -405,7 +404,7 @@ class FakeClient(object):
 
     def update_networks(self, ctx, net_id, network):
         net_data = network[neutron_attributes.NETWORK]
-        if self.pod_name == 'pod_1':
+        if self.region_name == 'pod_1':
             bottom_nets = BOTTOM1_NETS
         else:
             bottom_nets = BOTTOM2_NETS
@@ -465,7 +464,7 @@ class FakeClient(object):
 
         router_id, body = args
         if 'port_id' in body:
-            for port in self._res_map[self.pod_name]['port']:
+            for port in self._res_map[self.region_name]['port']:
                 if port['id'] == body['port_id']:
                     port['device_id'] = router_id
                     port['device_owner'] = 'network:router_interface'
@@ -531,7 +530,7 @@ class FakeClient(object):
 
     def create_security_group_rules(self, ctx, body):
         sg_id = body['security_group_rule']['security_group_id']
-        res_list = self._res_map[self.pod_name]['security_group']
+        res_list = self._res_map[self.region_name]['security_group']
         for sg in res_list:
             if sg['id'] == sg_id:
                 target_sg = sg
@@ -547,7 +546,7 @@ class FakeClient(object):
         target_sg['security_group_rules'].append(body['security_group_rule'])
 
     def delete_security_group_rules(self, ctx, rule_id):
-        res_list = self._res_map[self.pod_name]['security_group']
+        res_list = self._res_map[self.region_name]['security_group']
         for sg in res_list:
             for rule in sg['security_group_rules']:
                 if rule['id'] == rule_id:
@@ -555,7 +554,7 @@ class FakeClient(object):
                     return
 
     def get_security_groups(self, ctx, sg_id):
-        res_list = self._res_map[self.pod_name]['security_group']
+        res_list = self._res_map[self.region_name]['security_group']
         for sg in res_list:
             if sg['id'] == sg_id:
                 # need to do a deep copy because we will traverse the security
@@ -897,8 +896,8 @@ class FakeBaseManager(xmanager.XManager):
             constants.JT_PORT_DELETE: self.delete_server_port}
         self.helper = FakeHelper(fake_plugin)
 
-    def _get_client(self, pod_name=None):
-        return FakeClient(pod_name)
+    def _get_client(self, region_name=None):
+        return FakeClient(region_name)
 
 
 class FakeXManager(FakeBaseManager):
@@ -939,8 +938,8 @@ class FakeExtension(object):
 
 
 class FakeHelper(helper.NetworkHelper):
-    def _get_client(self, pod_name=None):
-        return FakeClient(pod_name)
+    def _get_client(self, region_name=None):
+        return FakeClient(region_name)
 
     def _prepare_top_element_by_call(self, t_ctx, q_ctx,
                                      project_id, pod, ele, _type, body):
@@ -987,8 +986,8 @@ class FakePlugin(plugin.TricirclePlugin):
         self.xjob_handler = FakeRPCAPI(self)
         self.type_manager = FakeTypeManager()
 
-    def _get_client(self, pod_name):
-        return FakeClient(pod_name)
+    def _get_client(self, region_name):
+        return FakeClient(region_name)
 
     def _make_network_dict(self, network, fields=None,
                            process_extensions=True, context=None):
@@ -1033,8 +1032,8 @@ def fake_get_context_from_neutron_context(q_context):
     return context.get_db_context()
 
 
-def fake_get_client(self, pod_name):
-    return FakeClient(pod_name)
+def fake_get_client(self, region_name):
+    return FakeClient(region_name)
 
 
 def fake_make_network_dict(self, network, fields=None,
@@ -1112,6 +1111,8 @@ class PluginTest(unittest.TestCase,
                               group='tricircle')
         cfg.CONF.set_override('bridge_network_type', 'shared_vlan',
                               group='tricircle')
+        cfg.CONF.set_override('default_region_for_external_network',
+                              'pod_1', group='tricircle')
         for vlan in (vlan_min, vlan_max):
             TOP_VLANALLOCATIONS.append(
                 DotDict({'physical_network': phynet,
@@ -1119,13 +1120,13 @@ class PluginTest(unittest.TestCase,
 
     def _basic_pod_route_setup(self):
         pod1 = {'pod_id': 'pod_id_1',
-                'pod_name': 'pod_1',
+                'region_name': 'pod_1',
                 'az_name': 'az_name_1'}
         pod2 = {'pod_id': 'pod_id_2',
-                'pod_name': 'pod_2',
+                'region_name': 'pod_2',
                 'az_name': 'az_name_2'}
         pod3 = {'pod_id': 'pod_id_0',
-                'pod_name': 'top_pod',
+                'region_name': 'top_pod',
                 'az_name': ''}
         for pod in (pod1, pod2, pod3):
             db_api.create_pod(self.context, pod)
@@ -1463,7 +1464,7 @@ class PluginTest(unittest.TestCase,
         # test _prepare_bottom_element
         _, b_port_id, _, _ = fake_plugin._get_bottom_bridge_elements(
             q_ctx, 'project_id', b_pod, net, False, subnet, port)
-        b_port = fake_plugin._get_client(b_pod['pod_name']).get_ports(
+        b_port = fake_plugin._get_client(b_pod['region_name']).get_ports(
             t_ctx, b_port_id)
 
         bottom_entry_map = {}
@@ -1483,7 +1484,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(bottom_entry_map['port']['bottom_id'], b_port_id)
 
     @staticmethod
-    def _prepare_network_test(tenant_id, ctx, pod_name, index):
+    def _prepare_network_test(tenant_id, ctx, region_name, index):
         t_net_id = uuidutils.generate_uuid()
         t_subnet_id = uuidutils.generate_uuid()
         b_net_id = uuidutils.generate_uuid()
@@ -1542,14 +1543,14 @@ class PluginTest(unittest.TestCase,
             'ipv6_ra_mode': '',
             'tenant_id': tenant_id
         }
-        if pod_name == 'pod_1':
+        if region_name == 'pod_1':
             BOTTOM1_NETS.append(DotDict(b_net))
             BOTTOM1_SUBNETS.append(DotDict(b_subnet))
         else:
             BOTTOM2_NETS.append(DotDict(b_net))
             BOTTOM2_SUBNETS.append(DotDict(b_subnet))
 
-        pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
+        pod_id = 'pod_id_1' if region_name == 'pod_1' else 'pod_id_2'
         core.create_resource(ctx, models.ResourceRouting,
                              {'top_id': t_net_id,
                               'bottom_id': b_net_id,
@@ -1564,9 +1565,9 @@ class PluginTest(unittest.TestCase,
                               'resource_type': constants.RT_SUBNET})
         return t_net_id, t_subnet_id, b_net_id, b_subnet_id
 
-    def _prepare_router_test(self, tenant_id, ctx, pod_name, index):
+    def _prepare_router_test(self, tenant_id, ctx, region_name, index):
         (t_net_id, t_subnet_id, b_net_id,
-         b_subnet_id) = self._prepare_network_test(tenant_id, ctx, pod_name,
+         b_subnet_id) = self._prepare_network_test(tenant_id, ctx, region_name,
                                                    index)
 
         if len(TOP_ROUTERS) == 0:
@@ -1733,7 +1734,7 @@ class PluginTest(unittest.TestCase,
         fake_plugin.add_router_interface(
             q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
 
-        b_router_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_router_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_router_id, 'pod_1', 'router')
 
         mock_rpc.assert_called_once_with(t_ctx, t_router_id)
@@ -1767,9 +1768,9 @@ class PluginTest(unittest.TestCase,
         for subnet in TOP_SUBNETS:
             if subnet['name'].startswith('ns_bridge'):
                 t_ns_bridge_subnet_id = subnet['id']
-        b_ns_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_ns_bridge_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_ns_bridge_net_id, 'pod_1', constants.RT_NETWORK)
-        b_ns_bridge_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_ns_bridge_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_ns_bridge_subnet_id, 'pod_1', constants.RT_SUBNET)
         # internal network and external network are in different pods, need
         # to create N-S bridge network and set gateway, add_router_interface
@@ -1809,7 +1810,7 @@ class PluginTest(unittest.TestCase,
         fake_plugin.add_router_interface(
             q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
 
-        b_router_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_router_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_router_id, 'pod_2', 'router')
         bridge_port_name = constants.ew_bridge_port_name % (tenant_id,
                                                             b_router_id)
@@ -2000,16 +2001,6 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         mock_context.return_value = t_ctx
 
-        # create external network specifying az name
-        body = {
-            'network': {
-                'router:external': True,
-                'tenant_id': TEST_TENANT_ID,
-                'availability_zone_hints': ['az_name_1']
-            }
-        }
-        self.assertRaises(exceptions.PodNotFound,
-                          fake_plugin.create_network, q_ctx, body)
         body = {
             'network': {
                 'name': 'ext-net',
@@ -2092,15 +2083,15 @@ class PluginTest(unittest.TestCase,
                                         'ip_address': '100.64.0.5'}]}}})
 
         b_router_id = BOTTOM1_ROUTERS[0]['id']
-        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_net_id, 'pod_1', constants.RT_NETWORK)
-        b_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET)
 
         for subnet in TOP_SUBNETS:
             if subnet['name'].startswith('ns_bridge_subnet'):
                 t_ns_bridge_subnet_id = subnet['id']
-        b_ns_bridge_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_ns_bridge_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, t_ns_bridge_subnet_id, 'pod_1', constants.RT_SUBNET)
         body = {'network_id': b_net_id,
                 'enable_snat': False,
@@ -2241,11 +2232,11 @@ class PluginTest(unittest.TestCase,
         b_port = {
             'id': b_port_id,
             'name': t_port_id,
-            'network_id': db_api.get_bottom_id_by_top_id_pod_name(
+            'network_id': db_api.get_bottom_id_by_top_id_region_name(
                 t_ctx, t_net_id, 'pod_1', constants.RT_NETWORK),
             'mac_address': 'fa:16:3e:96:41:03',
             'fixed_ips': [
-                {'subnet_id': db_api.get_bottom_id_by_top_id_pod_name(
+                {'subnet_id': db_api.get_bottom_id_by_top_id_region_name(
                     t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET),
                  'ip_address': '10.0.0.4'}]
         }
@@ -2287,14 +2278,14 @@ class PluginTest(unittest.TestCase,
         fake_plugin.update_floatingip(q_ctx, fip['id'],
                                       {'floatingip': fip_body})
 
-        b_ext_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+        b_ext_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, e_net['id'], 'pod_2', constants.RT_NETWORK)
         for port in BOTTOM2_PORTS:
             if port['name'] == 'ns_bridge_port':
                 ns_bridge_port = port
         for net in TOP_NETS:
             if net['name'].startswith('ns_bridge'):
-                b_bridge_net_id = db_api.get_bottom_id_by_top_id_pod_name(
+                b_bridge_net_id = db_api.get_bottom_id_by_top_id_region_name(
                     t_ctx, net['id'], 'pod_1', constants.RT_NETWORK)
         calls = [mock.call(t_ctx,
                            {'floatingip': {
@@ -2376,8 +2367,8 @@ class PluginTest(unittest.TestCase,
         bridge_port_name = constants.ns_bridge_port_name % (
             e_net['tenant_id'], None, b_port_id)
         t_pod = db_api.get_top_pod(t_ctx)
-        mapping = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        mapping = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, bridge_port_name, t_pod['region_name'], constants.RT_PORT)
         # check routing for bridge port in top pod exists
         self.assertIsNotNone(mapping)
 
@@ -2392,8 +2383,8 @@ class PluginTest(unittest.TestCase,
         calls = [mock.call(t_ctx, fip_id1),
                  mock.call(t_ctx, fip_id2)]
         mock_delete.assert_has_calls(calls)
-        mapping = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        mapping = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, bridge_port_name, t_pod['region_name'], constants.RT_PORT)
         # check routing for bridge port in top pod is deleted
         self.assertIsNone(mapping)
 
@@ -2431,8 +2422,8 @@ class PluginTest(unittest.TestCase,
         bridge_port_name = constants.ns_bridge_port_name % (
             e_net['tenant_id'], None, b_port_id)
         t_pod = db_api.get_top_pod(t_ctx)
-        mapping = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        mapping = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, bridge_port_name, t_pod['region_name'], constants.RT_PORT)
         # check routing for bridge port in top pod exists
         self.assertIsNotNone(mapping)
 
@@ -2444,8 +2435,8 @@ class PluginTest(unittest.TestCase,
         calls = [mock.call(t_ctx, fip_id1),
                  mock.call(t_ctx, fip_id2)]
         mock_delete.assert_has_calls(calls)
-        mapping = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, bridge_port_name, t_pod['pod_name'], constants.RT_PORT)
+        mapping = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, bridge_port_name, t_pod['region_name'], constants.RT_PORT)
         # check routing for bridge port in top pod is deleted
         self.assertIsNone(mapping)
 

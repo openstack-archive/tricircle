@@ -61,69 +61,38 @@ def update_pod(context, pod_id, update_dict):
         return core.update_resource(context, models.Pod, pod_id, update_dict)
 
 
-def change_pod_binding(context, pod_binding, pod_id):
-    with context.session.begin():
-        core.update_resource(context, models.PodBinding,
-                             pod_binding['id'], pod_binding)
-        core.create_resource(context, models.PodBinding,
-                             {'id': uuidutils.generate_uuid(),
-                              'tenant_id': pod_binding['tenant_id'],
-                              'pod_id': pod_id,
-                              'is_binding': True})
-
-
-def get_pod_binding_by_tenant_id(context, filter_):
-    with context.session.begin():
-        return core.query_resource(context, models.PodBinding, filter_, [])
-
-
 def get_pod_by_pod_id(context, pod_id):
     with context.session.begin():
         return core.get_resource(context, models.Pod, pod_id)
 
 
-def create_pod_service_configuration(context, config_dict):
+def create_cached_endpoints(context, config_dict):
     with context.session.begin():
-        return core.create_resource(context, models.PodServiceConfiguration,
+        return core.create_resource(context, models.CachedEndpoint,
                                     config_dict)
 
 
-def create_pod_binding(context, tenant_id, pod_id):
+def delete_cached_endpoints(context, config_id):
     with context.session.begin():
-        return core.create_resource(context, models.PodBinding,
-                                    {'id': uuidutils.generate_uuid(),
-                                     'tenant_id': tenant_id,
-                                     'pod_id': pod_id,
-                                     'is_binding': True})
-
-
-def list_pod_bindings(context, filters=None, sorts=None):
-    with context.session.begin():
-        return core.query_resource(context, models.PodBinding,
-                                   filters or [], sorts or [])
-
-
-def delete_pod_service_configuration(context, config_id):
-    with context.session.begin():
-        return core.delete_resource(context, models.PodServiceConfiguration,
+        return core.delete_resource(context, models.CachedEndpoint,
                                     config_id)
 
 
-def get_pod_service_configuration(context, config_id):
+def get_cached_endpoints(context, config_id):
     with context.session.begin():
-        return core.get_resource(context, models.PodServiceConfiguration,
+        return core.get_resource(context, models.CachedEndpoint,
                                  config_id)
 
 
-def list_pod_service_configurations(context, filters=None, sorts=None):
-    return core.query_resource(context, models.PodServiceConfiguration,
+def list_cached_endpoints(context, filters=None, sorts=None):
+    return core.query_resource(context, models.CachedEndpoint,
                                filters or [], sorts or [])
 
 
-def update_pod_service_configuration(context, config_id, update_dict):
+def update_cached_endpoints(context, config_id, update_dict):
     with context.session.begin():
         return core.update_resource(
-            context, models.PodServiceConfiguration, config_id, update_dict)
+            context, models.CachedEndpoint, config_id, update_dict)
 
 
 def create_resource_mapping(context, top_id, bottom_id, pod_id, project_id,
@@ -207,18 +176,19 @@ def delete_pre_created_resource_mapping(context, name):
                                  entries[0]['id'])
 
 
-def get_bottom_id_by_top_id_pod_name(context, top_id, pod_name, resource_type):
+def get_bottom_id_by_top_id_region_name(context, top_id,
+                                        region_name, resource_type):
     """Get resource bottom id by top id and bottom pod name
 
     :param context: context object
     :param top_id: resource id on top
-    :param pod_name: name of bottom pod
+    :param region_name: name of bottom pod
     :param resource_type: resource type
     :return:
     """
     mappings = get_bottom_mappings_by_top_id(context, top_id, resource_type)
     for pod, bottom_id in mappings:
-        if pod['pod_name'] == pod_name:
+        if pod['region_name'] == region_name:
             return bottom_id
     return None
 
@@ -290,24 +260,56 @@ def get_top_pod(context):
 
     # only one should be searched
     for pod in pods:
-        if (pod['pod_name'] != '') and \
+        if (pod['region_name'] != '') and \
                 (pod['az_name'] == ''):
             return pod
 
     return None
 
 
-def get_pod_by_name(context, pod_name):
+def get_pod_by_name(context, region_name):
 
-    filters = [{'key': 'pod_name', 'comparator': 'eq', 'value': pod_name}]
+    filters = [{'key': 'region_name',
+                'comparator': 'eq', 'value': region_name}]
     pods = list_pods(context, filters=filters)
 
     # only one should be searched
     for pod in pods:
-        if pod['pod_name'] == pod_name:
+        if pod['region_name'] == region_name:
             return pod
 
     return None
+
+
+def find_pod_by_az(context, az_name):
+    # if az_name is None or empty, returning None value directly.
+    if az_name is None or az_name == '':
+        return None
+
+    # if the az_name is not empty, first match it with the region_name in the
+    # pod table, if no pod is found, then match it with az_name
+    filters = [{'key': 'region_name',
+                'comparator': 'eq', 'value': az_name}]
+    pods = list_pods(context, filters=filters)
+    if pods:
+        return pods[0]
+
+    # if no pod with the same region_name is found, then match
+    # it with az_name
+    filters = [{'key': 'az_name',
+                'comparator': 'eq', 'value': az_name}]
+    pods = list_pods(context, filters=filters)
+    # if no pod is matched, then we will raise an exception
+    if len(pods) < 1:
+        raise exceptions.PodNotFound(az_name)
+    # if the pods list only contain one pod, then this pod will be
+    # returned back
+    if len(pods) == 1:
+        return pods[0]
+    # if the pods list contains more than one pod, then we will raise an
+    # exception
+    if len(pods) > 1:
+        raise Exception('Multiple pods with the same az_name are found')
 
 
 def new_job(context, _type, resource_id):
@@ -317,7 +319,8 @@ def new_job(context, _type, resource_id):
                     'status': constants.JS_New,
                     'resource_id': resource_id,
                     'extra_id': uuidutils.generate_uuid()}
-        job = core.create_resource(context, models.Job, job_dict)
+        job = core.create_resource(context,
+                                   models.AsyncJob, job_dict)
         return job
 
 
@@ -329,7 +332,8 @@ def register_job(context, _type, resource_id):
                     'status': constants.JS_Running,
                     'resource_id': resource_id,
                     'extra_id': constants.SP_EXTRA_ID}
-        job = core.create_resource(context, models.Job, job_dict)
+        job = core.create_resource(context,
+                                   models.AsyncJob, job_dict)
         context.session.commit()
         return job
     except db_exc.DBDuplicateEntry:
@@ -344,15 +348,17 @@ def register_job(context, _type, resource_id):
 
 def get_latest_failed_jobs(context):
     jobs = []
-    query = context.session.query(models.Job.type, models.Job.resource_id,
-                                  sql.func.count(models.Job.id))
-    query = query.group_by(models.Job.type, models.Job.resource_id)
+    query = context.session.query(models.AsyncJob.type,
+                                  models.AsyncJob.resource_id,
+                                  sql.func.count(models.AsyncJob.id))
+    query = query.group_by(models.AsyncJob.type, models.AsyncJob.resource_id)
     for job_type, resource_id, count in query:
-        _query = context.session.query(models.Job)
+        _query = context.session.query(models.AsyncJob)
         _query = _query.filter_by(type=job_type, resource_id=resource_id)
         _query = _query.order_by(sql.desc('timestamp'))
-        # when timestamps of job entries are the same, sort entries by status
-        # so "Fail" job is placed before "New" and "Success" jobs
+        # when timestamps of async job entries are the same, sort entries by
+        # status so "Fail" async job is placed before "New" and "Success"
+        # async jobs
         _query = _query.order_by(sql.asc('status'))
         latest_job = _query[0].to_dict()
         if latest_job['status'] == constants.JS_Fail:
@@ -362,7 +368,7 @@ def get_latest_failed_jobs(context):
 
 def get_latest_timestamp(context, status, _type, resource_id):
     jobs = core.query_resource(
-        context, models.Job,
+        context, models.AsyncJob,
         [{'key': 'status', 'comparator': 'eq', 'value': status},
          {'key': 'type', 'comparator': 'eq', 'value': _type},
          {'key': 'resource_id', 'comparator': 'eq', 'value': resource_id}],
@@ -375,7 +381,7 @@ def get_latest_timestamp(context, status, _type, resource_id):
 
 def get_running_job(context, _type, resource_id):
     jobs = core.query_resource(
-        context, models.Job,
+        context, models.AsyncJob,
         [{'key': 'resource_id', 'comparator': 'eq', 'value': resource_id},
          {'key': 'status', 'comparator': 'eq', 'value': constants.JS_Running},
          {'key': 'type', 'comparator': 'eq', 'value': _type}], [])
@@ -391,7 +397,8 @@ def finish_job(context, job_id, successful, timestamp):
         job_dict = {'status': status,
                     'timestamp': timestamp,
                     'extra_id': uuidutils.generate_uuid()}
-        core.update_resource(context, models.Job, job_id, job_dict)
+        core.update_resource(context, models.AsyncJob,
+                             job_id, job_dict)
 
 
 def _is_user_context(context):

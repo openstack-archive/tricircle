@@ -25,15 +25,15 @@ from tricircle.db import api
 from tricircle.db import core
 
 
-def fake_get_pod_service_endpoint(ctx, pod_name, st):
+def fake_get_pod_service_endpoint(ctx, region_name, st):
 
-    pod = api.get_pod_by_name(ctx, pod_name)
+    pod = api.get_pod_by_name(ctx, region_name)
     if pod:
         f = [{'key': 'pod_id', 'comparator': 'eq',
               'value': pod['pod_id']},
              {'key': 'service_type', 'comparator': 'eq',
               'value': st}]
-        pod_services = api.list_pod_service_configurations(
+        pod_services = api.list_cached_endpoints(
             ctx,
             filters=f,
             sorts=[])
@@ -129,7 +129,7 @@ class HttpClientTest(unittest.TestCase):
     def test_get_pod_service_ctx(self):
         pod_dict = {
             'pod_id': 'fake_pod_id',
-            'pod_name': 'fake_pod_name',
+            'region_name': 'fake_region_name',
             'az_name': 'fake_az'
         }
 
@@ -141,18 +141,18 @@ class HttpClientTest(unittest.TestCase):
         }
         t_url = 'http://127.0.0.1:8774/v2/my_tenant_id/volumes'
         api.create_pod(self.context, pod_dict)
-        api.create_pod_service_configuration(self.context, config_dict)
+        api.create_cached_endpoints(self.context, config_dict)
 
         b_url = 'http://127.0.0.1:8774/v2.1/my_tenant_id/volumes'
 
         b_endpoint = hclient.get_pod_service_endpoint(self.context,
-                                                      pod_dict['pod_name'],
+                                                      pod_dict['region_name'],
                                                       cons.ST_CINDER)
         self.assertEqual(b_endpoint, config_dict['service_url'])
 
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
-                                            pod_dict['pod_name'],
+                                            pod_dict['region_name'],
                                             cons.ST_CINDER)
         self.assertEqual(b_ctx['t_ver'], 'v2')
         self.assertEqual(b_ctx['t_url'], t_url)
@@ -162,7 +162,7 @@ class HttpClientTest(unittest.TestCase):
         # wrong pod name
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
-                                            pod_dict['pod_name'] + '1',
+                                            pod_dict['region_name'] + '1',
                                             cons.ST_CINDER)
         self.assertEqual(b_ctx['t_ver'], 'v2')
         self.assertEqual(b_ctx['t_url'], t_url)
@@ -172,7 +172,7 @@ class HttpClientTest(unittest.TestCase):
         # wrong service_type
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
-                                            pod_dict['pod_name'],
+                                            pod_dict['region_name'],
                                             cons.ST_CINDER + '1')
         self.assertEqual(b_ctx['t_ver'], 'v2')
         self.assertEqual(b_ctx['t_url'], t_url)
@@ -184,17 +184,17 @@ class HttpClientTest(unittest.TestCase):
     def test_get_pod_and_endpoint_by_name(self):
         pod_dict = {
             'pod_id': 'fake_pod_id',
-            'pod_name': 'fake_pod_name',
+            'region_name': 'fake_region_name',
             'az_name': 'fake_az'
         }
         api.create_pod(self.context, pod_dict)
 
-        pod = api.get_pod_by_name(self.context, pod_dict['pod_name'] + '1')
+        pod = api.get_pod_by_name(self.context, pod_dict['region_name'] + '1')
         self.assertIsNone(pod)
 
-        pod = api.get_pod_by_name(self.context, pod_dict['pod_name'])
+        pod = api.get_pod_by_name(self.context, pod_dict['region_name'])
         self.assertEqual(pod['pod_id'], pod_dict['pod_id'])
-        self.assertEqual(pod['pod_name'], pod_dict['pod_name'])
+        self.assertEqual(pod['region_name'], pod_dict['region_name'])
         self.assertEqual(pod['az_name'], pod_dict['az_name'])
 
         config_dict = {
@@ -203,11 +203,11 @@ class HttpClientTest(unittest.TestCase):
             'service_type': cons.ST_CINDER,
             'service_url': 'http://127.0.0.1:8774/v2.1/$(tenant_id)s'
         }
-        api.create_pod_service_configuration(self.context, config_dict)
+        api.create_cached_endpoints(self.context, config_dict)
 
         endpoint = hclient.get_pod_service_endpoint(
             self.context,
-            pod_dict['pod_name'],
+            pod_dict['region_name'],
             config_dict['service_type'])
         self.assertEqual(endpoint, config_dict['service_url'])
 

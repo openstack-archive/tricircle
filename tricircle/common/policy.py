@@ -52,11 +52,6 @@ ADMIN_API_PODS_DELETE = 'admin_api:pods:delete'
 ADMIN_API_PODS_SHOW = 'admin_api:pods:show'
 ADMIN_API_PODS_LIST = 'admin_api:pods:list'
 
-ADMIN_API_BINDINGS_CREATE = 'admin_api:bindings:create'
-ADMIN_API_BINDINGS_DELETE = 'admin_api:bindings:delete'
-ADMIN_API_BINDINGS_SHOW = 'admin_api:bindings:show'
-ADMIN_API_BINDINGS_LIST = 'admin_api:bindings:list'
-
 ADMIN_API_ROUTINGS_CREATE = 'admin_api:routings:create'
 ADMIN_API_ROUTINGS_DELETE = 'admin_api:routings:delete'
 ADMIN_API_ROUTINGS_PUT = 'admin_api:routings:put'
@@ -76,19 +71,6 @@ tricircle_admin_api_policies = [
     policy.RuleDefault(ADMIN_API_PODS_LIST,
                        'rule:admin_api',
                        description='List pods'),
-
-    policy.RuleDefault(ADMIN_API_BINDINGS_CREATE,
-                       'rule:admin_api',
-                       description='Create pod binding'),
-    policy.RuleDefault(ADMIN_API_BINDINGS_DELETE,
-                       'rule:admin_api',
-                       description='Delete pod binding'),
-    policy.RuleDefault(ADMIN_API_BINDINGS_SHOW,
-                       'rule:admin_api',
-                       description='Show pod binding detail'),
-    policy.RuleDefault(ADMIN_API_BINDINGS_LIST,
-                       'rule:admin_api',
-                       description='List pod bindings'),
 
     policy.RuleDefault(ADMIN_API_ROUTINGS_CREATE,
                        'rule:admin_api',

@@ -44,14 +44,14 @@ class NetworkHelper(object):
         network_type_map = {t_constants.NT_SHARED_VLAN: TYPE_VLAN}
         return network_type_map.get(network_type, network_type)
 
-    def _get_client(self, pod_name=None):
-        if not pod_name:
+    def _get_client(self, region_name=None):
+        if not region_name:
             if t_constants.TOP not in self.clients:
                 self.clients[t_constants.TOP] = client.Client()
             return self.clients[t_constants.TOP]
-        if pod_name not in self.clients:
-            self.clients[pod_name] = client.Client(pod_name)
-        return self.clients[pod_name]
+        if region_name not in self.clients:
+            self.clients[region_name] = client.Client(region_name)
+        return self.clients[region_name]
 
     # operate top resource
     def _prepare_top_element_by_call(self, t_ctx, q_ctx,
@@ -173,7 +173,7 @@ class NetworkHelper(object):
                  created or already exists and id of the resource
         """
         def list_resources(t_ctx_, q_ctx, pod_, ele_, _type_):
-            client = self._get_client(pod_['pod_name'])
+            client = self._get_client(pod_['region_name'])
             if _type_ == t_constants.RT_NETWORK:
                 value = utils.get_bottom_network_name(ele_)
             else:
@@ -183,7 +183,7 @@ class NetworkHelper(object):
                                            'value': value}])
 
         def create_resources(t_ctx_, q_ctx, pod_, body_, _type_):
-            client = self._get_client(pod_['pod_name'])
+            client = self._get_client(pod_['region_name'])
             return client.create_resources(_type_, t_ctx_, body_)
 
         return t_lock.get_or_create_element(
@@ -292,17 +292,17 @@ class NetworkHelper(object):
             body['port']['security_groups'] = b_security_group_ids
         return body
 
-    def get_create_interface_body(self, project_id, t_net_id, b_pod_name,
+    def get_create_interface_body(self, project_id, t_net_id, b_region_name,
                                   t_subnet_id):
         """Get request body to create top interface
 
         :param project_id: project id
         :param t_net_id: top network id
-        :param b_pod_name: bottom pod name
+        :param b_region_name: bottom pod name
         :param t_subnet_id: top subnet id
         :return:
         """
-        t_interface_name = t_constants.interface_port_name % (b_pod_name,
+        t_interface_name = t_constants.interface_port_name % (b_region_name,
                                                               t_subnet_id)
         t_interface_body = {
             'port': {
@@ -354,10 +354,10 @@ class NetworkHelper(object):
         for subnet in t_subnets:
             # gateway
             t_interface_name = t_constants.interface_port_name % (
-                pod['pod_name'], subnet['id'])
+                pod['region_name'], subnet['id'])
 
             t_interface_body = self.get_create_interface_body(
-                project_id, t_net['id'], pod['pod_name'], subnet['id'])
+                project_id, t_net['id'], pod['region_name'], subnet['id'])
 
             _, t_interface_id = self.prepare_top_element(
                 t_ctx, q_ctx, project_id, pod, {'id': t_interface_name},
@@ -380,7 +380,7 @@ class NetworkHelper(object):
                 continue
             self.prepare_dhcp_port(t_ctx, project_id, pod, t_net['id'],
                                    t_subnet_id, b_net_id, b_subnet_id)
-            b_client = self._get_client(pod['pod_name'])
+            b_client = self._get_client(pod['region_name'])
             b_client.update_subnets(t_ctx, b_subnet_id,
                                     {'subnet': {'enable_dhcp': True}})
 
@@ -548,7 +548,7 @@ class NetworkHelper(object):
                 # this is rare case that we got IpAddressInUseClient exception
                 # a second ago but now the floating ip is missing
                 raise t_network_exc.BottomPodOperationFailure(
-                    resource='floating ip', pod_name=pod['pod_name'])
+                    resource='floating ip', region_name=pod['region_name'])
             associated_port_id = fips[0].get('port_id')
             if associated_port_id == port_id:
                 # the internal port associated with the existing fip is what

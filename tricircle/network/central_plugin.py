@@ -42,7 +42,6 @@ import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
 
-from tricircle.common import az_ag
 import tricircle.common.client as t_client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
@@ -79,6 +78,10 @@ tricircle_opts = [
                default='',
                help=_('Type of l3 bridge network, this type should be enabled '
                       'in tenant_network_types and is not local type.')),
+    cfg.StrOpt('default_region_for_external_network',
+               default='RegionOne',
+               help=_('Default Region where the external network belongs'
+                      ' to.')),
     cfg.BoolOpt('enable_api_gateway',
                 default=True,
                 help=_('Whether the Nova API gateway is enabled'))
@@ -133,10 +136,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _setup_rpc(self):
         self.endpoints = []
 
-    def _get_client(self, pod_name):
-        if pod_name not in self.clients:
-            self.clients[pod_name] = t_client.Client(pod_name)
-        return self.clients[pod_name]
+    def _get_client(self, region_name):
+        if region_name not in self.clients:
+            self.clients[region_name] = t_client.Client(region_name)
+        return self.clients[region_name]
 
     @log_helpers.log_method_call
     def start_rpc_listeners(self):
@@ -155,17 +158,16 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         with context.session.begin():
             pods = core.query_resource(t_ctx, models.Pod, [], [])
             az_set = set(az_list)
+
+            known_az_set = set([pod['az_name'] for pod in pods])
             if external:
-                known_az_set = set([pod['pod_name'] for pod in pods])
-            else:
-                known_az_set = set([pod['az_name'] for pod in pods])
+                known_az_set = (known_az_set |
+                                set([pod['region_name'] for pod in pods]))
+
             diff = az_set - known_az_set
             if diff:
-                if external:
-                    raise t_exceptions.PodNotFound(pod_name=diff.pop())
-                else:
-                    raise az_ext.AvailabilityZoneNotFound(
-                        availability_zone=diff.pop())
+                raise az_ext.AvailabilityZoneNotFound(
+                    availability_zone=diff.pop())
 
     @staticmethod
     def _extend_availability_zone(net_res, net_db):
@@ -183,21 +185,16 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             return False
         if az_ext.AZ_HINTS in req_data and req_data[az_ext.AZ_HINTS]:
             return True
-        t_ctx = t_context.get_context_from_neutron_context(context)
-        pod, pod_az = az_ag.get_pod_by_az_tenant(
-            t_ctx,
-            az_name='',
-            tenant_id=req_data['tenant_id'])
-        if pod:
-            req_data[az_ext.AZ_HINTS] = [pod['pod_name']]
-            return True
-        raise t_exceptions.ExternalNetPodNotSpecify()
+        # if no az_hints are specified, we will use default region_name
+        req_data[az_ext.AZ_HINTS] = \
+            [cfg.CONF.tricircle.default_region_for_external_network]
+        return True
 
     def _create_bottom_external_network(self, context, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         # use the first pod
-        pod_name = net[az_ext.AZ_HINTS][0]
-        pod = db_api.get_pod_by_name(t_ctx, pod_name)
+        az_name = net[az_ext.AZ_HINTS][0]
+        pod = db_api.find_pod_by_az(t_ctx, az_name)
         body = {
             'network': {
                 'name': top_id,
@@ -218,10 +215,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _create_bottom_external_subnet(self, context, subnet, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
-        pod_name = net[az_ext.AZ_HINTS][0]
-        pod = db_api.get_pod_by_name(t_ctx, pod_name)
-        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, net['id'], pod_name, t_constants.RT_NETWORK)
+        region_name = net[az_ext.AZ_HINTS][0]
+        pod = db_api.get_pod_by_name(t_ctx, region_name)
+        b_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, net['id'], region_name, t_constants.RT_NETWORK)
         body = {
             'subnet': {
                 'name': top_id,
@@ -278,9 +275,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, network_id, t_constants.RT_NETWORK)
             for mapping in mappings:
-                pod_name = mapping[0]['pod_name']
+                region_name = mapping[0]['region_name']
                 bottom_network_id = mapping[1]
-                self._get_client(pod_name).delete_networks(
+                self._get_client(region_name).delete_networks(
                     t_ctx, bottom_network_id)
                 with t_ctx.session.begin():
                     core.delete_resources(
@@ -390,12 +387,12 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, subnet_id, t_constants.RT_SUBNET)
             for mapping in mappings:
-                pod_name = mapping[0]['pod_name']
+                region_name = mapping[0]['region_name']
                 bottom_subnet_id = mapping[1]
-                self._get_client(pod_name).delete_subnets(
+                self._get_client(region_name).delete_subnets(
                     t_ctx, bottom_subnet_id)
                 interface_name = t_constants.interface_port_name % (
-                    mapping[0]['pod_name'], subnet_id)
+                    mapping[0]['region_name'], subnet_id)
                 self._delete_pre_created_port(t_ctx, context, interface_name)
                 with t_ctx.session.begin():
                     core.delete_resources(
@@ -457,8 +454,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     entries.append((sg_id, t_constants.RT_SG))
 
             for resource_id, resource_type in entries:
-                if db_api.get_bottom_id_by_top_id_pod_name(
-                        t_ctx, resource_id, pod['pod_name'], resource_type):
+                if db_api.get_bottom_id_by_top_id_region_name(
+                        t_ctx, resource_id, pod['region_name'], resource_type):
                     continue
                 db_api.create_resource_mapping(t_ctx, resource_id, resource_id,
                                                pod['pod_id'], res['tenant_id'],
@@ -518,9 +515,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, port_id, t_constants.RT_PORT)
         if mappings:
-            pod_name = mappings[0][0]['pod_name']
+            region_name = mappings[0][0]['region_name']
             bottom_port_id = mappings[0][1]
-            port = self._get_client(pod_name).get_ports(
+            port = self._get_client(region_name).get_ports(
                 t_ctx, bottom_port_id)
             # TODO(zhiyuan) handle the case that bottom port does not exist
             port['id'] = port_id
@@ -674,7 +671,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         t_ctx = t_context.get_context_from_neutron_context(context)
         q_client = self._get_client(
-            current_pod['pod_name']).get_native_client('port', t_ctx)
+            current_pod['region_name']).get_native_client('port', t_ctx)
         params = {'limit': number}
         if filters:
             _filters = dict(filters)
@@ -844,7 +841,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                             _filters.append({'key': key,
                                              'comparator': 'eq',
                                              'value': value})
-                client = self._get_client(pod['pod_name'])
+                client = self._get_client(pod['region_name'])
                 ret.extend(client.list_ports(t_ctx, filters=_filters))
             ret = self._map_ports_from_bottom_to_top(ret, bottom_top_map)
             ret.extend(self._get_ports_from_top(context, top_bottom_map,
@@ -914,7 +911,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         mappings = db_api.get_bottom_mappings_by_top_id(t_ctx, _id,
                                                         t_constants.RT_ROUTER)
         for pod, b_router_id in mappings:
-            b_client = self._get_client(pod['pod_name'])
+            b_client = self._get_client(pod['region_name'])
 
             ew_port_name = t_constants.ew_bridge_port_name % (project_id,
                                                               b_router_id)
@@ -922,8 +919,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 context, {'name': [ew_port_name]})
             if ew_ports:
                 t_ew_port_id = ew_ports[0]['id']
-                b_ew_port_id = db_api.get_bottom_id_by_top_id_pod_name(
-                    t_ctx, t_ew_port_id, pod['pod_name'], t_constants.RT_PORT)
+                b_ew_port_id = db_api.get_bottom_id_by_top_id_region_name(
+                    t_ctx, t_ew_port_id, pod['region_name'],
+                    t_constants.RT_PORT)
                 if b_ew_port_id:
                     request_body = {'port_id': b_ew_port_id}
                     try:
@@ -955,9 +953,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     context, {'name': [ns_subnet_name]})
                 if ns_subnets:
                     t_ns_subnet_id = ns_subnets[0]['id']
-                    b_ns_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
-                        t_ctx, t_ns_subnet_id, pod['pod_name'],
-                        t_constants.RT_SUBNET)
+                    b_ns_subnet_id = \
+                        db_api.get_bottom_id_by_top_id_region_name(
+                            t_ctx, t_ns_subnet_id, pod['region_name'],
+                            t_constants.RT_SUBNET)
                     if b_ns_subnet_id:
                         request_body = {'subnet_id': b_ns_subnet_id}
                         try:
@@ -1114,10 +1113,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # network ID from resource routing table.
         if not network.get(az_ext.AZ_HINTS):
             raise t_exceptions.ExternalNetPodNotSpecify()
-        pod_name = network[az_ext.AZ_HINTS][0]
-        pod = db_api.get_pod_by_name(t_ctx, pod_name)
-        b_net_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, ext_net_id, pod_name, t_constants.RT_NETWORK)
+        region_name = network[az_ext.AZ_HINTS][0]
+        pod = db_api.get_pod_by_name(t_ctx, region_name)
+        b_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, ext_net_id, region_name, t_constants.RT_NETWORK)
 
         # create corresponding bottom router in the pod where external network
         # is located.
@@ -1134,7 +1133,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         # both router and external network in bottom pod are ready, attach
         # external network to router in bottom pod.
-        b_client = self._get_client(pod_name)
+        b_client = self._get_client(region_name)
         t_info = router_data[l3.EXTERNAL_GW_INFO]
         b_info = {'network_id': b_net_id}
         if 'enable_snat' in t_info:
@@ -1143,8 +1142,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             fixed_ips = []
             for ip in t_info['external_fixed_ips']:
                 t_subnet_id = ip['subnet_id']
-                b_subnet_id = db_api.get_bottom_id_by_top_id_pod_name(
-                    t_ctx, t_subnet_id, pod_name,
+                b_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
+                    t_ctx, t_subnet_id, region_name,
                     t_constants.RT_SUBNET)
                 fixed_ips.append({'subnet_id': b_subnet_id,
                                   'ip_address': ip['ip_address']})
@@ -1198,10 +1197,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if not t_network[az_ext.AZ_HINTS]:
             raise t_exceptions.ExternalNetPodNotSpecify()
 
-        pod_name = t_network[az_ext.AZ_HINTS][0]
-        b_router_id = db_api.get_bottom_id_by_top_id_pod_name(
-            t_ctx, router_id, pod_name, t_constants.RT_ROUTER)
-        b_client = self._get_client(pod_name)
+        region_name = t_network[az_ext.AZ_HINTS][0]
+        b_router_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, router_id, region_name, t_constants.RT_ROUTER)
+        b_client = self._get_client(region_name)
         b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
 
     def update_router(self, context, router_id, router):
@@ -1263,11 +1262,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if not ext_nets:
             need_ns_bridge = False
         else:
-            ext_net_pod_names = set(
+            ext_net_region_names = set(
                 [ext_net[az_ext.AZ_HINTS][0] for ext_net in ext_nets])
             need_ns_bridge = False
             for b_pod in b_pods:
-                if b_pod['pod_name'] not in ext_net_pod_names:
+                if b_pod['region_name'] not in ext_net_region_names:
                     need_ns_bridge = True
                     break
         if need_ns_bridge:
@@ -1360,7 +1359,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # this is rare case that we got IpAddressInUseClient exception
                 # a second ago but now the floating ip is missing
                 raise t_network_exc.BottomPodOperationFailure(
-                    resource='floating ip', pod_name=pod['pod_name'])
+                    resource='floating ip', region_name=pod['region_name'])
             associated_port_id = fips[0].get('port_id')
             if associated_port_id == port_id:
                 pass

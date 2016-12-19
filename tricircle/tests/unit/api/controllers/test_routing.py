@@ -12,6 +12,7 @@
 
 import mock
 from mock import patch
+from oslo_utils import uuidutils
 import unittest
 
 import pecan
@@ -47,13 +48,12 @@ class RoutingControllerTest(unittest.TestCase):
     def test_post(self, mock_context):
         mock_context.return_value = self.context
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod = {'pod': {'pod_name': 'pod1', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod = {'pod': {'region_name': 'pod1', 'az_name': 'az1'}}
         pod_id = pod.PodsController().post(**kw_pod)['pod']['pod_id']
 
-        kw_binding = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id}}
-        project_id = pod.BindingsController().post(**kw_binding)[
-            'pod_binding']['tenant_id']
+        # a variable used for later test
+        project_id = uuidutils.generate_uuid()
 
         kw_routing = {'routing':
                       {'top_id': '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
@@ -135,25 +135,6 @@ class RoutingControllerTest(unittest.TestCase):
         res = self.controller.post(**kw_routing4)
         self._validate_error_code(res, 400)
 
-        # failure case, the pod_id and the project_id should be bound
-        kw_pod2 = {'pod': {'pod_name': 'pod2', 'az_name': 'az1'}}
-        pod_id2 = pod.PodsController().post(**kw_pod2)['pod']['pod_id']
-
-        # the tenant_id binds with pod_id rather than pod_id2
-        kw_binding2 = {'pod_binding': {'tenant_id': '02', 'pod_id': pod_id}}
-        project_id2 = pod.BindingsController().post(**kw_binding2)[
-            'pod_binding']['tenant_id']
-
-        kw_routing5 = {'routing':
-                       {'top_id': '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
-                        'bottom_id': 'dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
-                        'pod_id': pod_id2,
-                        'project_id': project_id2,
-                        'resource_type': 'subnet'
-                        }}
-        res = self.controller.post(**kw_routing5)
-        self._validate_error_code(res, 400)
-
         # failure case, wrong resource type
         kw_routing6 = {'routing':
                        {'top_id': '09fd7cc9-d169-4b5a-88e8-436ecf4d0b09',
@@ -174,13 +155,12 @@ class RoutingControllerTest(unittest.TestCase):
     def test_get_one(self, mock_context):
         mock_context.return_value = self.context
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod = {'pod': {'pod_name': 'pod1', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod = {'pod': {'region_name': 'pod1', 'az_name': 'az1'}}
         pod_id = pod.PodsController().post(**kw_pod)['pod']['pod_id']
 
-        kw_binding = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id}}
-        project_id = pod.BindingsController().post(**kw_binding)[
-            'pod_binding']['tenant_id']
+        # a variable used for later test
+        project_id = uuidutils.generate_uuid()
 
         kw_routing = {'routing':
                       {'top_id': '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
@@ -198,10 +178,8 @@ class RoutingControllerTest(unittest.TestCase):
         self.assertEqual('dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
                          routing['routing']['bottom_id'])
         self.assertEqual(pod_id, routing['routing']['pod_id'])
-        self.assertEqual(project_id,
-                         routing['routing']['project_id'])
-        self.assertEqual('port',
-                         routing['routing']['resource_type'])
+        self.assertEqual(project_id, routing['routing']['project_id'])
+        self.assertEqual('port', routing['routing']['resource_type'])
 
         # failure case, only admin can get resource routing
         self.context.is_admin = False
@@ -219,35 +197,30 @@ class RoutingControllerTest(unittest.TestCase):
     def test_get_all(self, mock_context):
         mock_context.return_value = self.context
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod1 = {'pod': {'pod_name': 'pod1', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod1 = {'pod': {'region_name': 'pod1', 'az_name': 'az1'}}
         pod_id1 = pod.PodsController().post(**kw_pod1)['pod']['pod_id']
 
-        kw_binding1 = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id1}}
-        project_id1 = pod.BindingsController().post(**kw_binding1)[
-            'pod_binding']['tenant_id']
+        # a variable used for later test
+        project_id = uuidutils.generate_uuid()
 
         kw_routing1 = {'routing':
                        {'top_id': 'c7f641c9-8462-4007-84b2-3035d8cfb7a3',
                         'bottom_id': 'dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
                         'pod_id': pod_id1,
-                        'project_id': project_id1,
+                        'project_id': project_id,
                         'resource_type': 'subnet'
                         }}
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod2 = {'pod': {'pod_name': 'pod2', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod2 = {'pod': {'region_name': 'pod2', 'az_name': 'az1'}}
         pod_id2 = pod.PodsController().post(**kw_pod2)['pod']['pod_id']
-
-        kw_binding2 = {'pod_binding': {'tenant_id': '02', 'pod_id': pod_id2}}
-        project_id2 = pod.BindingsController().post(**kw_binding2)[
-            'pod_binding']['tenant_id']
 
         kw_routing2 = {'routing':
                        {'top_id': 'b669a2da-ca95-47db-a2a9-ba9e546d82ee',
                         'bottom_id': 'fd72c010-6e62-4866-b999-6dcb718dd7b4',
                         'pod_id': pod_id2,
-                        'project_id': project_id2,
+                        'project_id': project_id,
                         'resource_type': 'port'
                         }}
 
@@ -301,13 +274,12 @@ class RoutingControllerTest(unittest.TestCase):
     def test_delete(self, mock_context):
         mock_context.return_value = self.context
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod = {'pod': {'pod_name': 'pod1', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod = {'pod': {'region_name': 'pod1', 'az_name': 'az1'}}
         pod_id = pod.PodsController().post(**kw_pod)['pod']['pod_id']
 
-        kw_binding = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id}}
-        project_id = pod.BindingsController().post(**kw_binding)[
-            'pod_binding']['tenant_id']
+        # a variable used for later test
+        project_id = uuidutils.generate_uuid()
 
         kw_routing = {'routing':
                       {'top_id': '09fd7cc9-d169-4b5a-88e8-436ecf4d0bfe',
@@ -351,19 +323,18 @@ class RoutingControllerTest(unittest.TestCase):
     def test_put(self, mock_context):
         mock_context.return_value = self.context
 
-        # prepare the foreign key: pod_id, project_id
-        kw_pod1 = {'pod': {'pod_name': 'pod1', 'az_name': 'az1'}}
+        # prepare the foreign key: pod_id
+        kw_pod1 = {'pod': {'region_name': 'pod1', 'az_name': 'az1'}}
         pod_id1 = pod.PodsController().post(**kw_pod1)['pod']['pod_id']
 
-        kw_binding1 = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id1}}
-        project_id1 = pod.BindingsController().post(**kw_binding1)[
-            'pod_binding']['tenant_id']
+        # a variable used for later test
+        project_id = uuidutils.generate_uuid()
 
         body = {'routing':
                 {'top_id': 'c7f641c9-8462-4007-84b2-3035d8cfb7a3',
                  'bottom_id': 'dc80f9de-abb7-4ec6-ab7a-94f8fd1e20ef',
                  'pod_id': pod_id1,
-                 'project_id': project_id1,
+                 'project_id': project_id,
                  'resource_type': 'router'
                  }}
 
@@ -418,56 +389,6 @@ class RoutingControllerTest(unittest.TestCase):
         # failure case, the value to be updated is not appropriate
         res = self.controller.put(-123, **body_update1)
         self._validate_error_code(res, 404)
-
-        # failure case, the pod_id and the project_id should be bound
-        kw_pod2 = {'pod': {'pod_name': 'pod2', 'az_name': 'az1'}}
-        pod_id2 = pod.PodsController().post(**kw_pod2)['pod']['pod_id']
-
-        # only update pod_id, and the new pod id is pod_id2. pod_id2
-        # has not been bound to tenant whose tenant_id is project_id1
-        body_update6 = {'routing':
-                        {'pod_id': pod_id2}}
-
-        res = self.controller.put(id, **body_update6)
-        self._validate_error_code(res, 400)
-
-        # failure case, the pod_id and the project_id should be bound
-        kw_binding2 = {'pod_binding': {'tenant_id': '02', 'pod_id': pod_id2}}
-        project_id2 = pod.BindingsController().post(**kw_binding2)[
-            'pod_binding']['tenant_id']
-
-        # only update project_id, and the new project id is project_id2,
-        # this tenant has not been bound to pod whose pod_id is pod_id1
-        body_update7 = {'routing':
-                        {'project_id': project_id2}}
-        res = self.controller.put(id, **body_update7)
-        self._validate_error_code(res, 400)
-
-        # failure case, the pod_id and the project_id should be bound
-        # both the pod_id and project_id are specified, and the
-        # tenant1 bound to pod1, pod3, tenant2 bound to pod1, pod2
-        # original routing: pod=pod1, tenant=tenant1
-        # updated routing: pod=pod3, tenant=tenant2
-        # this case should be failed
-
-        # bind the tenant1 to pod3
-        kw_pod3 = {'pod': {'pod_name': 'pod3', 'az_name': 'az1'}}
-        pod_id3 = pod.PodsController().post(**kw_pod3)['pod']['pod_id']
-
-        kw_binding3 = {'pod_binding': {'tenant_id': '01', 'pod_id': pod_id3}}
-        pod_id3 = pod.BindingsController().post(**kw_binding3)[
-            'pod_binding']['pod_id']
-
-        # bind the tenant2 to pod1
-        kw_binding4 = {'pod_binding': {'tenant_id': '02', 'pod_id': pod_id1}}
-        project_id2 = pod.BindingsController().post(**kw_binding4)[
-            'pod_binding']['tenant_id']
-
-        body_update8 = {'routing':
-                        {'pod_id': pod_id3,
-                         'project_id': project_id2}}
-        res = self.controller.put(id, **body_update8)
-        self._validate_error_code(res, 400)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

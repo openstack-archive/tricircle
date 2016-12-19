@@ -32,7 +32,7 @@ from tricircle.db import core
 FAKE_AZ = 'fake_az'
 FAKE_RESOURCE = 'fake_res'
 FAKE_SITE_ID = 'fake_pod_id'
-FAKE_SITE_NAME = 'fake_pod_name'
+FAKE_SITE_NAME = 'fake_region_name'
 FAKE_SERVICE_ID = 'fake_service_id'
 FAKE_TYPE = 'fake_type'
 FAKE_URL = 'http://127.0.0.1:12345'
@@ -129,7 +129,7 @@ class ClientTest(unittest.TestCase):
 
         pod_dict = {
             'pod_id': FAKE_SITE_ID,
-            'pod_name': FAKE_SITE_NAME,
+            'region_name': FAKE_SITE_NAME,
             'az_name': FAKE_AZ
         }
         config_dict = {
@@ -139,12 +139,12 @@ class ClientTest(unittest.TestCase):
             'service_url': FAKE_URL
         }
         api.create_pod(self.context, pod_dict)
-        api.create_pod_service_configuration(self.context, config_dict)
+        api.create_cached_endpoints(self.context, config_dict)
 
         global FAKE_RESOURCES
         FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
 
-        cfg.CONF.set_override(name='top_pod_name', override=FAKE_SITE_NAME,
+        cfg.CONF.set_override(name='top_region_name', override=FAKE_SITE_NAME,
                               group='client')
         self.client = client.Client()
         self.client.resource_service_map[FAKE_RESOURCE] = FAKE_TYPE
@@ -189,7 +189,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        api.delete_pod_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_cached_endpoints(self.context, FAKE_SERVICE_ID)
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotFound,
                           self.client.list_resources,
@@ -211,7 +211,7 @@ class ClientTest(unittest.TestCase):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=True,
                               group='client')
         # delete the configuration so endpoint cannot be found
-        api.delete_pod_service_configuration(self.context, FAKE_SERVICE_ID)
+        api.delete_cached_endpoints(self.context, FAKE_SERVICE_ID)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -228,9 +228,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        api.update_pod_service_configuration(self.context,
-                                             FAKE_SERVICE_ID,
-                                             update_dict)
+        api.update_cached_endpoints(self.context,
+                                    FAKE_SERVICE_ID,
+                                    update_dict)
 
         # auto refresh set to False, directly raise exception
         self.assertRaises(exceptions.EndpointNotAvailable,
@@ -242,9 +242,9 @@ class ClientTest(unittest.TestCase):
                               group='client')
         update_dict = {'service_url': FAKE_URL_INVALID}
         # update url to an invalid one
-        api.update_pod_service_configuration(self.context,
-                                             FAKE_SERVICE_ID,
-                                             update_dict)
+        api.update_cached_endpoints(self.context,
+                                    FAKE_SERVICE_ID,
+                                    update_dict)
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
@@ -257,8 +257,8 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
 
     @patch.object(uuid, 'uuid4')
-    @patch.object(api, 'create_pod_service_configuration')
-    @patch.object(api, 'update_pod_service_configuration')
+    @patch.object(api, 'create_cached_endpoints')
+    @patch.object(api, 'update_cached_endpoints')
     def test_update_endpoint_from_keystone(self, update_mock, create_mock,
                                            uuid_mock):
         self.client._get_admin_token = mock.Mock()

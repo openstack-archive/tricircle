@@ -60,22 +60,6 @@ class RoutingController(rest.RestController):
                     400, _("Field %(field)s can not be empty") % {
                         'field': field})
 
-        # verify the integrity: the pod_id and the project_id should be bound
-        pod_id = routing.get('pod_id').strip()
-        project_id = routing.get('project_id').strip()
-        bindings = db_api.list_pod_bindings(context,
-                                            [{'key': 'pod_id',
-                                              'comparator': 'eq',
-                                              'value': pod_id
-                                              },
-                                             {'key': 'tenant_id',
-                                              'comparator': 'eq',
-                                              'value': project_id}
-                                             ], [])
-        if len(bindings) == 0:
-            return utils.format_api_error(
-                400, _('The pod_id and project_id have not been bound'))
-
         # the resource type should be properly provisioned.
         resource_type = routing.get('resource_type').strip()
         if not constants.is_valid_resource_type(resource_type):
@@ -85,6 +69,8 @@ class RoutingController(rest.RestController):
         try:
             top_id = routing.get('top_id').strip()
             bottom_id = routing.get('bottom_id').strip()
+            pod_id = routing.get('pod_id').strip()
+            project_id = routing.get('project_id').strip()
 
             routing = db_api.create_resource_mapping(context, top_id,
                                                      bottom_id, pod_id,
@@ -184,7 +170,7 @@ class RoutingController(rest.RestController):
                 403, _('Unauthorized to update resource routing'))
 
         try:
-            routing = db_api.get_resource_routing(context, _id)
+            db_api.get_resource_routing(context, _id)
         except t_exc.ResourceNotFound:
             return utils.format_api_error(404,
                                           _('Resource routing not found'))
@@ -209,32 +195,6 @@ class RoutingController(rest.RestController):
                     update_dict['resource_type']):
                 return utils.format_api_error(
                     400, _('There is no such resource type'))
-
-        # verify the integrity: the pod_id and project_id should be bound
-        if 'pod_id' in update_dict or 'project_id' in update_dict:
-            if 'pod_id' in update_dict:
-                pod_id = update_dict['pod_id']
-            else:
-                pod_id = routing['pod_id']
-
-            if 'project_id' in update_dict:
-                project_id = update_dict['project_id']
-            else:
-                project_id = routing['project_id']
-
-            bindings = db_api.list_pod_bindings(context,
-                                                [{'key': 'pod_id',
-                                                  'comparator': 'eq',
-                                                  'value': pod_id
-                                                  },
-                                                 {'key': 'tenant_id',
-                                                  'comparator': 'eq',
-                                                  'value': project_id}
-                                                 ], [])
-            if len(bindings) == 0:
-                return utils.format_api_error(
-                    400, _('The pod_id and project_id have not been '
-                           'bound'))
 
         try:
             routing_updated = db_api.update_resource_routing(

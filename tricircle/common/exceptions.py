@@ -191,10 +191,10 @@ class ExternalNetPodNotSpecify(TricircleException):
 
 
 class PodNotFound(NotFound):
-    message = "Pod %(pod_name)s could not be found."
+    message = "Pod %(region_name)s could not be found."
 
-    def __init__(self, pod_name):
-        super(PodNotFound, self).__init__(pod_name=pod_name)
+    def __init__(self, region_name):
+        super(PodNotFound, self).__init__(region_name=region_name)
 
 
 # parameter validation error

@@ -116,9 +116,9 @@ def get_bottom_url(t_ver, t_url, b_ver, b_endpoint):
     return b_url
 
 
-def get_pod_service_endpoint(context, pod_name, st):
+def get_pod_service_endpoint(context, region_name, st):
 
-    pod = db_api.get_pod_by_name(context, pod_name)
+    pod = db_api.get_pod_by_name(context, region_name)
 
     if pod:
         c = client.Client()
@@ -127,10 +127,10 @@ def get_pod_service_endpoint(context, pod_name, st):
     return ''
 
 
-def get_pod_service_ctx(context, t_url, pod_name, s_type=cons.ST_NOVA):
+def get_pod_service_ctx(context, t_url, region_name, s_type=cons.ST_NOVA):
     t_ver = get_version_from_url(t_url)
     b_endpoint = get_pod_service_endpoint(context,
-                                          pod_name,
+                                          region_name,
                                           s_type)
     b_ver = get_version_from_url(b_endpoint)
     b_url = ''
@@ -169,14 +169,14 @@ def get_res_routing_ref(context, _id, t_url, s_type):
     if not pod:
         return None
 
-    pod_name = pod['pod_name']
+    region_name = pod['region_name']
 
-    s_ctx = get_pod_service_ctx(context, t_url, pod_name,
+    s_ctx = get_pod_service_ctx(context, t_url, region_name,
                                 s_type=s_type)
 
     if s_ctx['b_url'] == '':
         LOG.error(_LE("bottom pod endpoint incorrect %s") %
-                  pod_name)
+                  region_name)
 
     return s_ctx
 

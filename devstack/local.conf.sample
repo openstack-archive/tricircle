@@ -65,7 +65,7 @@ admin_username=admin
 admin_password=$ADMIN_PASSWORD
 admin_tenant=demo
 auto_refresh_endpoint=True
-top_pod_name=$CENTRAL_REGION_NAME
+top_region_name=$CENTRAL_REGION_NAME
 
 [tricircle]
 real_core_plugin=neutron.plugins.ml2.plugin.Ml2Plugin

@@ -74,7 +74,6 @@ class V1Controller(object):
 
         self.sub_controllers = {
             "pods": pod.PodsController(),
-            "bindings": pod.BindingsController(),
             "routings": routing.RoutingController()
         }
 

@@ -30,12 +30,12 @@ echo $token
 
 curl -X POST http://127.0.0.1:19999/v1.0/pods \
     -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"pod_name":  "RegionOne"}}'
+    -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne"}}'
 
 curl -X POST http://127.0.0.1:19999/v1.0/pods \
     -H "Content-Type: application/json" \
     -H "X-Auth-Token: $token" \
-    -d '{"pod": {"pod_name":  "Pod1", "az_name": "az1"}}'
+    -d '{"pod": {"region_name":  "Pod1", "az_name": "az1"}}'
 
 # the usage of "nova flavor-create":
 # nova flavor-create [--ephemeral <ephemeral>] [--swap <swap>]

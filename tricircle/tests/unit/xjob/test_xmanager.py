@@ -69,16 +69,16 @@ class FakeXManager(xmanager.XManager):
 
 
 class FakeClient(object):
-    def __init__(self, pod_name=None):
-        if pod_name:
-            self.pod_name = pod_name
+    def __init__(self, region_name=None):
+        if region_name:
+            self.region_name = region_name
         else:
-            self.pod_name = 'top'
+            self.region_name = 'top'
 
     def list_resources(self, resource, cxt, filters=None):
         res_list = []
         filters = filters or []
-        for res in RES_MAP[self.pod_name][resource]:
+        for res in RES_MAP[self.region_name][resource]:
             is_selected = True
             for _filter in filters:
                 if _filter['key'] not in res:
@@ -139,7 +139,7 @@ class XManagerTest(unittest.TestCase):
         top_router_id = 'router_id'
         for i in xrange(1, 3):
             pod_dict = {'pod_id': 'pod_id_%d' % i,
-                        'pod_name': 'pod_%d' % i,
+                        'region_name': 'pod_%d' % i,
                         'az_name': 'az_name_%d' % i}
             db_api.create_pod(self.context, pod_dict)
 
@@ -179,15 +179,15 @@ class XManagerTest(unittest.TestCase):
                 'fixed_ips': [{'subnet_id': bridge_subnet['id'],
                                'ip_address': bridge_subnet['gateway_ip']}]
             }
-            pod_name = 'pod_%d' % i
-            RES_MAP[pod_name]['network'].append(network)
-            RES_MAP[pod_name]['network'].append(bridge_network)
-            RES_MAP[pod_name]['subnet'].append(subnet)
-            RES_MAP[pod_name]['subnet'].append(bridge_subnet)
-            RES_MAP[pod_name]['port'].append(port)
-            RES_MAP[pod_name]['port'].append(vm_port)
-            RES_MAP[pod_name]['port'].append(bridge_port)
-            RES_MAP[pod_name]['router'].append(router)
+            region_name = 'pod_%d' % i
+            RES_MAP[region_name]['network'].append(network)
+            RES_MAP[region_name]['network'].append(bridge_network)
+            RES_MAP[region_name]['subnet'].append(subnet)
+            RES_MAP[region_name]['subnet'].append(bridge_subnet)
+            RES_MAP[region_name]['port'].append(port)
+            RES_MAP[region_name]['port'].append(vm_port)
+            RES_MAP[region_name]['port'].append(bridge_port)
+            RES_MAP[region_name]['router'].append(router)
 
             route = {'top_id': top_router_id, 'bottom_id': router['id'],
                      'pod_id': pod_dict['pod_id'], 'resource_type': 'router'}
@@ -257,7 +257,7 @@ class XManagerTest(unittest.TestCase):
 
         for i in xrange(1, 3):
             pod_dict = {'pod_id': 'pod_id_%d' % i,
-                        'pod_name': 'pod_%d' % i,
+                        'region_name': 'pod_%d' % i,
                         'az_name': 'az_name_%d' % i}
             db_api.create_pod(self.context, pod_dict)
 
@@ -271,8 +271,8 @@ class XManagerTest(unittest.TestCase):
             RES_MAP['top']['network'].append(network)
             RES_MAP['top']['subnet'].append(subnet)
 
-            pod_name = 'pod_%d' % i
-            RES_MAP[pod_name]['security_group'].append(sg)
+            region_name = 'pod_%d' % i
+            RES_MAP[region_name]['security_group'].append(sg)
             route = {'top_id': sg_id, 'bottom_id': sg_id,
                      'pod_id': pod_dict['pod_id'],
                      'resource_type': 'security_group'}
@@ -314,7 +314,7 @@ class XManagerTest(unittest.TestCase):
         payload = {'fake_resource': fake_id}
         fake_handle(None, self.context, payload=payload)
 
-        jobs = core.query_resource(self.context, models.Job, [], [])
+        jobs = core.query_resource(self.context, models.AsyncJob, [], [])
         expected_status = [constants.JS_New, constants.JS_Success]
         job_status = [job['status'] for job in jobs]
         self.assertItemsEqual(expected_status, job_status)
@@ -333,7 +333,7 @@ class XManagerTest(unittest.TestCase):
         payload = {'fake_resource': fake_id}
         fake_handle(None, self.context, payload=payload)
 
-        jobs = core.query_resource(self.context, models.Job, [], [])
+        jobs = core.query_resource(self.context, models.AsyncJob, [], [])
         expected_status = [constants.JS_New, constants.JS_Fail]
         job_status = [job['status'] for job in jobs]
         self.assertItemsEqual(expected_status, job_status)
@@ -358,10 +358,10 @@ class XManagerTest(unittest.TestCase):
             'resource_id': fake_id,
             'extra_id': constants.SP_EXTRA_ID
         }
-        core.create_resource(self.context, models.Job, expired_job)
+        core.create_resource(self.context, models.AsyncJob, expired_job)
         fake_handle(None, self.context, payload=payload)
 
-        jobs = core.query_resource(self.context, models.Job, [], [])
+        jobs = core.query_resource(self.context, models.AsyncJob, [], [])
         expected_status = ['New', 'Fail', 'Success']
         job_status = [job['status'] for job in jobs]
         self.assertItemsEqual(expected_status, job_status)
@@ -411,11 +411,11 @@ class XManagerTest(unittest.TestCase):
         for i, job_dict in enumerate(job_dict_list, 1):
             job_dict['id'] = 'job_uuid%d' % (2 * i - 1)
             job_dict['extra_id'] = 'extra_uuid%d' % (2 * i - 1)
-            core.create_resource(self.context, models.Job, job_dict)
+            core.create_resource(self.context, models.AsyncJob, job_dict)
             job_dict['id'] = 'job_uuid%d' % (2 * i)
             job_dict['extra_id'] = 'extra_uuid%d' % (2 * i)
             job_dict['status'] = constants.JS_New
-            core.create_resource(self.context, models.Job, job_dict)
+            core.create_resource(self.context, models.AsyncJob, job_dict)
 
         # for res3 + uuid3, the latest job's status is "Success", not returned
         expected_ids = ['job_uuid3', 'job_uuid5']

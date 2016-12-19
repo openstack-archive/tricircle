@@ -65,7 +65,7 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
 
         try:
             for pod, b_sg_id in mappings:
-                client = self._get_client(pod['pod_name'])
+                client = self._get_client(pod['region_name'])
                 rule['security_group_id'] = b_sg_id
                 self._safe_create_security_group_rule(
                     t_context, client, {'security_group_rule': rule})
@@ -73,7 +73,7 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
             super(TricircleSecurityGroupMixin,
                   self).delete_security_group_rule(q_context, new_rule['id'])
             raise n_exceptions.BottomPodOperationFailure(
-                resource='security group rule', pod_name=pod['pod_name'])
+                resource='security group rule', region_name=pod['region_name'])
         return new_rule
 
     def delete_security_group_rule(self, q_context, _id):
@@ -91,7 +91,7 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
 
         try:
             for pod, b_sg_id in mappings:
-                client = self._get_client(pod['pod_name'])
+                client = self._get_client(pod['region_name'])
                 rule['security_group_id'] = b_sg_id
                 b_sg = client.get_security_groups(t_context, b_sg_id)
                 for b_rule in b_sg['security_group_rules']:
@@ -102,7 +102,7 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
                     break
         except Exception:
             raise n_exceptions.BottomPodOperationFailure(
-                resource='security group rule', pod_name=pod['pod_name'])
+                resource='security group rule', region_name=pod['region_name'])
 
         super(TricircleSecurityGroupMixin,
               self).delete_security_group_rule(q_context, _id)

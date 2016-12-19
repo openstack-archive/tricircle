@@ -22,17 +22,16 @@ of external network creation, it will take 'availability_zone_hints' (AZ or
 az will be used for short for availability zone) as a parameter. Previously
 az_hints was searched in the pod binding table by az_name and tenant_id, now
 the pod binding table is deprecated and new search strategy is needed to fix
-the problem[2]. A function named find_by_az will be developed to find the
+the problem[2]. A function named find_pod_by_az will be developed to find the
 az_hints by az_name in the pod table. Given the az_name, if it is not empty,
 we first match it with region_name in the pod table. When a pod with the same
 region_name is found, it will be returned back. The search procedure is
 complete. If no pod is found with the same region_name, then we try to match
 it with az_name in the pod table. If multiple pods are found, then we will
 raise an exception. If only one pod is found, this pod will be returned back.
-However, if no pod is matched at the end of the previous search procedure or
-the az_name is empty, a new configuration item
-"default_region_for_external_network" will be used, a pod with this region_name
-will be returned back.
+An exception will be raised if no pod is matched at the end of the previous
+search procedure. However, if the az_name is empty, we will return None, a new
+configuration item "default_region_for_external_network" will be used.
 
 Proposed Change
 ===============

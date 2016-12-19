@@ -31,7 +31,7 @@ class APITest(unittest.TestCase):
     def test_get_bottom_mappings_by_top_id(self):
         for i in xrange(3):
             pod = {'pod_id': 'test_pod_uuid_%d' % i,
-                   'pod_name': 'test_pod_%d' % i,
+                   'region_name': 'test_pod_%d' % i,
                    'az_name': 'test_az_uuid_%d' % i}
             api.create_pod(self.context, pod)
         route1 = {
@@ -61,7 +61,7 @@ class APITest(unittest.TestCase):
     def test_get_bottom_mappings_by_tenant_pod(self):
         for i in xrange(3):
             pod = {'pod_id': 'test_pod_uuid_%d' % i,
-                   'pod_name': 'test_pod_%d' % i,
+                   'region_name': 'test_pod_%d' % i,
                    'az_name': 'test_az_uuid_%d' % i}
             api.create_pod(self.context, pod)
         routes = [
@@ -161,7 +161,7 @@ class APITest(unittest.TestCase):
         pods = []
         for i in xrange(5):
             pod = {'pod_id': 'test_pod_uuid_%d' % i,
-                   'pod_name': 'test_pod_%d' % i,
+                   'region_name': 'test_pod_%d' % i,
                    'pod_az_name': 'test_pod_az_name_%d' % i,
                    'dc_name': 'test_dc_name_%d' % i,
                    'az_name': 'test_az_uuid_%d' % i,
