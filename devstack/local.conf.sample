@@ -14,59 +14,17 @@ RABBIT_PASSWORD=password
 SERVICE_PASSWORD=password
 SERVICE_TOKEN=password
 ADMIN_PASSWORD=password
-LOGFILE=/opt/stack/logs/stack.sh.log
-VERBOSE=True
-LOG_COLOR=True
-SCREEN_LOGDIR=/opt/stack/logs
+
 HOST_IP=127.0.0.1
-FIXED_RANGE=10.0.0.0/24
-NETWORK_GATEWAY=10.0.0.1
-FIXED_NETWORK_SIZE=256
-FLOATING_RANGE=10.100.100.160/24
-Q_FLOATING_ALLOCATION_POOL=start=10.100.100.160,end=10.100.100.192
 
-NEUTRON_CREATE_INITIAL_NETWORKS=False
+# Specify Central Region name
+# CENTRAL_REGION_NAME=CentralRegion
 
-PUBLIC_NETWORK_GATEWAY=10.100.100.3
+# Specify port for central Neutron server
+# TRICIRCLE_NEUTRON_PORT=20001
 
-Q_USE_SECGROUP=False
-LIBVIRT_FIREWALL_DRIVER=nova.virt.firewall.NoopFirewallDriver
-
-Q_ENABLE_TRICIRCLE=True
+TRICIRCLE_START_SERVICES=True
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
-# Use Neutron instead of nova-network
-disable_service n-net
-enable_service q-svc
-enable_service q-dhcp
-enable_service q-agt
-
-disable_service n-obj
-disable_service n-cauth
-disable_service n-novnc
-disable_service q-l3
-enable_service c-api
-enable_service c-vol
-enable_service c-sch
-disable_service c-bak
-# disable_service tempest
+disable_service tempest
 disable_service horizon
-
-CENTRAL_REGION_NAME=CentralRegion
-TRICIRCLE_NEUTRON_PORT=20001
-
-[[post-config|$NEUTRON_CONF]]
-
-[DEFAULT]
-core_plugin=tricircle.network.local_plugin.TricirclePlugin
-
-[client]
-admin_username=admin
-admin_password=$ADMIN_PASSWORD
-admin_tenant=demo
-auto_refresh_endpoint=True
-top_region_name=$CENTRAL_REGION_NAME
-
-[tricircle]
-real_core_plugin=neutron.plugins.ml2.plugin.Ml2Plugin
-central_neutron_url=http://127.0.0.1:$TRICIRCLE_NEUTRON_PORT
