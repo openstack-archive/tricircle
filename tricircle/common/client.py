@@ -28,6 +28,7 @@ from oslo_log import log as logging
 
 import tricircle.common.context as tricircle_context
 from tricircle.common import exceptions
+from tricircle.common.i18n import _LW
 from tricircle.common import resource_handle
 from tricircle.db import api
 from tricircle.db import models
@@ -95,7 +96,10 @@ def _safe_operation(operation_name):
                     if i == retries:
                         raise
                     if cfg.CONF.client.auto_refresh_endpoint:
-                        LOG.warn(e.message + ', update endpoint and try again')
+                        msg = _LW("%(exception)s, "
+                                  "update endpoint and try again") % {
+                            "exception": e.message}
+                        LOG.warning(msg)
                         instance._update_endpoint_from_keystone(context, True)
                     else:
                         raise
