@@ -571,7 +571,7 @@ class NetworkHelper(object):
     @staticmethod
     def get_create_sg_rule_body(rule, sg_id, ip=None):
         ip = ip or rule['remote_ip_prefix']
-        # if ip is passed, this is a extended rule for remote group
+        # if ip is passed, this is an extended rule for remote group
         return {'security_group_rule': {
             'tenant_id': rule['tenant_id'],
             'remote_group_id': None,
