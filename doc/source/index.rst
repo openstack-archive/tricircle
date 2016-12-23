@@ -14,8 +14,10 @@ Contents:
    readme
    usage
    installation-guide
+   configuration
    api_v1
    contributing
+
 
 
 Indices and tables

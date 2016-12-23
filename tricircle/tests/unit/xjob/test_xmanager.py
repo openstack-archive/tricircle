@@ -353,7 +353,7 @@ class XManagerTest(unittest.TestCase):
         expired_job = {
             'id': uuidutils.generate_uuid(),
             'type': 'fake_resource',
-            'timestamp': datetime.datetime.now() - datetime.timedelta(0, 120),
+            'timestamp': datetime.datetime.now() - datetime.timedelta(0, 200),
             'status': constants.JS_Running,
             'resource_id': fake_id,
             'extra_id': constants.SP_EXTRA_ID
