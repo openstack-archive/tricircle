@@ -122,7 +122,7 @@ class RoutingController(rest.RestController):
 
         if not policy.enforce(context, policy.ADMIN_API_ROUTINGS_LIST):
             return utils.format_api_error(
-                403, _('Unauthorized to to show all resource routings'))
+                403, _('Unauthorized to show all resource routings'))
 
         filters = self._get_filters(kwargs)
         filters = [{'key': key,

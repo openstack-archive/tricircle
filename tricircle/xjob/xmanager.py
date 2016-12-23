@@ -672,7 +672,7 @@ class XManager(PeriodicTasks):
     @staticmethod
     def _construct_bottom_rule(rule, sg_id, ip=None):
         ip = ip or rule['remote_ip_prefix']
-        # if ip is passed, this is a extended rule for remote group
+        # if ip is passed, this is an extended rule for remote group
         return {'remote_group_id': None,
                 'direction': rule['direction'],
                 'remote_ip_prefix': ip,

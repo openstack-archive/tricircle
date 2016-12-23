@@ -1513,7 +1513,7 @@ class PluginTest(unittest.TestCase,
         for net in TOP_NETS:
             if net['name'].startswith('ns_bridge'):
                 t_ns_bridge_net_id = net['id']
-        # N-S bridge not created since no extenal network created
+        # N-S bridge not created since no external network created
         self.assertIsNone(t_ns_bridge_net_id)
 
         device_ids = ['', '', '']

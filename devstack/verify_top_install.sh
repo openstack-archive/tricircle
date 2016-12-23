@@ -26,7 +26,7 @@ if [ ! -r admin-openrc.sh ];then
 exit 1
 fi
 
-echo "Begining the verify testing..."
+echo "Beginning the verify testing..."
 
 echo "Import client environment variables:"
 source $TEST_DIR/admin-openrc.sh
