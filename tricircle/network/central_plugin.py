@@ -297,9 +297,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                             'comparator': 'eq',
                                             'value': network_id}])
 
-        session = context.session
-        with session.begin(subtransactions=True):
-            self.type_manager.release_network_segments(session, network_id)
+        with context.session.begin(subtransactions=True):
+            self.type_manager.release_network_segments(context, network_id)
             super(TricirclePlugin, self).delete_network(context, network_id)
 
     def update_network(self, context, network_id, network):

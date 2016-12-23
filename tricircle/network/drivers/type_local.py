@@ -31,13 +31,13 @@ class LocalTypeDriver(driver_api.TypeDriver):
     def validate_provider_segment(self, segment):
         pass
 
-    def reserve_provider_segment(self, session, segment):
+    def reserve_provider_segment(self, context, segment):
         return segment
 
-    def allocate_tenant_segment(self, session):
+    def allocate_tenant_segment(self, context):
         return {driver_api.NETWORK_TYPE: constants.NT_LOCAL}
 
-    def release_segment(self, session, segment):
+    def release_segment(self, context, segment):
         pass
 
     def get_mtu(self, physical):
