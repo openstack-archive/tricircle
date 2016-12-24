@@ -75,6 +75,10 @@ SP_EXTRA_ID = '00000000-0000-0000-0000-000000000000'
 TOP = 'top'
 POD_NOT_SPECIFIED = 'not_specified_pod'
 PROFILE_REGION = 'region'
+PROFILE_HOST = 'host'
+PROFILE_AGENT_TYPE = 'type'
+PROFILE_TUNNEL_IP = 'tunnel_ip'
+PROFILE_FORCE_UP = 'force_up'
 
 # job type
 JT_ROUTER = 'router'
@@ -86,3 +90,9 @@ JT_SUBNET_UPDATE = 'subnet_update'
 # network type
 NT_LOCAL = 'local'
 NT_VLAN = 'vlan'
+NT_VxLAN = 'vxlan'
+
+# cross-pod VxLAN networking support mode
+NM_P2P = 'p2p'
+NM_L2GW = 'l2gw'
+NM_NOOP = 'noop'

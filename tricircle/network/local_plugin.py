@@ -18,6 +18,8 @@ import six
 from oslo_config import cfg
 from oslo_log import log
 
+from neutron_lib.api.definitions import portbindings
+from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
@@ -40,7 +42,10 @@ from tricircle.network import helper
 tricircle_opts = [
     cfg.StrOpt('real_core_plugin', help=_('The core plugin the Tricircle '
                                           'local plugin will invoke.')),
-    cfg.StrOpt('central_neutron_url', help=_('Central Neutron server url'))]
+    cfg.StrOpt('central_neutron_url', help=_('Central Neutron server url')),
+    cfg.IPOpt('l2gw_tunnel_ip', help=_('Tunnel IP of L2 gateway, need to set '
+                                       'when client.cross_pod_vxlan_mode is '
+                                       'set to l2gw'))]
 
 tricircle_opt_group = cfg.OptGroup('tricircle')
 cfg.CONF.register_group(tricircle_opt_group)
@@ -48,6 +53,9 @@ cfg.CONF.register_opts(tricircle_opts, group=tricircle_opt_group)
 
 
 LOG = log.getLogger(__name__)
+
+VIF_AGENT_TYPE_MAP = {
+    portbindings.VIF_TYPE_OVS: q_constants.AGENT_TYPE_OVS}
 
 
 class TricirclePlugin(plugin.Ml2Plugin):
@@ -77,10 +85,11 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
     @staticmethod
     def _adapt_network_body(network):
-        network_type = network.get('provider:network_type')
+        network_type = network.get(provider_net.NETWORK_TYPE)
         if network_type == t_constants.NT_LOCAL:
-            for key in ['provider:network_type', 'provider:physical_network',
-                        'provider:segmentation_id']:
+            for key in (provider_net.NETWORK_TYPE,
+                        provider_net.PHYSICAL_NETWORK,
+                        provider_net.SEGMENTATION_ID):
                 network.pop(key, None)
 
         # remove az_hint from network
@@ -452,27 +461,114 @@ class TricirclePlugin(plugin.Ml2Plugin):
             # get_subnet will create bottom subnet if it doesn't exist
             self.get_subnet(context, subnet_id)
 
-        for field in ('name', 'device_id'):
+        for field in ('name', 'device_id', 'binding:host_id'):
             if port_body.get(field):
                 t_port[field] = port_body[field]
 
         self._handle_security_group(t_ctx, context, t_port)
+        self._create_shadow_agent(context, port_body)
         b_port = self.core_plugin.create_port(context, {'port': t_port})
         return b_port
 
+    def _create_shadow_agent(self, context, port_body):
+        """Create shadow agent before creating shadow port
+
+        Called inside self.create_port function. Shadow port is created by xjob
+        daemon. Xjob daemon will insert agent information(agent type, tunnel
+        ip and host) in the binding profile of the request body. This function
+        checks if the necessary information is in the request body, if so, it
+        invokes real core plugin to create or update shadow agent. For other
+        kinds of port creation requests, this function is called but does not
+        take effect.
+
+        :param context: neutron context
+        :param port_body: port update body
+        :return: None
+        """
+        if not utils.is_extension_supported(self.core_plugin, 'agent'):
+            return
+        profile_dict = port_body.get(portbindings.PROFILE, {})
+        if t_constants.PROFILE_TUNNEL_IP not in profile_dict:
+            return
+        agent_type = profile_dict[t_constants.PROFILE_AGENT_TYPE]
+        tunnel_ip = profile_dict[t_constants.PROFILE_TUNNEL_IP]
+        agent_host = port_body[portbindings.HOST_ID]
+        agent_state = helper.NetworkHelper.construct_agent_data(
+            agent_type, agent_host, tunnel_ip)
+        self.core_plugin.create_or_update_agent(context, agent_state)
+
+    def _fill_agent_info_in_profile(self, context, port_id, host,
+                                    profile_dict):
+        """Fill agent information in the binding profile
+
+        Called inside self.update_port function. When local plugin handles
+        port update request, it checks if host is in the body, if so, local
+        plugin will send a port update request to central Neutron to tell
+        central plugin that the port has been bound to a host. The information
+        of the agent in the host is inserted in the update body by calling this
+        function. So after central Neutron receives the request, it can save
+        the agent information in the Tricircle shadow agent table.
+
+        :param context: neutron object
+        :param port_id: port uuid
+        :param host: host the port is bound to
+        :param profile_dict: binding profile dict in the port update body
+        :return: None
+        """
+        if not utils.is_extension_supported(self.core_plugin, 'agent'):
+            return
+        if cfg.CONF.client.cross_pod_vxlan_mode == t_constants.NM_NOOP:
+            return
+
+        port = self.core_plugin.get_port(context, port_id)
+        net = self.core_plugin.get_network(context, port['network_id'])
+        if net[provider_net.NETWORK_TYPE] != t_constants.NT_VxLAN:
+            return
+
+        vif_type = port[portbindings.VIF_TYPE]
+        if vif_type not in VIF_AGENT_TYPE_MAP:
+            return
+        agent_type = VIF_AGENT_TYPE_MAP[vif_type]
+        agents = self.core_plugin.get_agents(
+            context, filters={'agent_type': [agent_type], 'host': [host]})
+        if not agents:
+            return
+
+        if cfg.CONF.client.cross_pod_vxlan_mode == t_constants.NM_P2P:
+            helper.NetworkHelper.fill_agent_data(agent_type, host, agents[0],
+                                                 profile_dict)
+        elif cfg.CONF.client.cross_pod_vxlan_mode == t_constants.NM_L2GW:
+            if not cfg.CONF.tricircle.l2gw_tunnel_ip:
+                LOG.error(_LE('Cross-pod VxLAN networking mode is set to l2gw '
+                              'but L2 gateway tunnel ip is not configured'))
+                return
+            l2gw_tunnel_ip = cfg.CONF.tricircle.l2gw_tunnel_ip
+            helper.NetworkHelper.fill_agent_data(agent_type, host, agents[0],
+                                                 profile_dict,
+                                                 tunnel_ip=l2gw_tunnel_ip)
+
     def update_port(self, context, _id, port):
+        profile_dict = port['port'].get(portbindings.PROFILE, {})
+        if profile_dict.pop(t_constants.PROFILE_FORCE_UP, None):
+            port['port']['status'] = q_constants.PORT_STATUS_ACTIVE
+            port['port'][
+                portbindings.VNIC_TYPE] = q_constants.ATTR_NOT_SPECIFIED
+        b_port = self.core_plugin.update_port(context, _id, port)
         if port['port'].get('device_owner', '').startswith('compute') and (
-                port['port'].get('binding:host_id')):
+                port['port'].get(portbindings.HOST_ID)):
             # we check both "device_owner" and "binding:host_id" to ensure the
             # request comes from nova. and ovs agent will not call update_port.
             # it updates port status via rpc and direct db operation
             region_name = cfg.CONF.nova.region_name
-            update_dict = {'binding:profile': {
+            update_dict = {portbindings.PROFILE: {
                 t_constants.PROFILE_REGION: region_name}}
+            self._fill_agent_info_in_profile(
+                context, _id, port['port'][portbindings.HOST_ID],
+                update_dict[portbindings.PROFILE])
             t_ctx = t_context.get_context_from_neutron_context(context)
             self.neutron_handle.handle_update(t_ctx, 'port', _id,
                                               {'port': update_dict})
-        return self.core_plugin.update_port(context, _id, port)
+        return b_port
 
     def get_port(self, context, _id, fields=None):
         try:

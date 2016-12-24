@@ -67,7 +67,10 @@ client_opts = [
                     ' auto_refresh_endpoint set to True'),
     cfg.StrOpt('bridge_cidr',
                default='100.0.0.0/9',
-               help='cidr pool of the bridge network')
+               help='cidr pool of the bridge network'),
+    cfg.StrOpt('cross_pod_vxlan_mode', default='p2p',
+               choices=['p2p', 'l2gw', 'noop'],
+               help='Cross-pod VxLAN networking support mode')
 ]
 client_opt_group = cfg.OptGroup('client')
 cfg.CONF.register_group(client_opt_group)

@@ -78,6 +78,7 @@ function init_local_neutron_variables {
     export Q_USE_PROVIDERNET_FOR_PUBLIC=True
 
     Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=${Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS:-}
+    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=${Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS:-}
     # if VLAN options were not set in local.conf, use default VLAN bridge
     # and VLAN options
     if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" == "" ]; then
@@ -88,6 +89,7 @@ function init_local_neutron_variables {
         local ext_option="extern:$TRICIRCLE_DEFAULT_EXT_RANGE"
         local vlan_ranges=(network_vlan_ranges=$vlan_option,$ext_option)
         Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=$vlan_ranges
+        Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS="vni_ranges=$TRICIRCLE_DEFAULT_VXLAN_RANGE"
 
         local vlan_mapping="bridge:$TRICIRCLE_DEFAULT_VLAN_BRIDGE"
         local ext_mapping="extern:$TRICIRCLE_DEFAULT_EXT_BRIDGE"
@@ -167,13 +169,22 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client auto_refresh_endpoint True
     iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
 
+    local type_drivers=local
+    local tenant_network_types=local
     if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
-        iniset $NEUTRON_CONF.$server_index tricircle type_drivers local,vlan
-        iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types local,vlan
+        type_drivers+=,vlan
+        tenant_network_types+=,vlan
         iniset $NEUTRON_CONF.$server_index tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
         iniset $NEUTRON_CONF.$server_index tricircle bridge_network_type vlan
-        iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
     fi
+    if [ "$Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS" != "" ]; then
+        type_drivers+=,vxlan
+        tenant_network_types+=,vxlan
+        iniset $NEUTRON_CONF.$server_index tricircle vni_ranges `echo $Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
+    fi
+    iniset $NEUTRON_CONF.$server_index tricircle type_drivers $type_drivers
+    iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types
+    iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
 
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head

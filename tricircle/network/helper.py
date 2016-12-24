@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 import netaddr
 import six
 
@@ -34,6 +35,37 @@ import tricircle.network.exceptions as t_network_exc
 AZ_HINTS = 'availability_zone_hints'
 EXTERNAL = 'router:external'  # neutron.extensions.external_net.EXTERNAL
 TYPE_VLAN = 'vlan'  # neutron.plugins.common.constants.TYPE_VLAN
+
+OVS_AGENT_DATA_TEMPLATE = {
+    'agent_type': None,
+    'binary': 'neutron-openvswitch-agent',
+    'host': None,
+    'topic': constants.L2_AGENT_TOPIC,
+    'configurations': {
+        'ovs_hybrid_plug': False,
+        'in_distributed_mode': False,
+        'datapath_type': 'system',
+        'arp_responder_enabled': False,
+        'tunneling_ip': None,
+        'vhostuser_socket_dir': '/var/run/openvswitch',
+        'devices': 0,
+        'ovs_capabilities': {
+            'datapath_types': ['netdev', 'system'],
+            'iface_types': ['geneve', 'gre', 'internal', 'ipsec_gre', 'lisp',
+                            'patch', 'stt', 'system', 'tap', 'vxlan']},
+        'log_agent_heartbeats': False,
+        'l2_population': True,
+        'tunnel_types': ['vxlan'],
+        'extensions': [],
+        'enable_distributed_routing': False,
+        'bridge_mappings': {}}}
+
+AGENT_DATA_TEMPLATE_MAP = {
+    constants.AGENT_TYPE_OVS: OVS_AGENT_DATA_TEMPLATE}
+
+TUNNEL_IP_HANDLE_MAP = {
+    constants.AGENT_TYPE_OVS: lambda agent: agent[
+        'configurations']['tunneling_ip']}
 
 
 class NetworkHelper(object):
@@ -668,3 +700,38 @@ class NetworkHelper(object):
             return False
         router_az_hint = router_az_hints[0]
         return bool(db_api.get_pod_by_name(t_ctx, router_az_hint))
+
+    @staticmethod
+    def construct_agent_data(agent_type, host, tunnel_ip):
+        if agent_type not in AGENT_DATA_TEMPLATE_MAP:
+            return {}
+        data = copy.copy(AGENT_DATA_TEMPLATE_MAP[agent_type])
+        data['agent_type'] = agent_type
+        data['host'] = host
+        data['configurations']['tunneling_ip'] = tunnel_ip
+        return data
+
+    @staticmethod
+    def fill_agent_data(agent_type, host, agent, profile, tunnel_ip=None):
+        _tunnel_ip = None
+        if tunnel_ip:
+            # explicitly specified tunnel IP has the highest priority
+            _tunnel_ip = tunnel_ip
+        elif agent_type in TUNNEL_IP_HANDLE_MAP:
+            tunnel_handle = TUNNEL_IP_HANDLE_MAP[agent_type]
+            _tunnel_ip = tunnel_handle(agent)
+        if not _tunnel_ip:
+            return
+        profile[t_constants.PROFILE_HOST] = host
+        profile[t_constants.PROFILE_AGENT_TYPE] = agent_type
+        profile[t_constants.PROFILE_TUNNEL_IP] = _tunnel_ip
+
+    @staticmethod
+    def create_shadow_agent_if_needed(t_ctx, profile, pod):
+        if t_constants.PROFILE_HOST not in profile:
+            return
+        agent_host = profile[t_constants.PROFILE_HOST]
+        agent_type = profile[t_constants.PROFILE_AGENT_TYPE]
+        agent_tunnel = profile[t_constants.PROFILE_TUNNEL_IP]
+        db_api.ensure_agent_exists(t_ctx, pod['pod_id'], agent_host,
+                                   agent_type, agent_tunnel)

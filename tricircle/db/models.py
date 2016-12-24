@@ -112,3 +112,23 @@ class AsyncJobLog(core.ModelBase, core.DictBase):
     timestamp = sql.Column('timestamp', sql.TIMESTAMP,
                            server_default=sql.text('CURRENT_TIMESTAMP'),
                            index=True)
+
+
+class ShadowAgent(core.ModelBase, core.DictBase):
+    __tablename__ = 'shadow_agents'
+    __table_args__ = (
+        schema.UniqueConstraint(
+            'pod_id', 'host', 'type',
+            name='pod_id0host0type'),
+    )
+
+    attributes = ['id', 'pod_id', 'host', 'type', 'tunnel_ip']
+
+    id = sql.Column('id', sql.String(length=36), primary_key=True)
+    pod_id = sql.Column('pod_id', sql.String(length=64),
+                        sql.ForeignKey('pods.pod_id'),
+                        nullable=False)
+    host = sql.Column('host', sql.String(length=255), nullable=False)
+    type = sql.Column('type', sql.String(length=36), nullable=False)
+    # considering IPv6 address, set the length to 48
+    tunnel_ip = sql.Column('tunnel_ip', sql.String(length=48), nullable=False)

@@ -453,6 +453,30 @@ def finish_job(context, job_id, successful, timestamp):
                 synchronize_session=False)
 
 
+def ensure_agent_exists(context, pod_id, host, _type, tunnel_ip):
+    try:
+        context.session.begin()
+        agents = core.query_resource(
+            context, models.ShadowAgent,
+            [{'key': 'pod_id', 'comparator': 'eq', 'value': pod_id},
+             {'key': 'host', 'comparator': 'eq', 'value': host},
+             {'key': 'type', 'comparator': 'eq', 'value': _type}], [])
+        if agents:
+            return
+        core.create_resource(context, models.ShadowAgent,
+                             {'id': uuidutils.generate_uuid(),
+                              'pod_id': pod_id,
+                              'host': host,
+                              'type': _type,
+                              'tunnel_ip': tunnel_ip})
+        context.session.commit()
+    except db_exc.DBDuplicateEntry:
+        # agent has already been created
+        context.session.rollback()
+    finally:
+        context.session.close()
+
+
 def _is_user_context(context):
     """Indicates if the request context is a normal user."""
     if not context:

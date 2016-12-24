@@ -22,12 +22,14 @@ import unittest
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
+from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
 from tricircle.common import client
 from tricircle.common import constants
 import tricircle.common.context as t_context
+from tricircle.network import helper
 import tricircle.network.local_plugin as plugin
 
 
@@ -39,12 +41,15 @@ BOTTOM_NETS = []
 BOTTOM_SUBNETS = []
 BOTTOM_PORTS = []
 BOTTOM_SGS = []
+BOTTOM_AGENTS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS,
-            BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS, BOTTOM_SGS]
+            BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS, BOTTOM_SGS,
+            BOTTOM_AGENTS]
 RES_MAP = {'network': {True: TOP_NETS, False: BOTTOM_NETS},
            'subnet': {True: TOP_SUBNETS, False: BOTTOM_SUBNETS},
            'port': {True: TOP_PORTS, False: BOTTOM_PORTS},
-           'security_group': {True: TOP_SGS, False: BOTTOM_SGS}}
+           'security_group': {True: TOP_SGS, False: BOTTOM_SGS},
+           'agent': {True: [], False: BOTTOM_AGENTS}}
 
 
 def create_resource(_type, is_top, body):
@@ -86,6 +91,8 @@ def delete_resource(_type, is_top, body):
 
 
 class FakeCorePlugin(object):
+    supported_extension_aliases = ['agent']
+
     def create_network(self, context, network):
         create_resource('network', False, network['network'])
         return network['network']
@@ -128,6 +135,12 @@ class FakeCorePlugin(object):
 
     def get_security_group(self, context, _id, fields=None, tenant_id=None):
         return get_resource('security_group', False, _id)
+
+    def get_agents(self, context, filters=None, fields=None):
+        return list_resource('agent', False, filters)
+
+    def create_or_update_agent(self, context, agent_state):
+        pass
 
 
 class FakeSession(object):
@@ -309,6 +322,23 @@ class PluginTest(unittest.TestCase):
         self.assertEqual('vlan', b_net_type)
         self.assertDictEqual(port, b_port)
 
+    def _prepare_vm_port(self, t_net, t_subnet, index, t_sgs=[]):
+        port_id = uuidutils.generate_uuid()
+        cidr = t_subnet['cidr']
+        ip_address = '%s.%d' % (cidr[:cidr.rindex('.')], index + 3)
+        mac_address = 'fa:16:3e:96:41:0%d' % (index + 3)
+        t_port = {'id': port_id,
+                  'tenant_id': self.tenant_id,
+                  'admin_state_up': True,
+                  'network_id': t_net['id'],
+                  'mac_address': mac_address,
+                  'fixed_ips': [{'subnet_id': t_subnet['id'],
+                                 'ip_address': ip_address}],
+                  'binding:profile': {},
+                  'security_groups': t_sgs}
+        TOP_PORTS.append(t_port)
+        return t_port
+
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
@@ -369,35 +399,66 @@ class PluginTest(unittest.TestCase):
         self.assertRaises(q_exceptions.InvalidIpForNetwork,
                           self.plugin.create_port, self.context, port_body)
 
-        port_id = uuidutils.generate_uuid()
-        t_port = {'id': port_id,
-                  'tenant_id': self.tenant_id,
-                  'admin_state_up': True,
-                  'network_id': t_net['id'],
-                  'mac_address': 'fa:16:3e:96:41:04',
-                  'fixed_ips': [{'subnet_id': t_subnet['id'],
-                                 'ip_address': '10.0.1.4'}],
-                  'binding:profile': {},
-                  'security_groups': [t_sg['id']]}
-        TOP_PORTS.append(t_port)
+        t_vm_port = self._prepare_vm_port(t_net, t_subnet, 1, [t_sg['id']])
         b_port = self.plugin.create_port(self.context, port_body)
-        self.assertDictEqual(t_port, b_port)
+        self.assertDictEqual(t_vm_port, b_port)
+
+    @patch.object(FakeCorePlugin, 'create_or_update_agent')
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_create_port_with_tunnel_ip(self, mock_agent):
+        t_net, t_subnet, t_port, t_sg = self._prepare_resource()
+
+        # core plugin supports "agent" extension and body contains tunnel ip
+        port_body = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'security_groups': [],
+                     portbindings.HOST_ID: 'host1',
+                     portbindings.PROFILE: {
+                         constants.PROFILE_TUNNEL_IP: '192.168.1.101',
+                         constants.PROFILE_AGENT_TYPE: 'Open vSwitch agent'}}
+        }
+        self.plugin.create_port(self.context, port_body)
+        agent_state = copy.copy(helper.OVS_AGENT_DATA_TEMPLATE)
+        agent_state['agent_type'] = 'Open vSwitch agent'
+        agent_state['host'] = 'host1'
+        agent_state['configurations']['tunneling_ip'] = '192.168.1.101'
+        mock_agent.assert_called_once_with(self.context, agent_state)
+
+        # core plugin supports "agent" extension but body doesn't contain
+        # tunnel ip
+        port_body = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'security_groups': []}
+        }
+        self.plugin.create_port(self.context, port_body)
+
+        # core plugin doesn't support "agent" extension but body contains
+        # tunnel ip
+        FakeCorePlugin.supported_extension_aliases = []
+        port_body = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'security_groups': [],
+                     portbindings.HOST_ID: 'host1',
+                     portbindings.PROFILE: {
+                         constants.PROFILE_TUNNEL_IP: '192.168.1.101',
+                         constants.PROFILE_AGENT_TYPE: 'Open vSwitch agent'}}
+        }
+        self.plugin.create_port(self.context, port_body)
+        FakeCorePlugin.supported_extension_aliases = ['agent']
+
+        # create_or_update_agent is called only when core plugin supports
+        # "agent" extension and body contains tunnel ip
+        mock_agent.assert_has_calls([mock.call(self.context, agent_state)])
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_port(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
-        port_id = uuidutils.generate_uuid()
-        t_port = {'id': port_id,
-                  'tenant_id': self.tenant_id,
-                  'admin_state_up': True,
-                  'network_id': t_net['id'],
-                  'mac_address': 'fa:16:3e:96:41:04',
-                  'fixed_ips': [{'subnet_id': t_subnet['id'],
-                                 'ip_address': '10.0.1.4'}],
-                  'binding:profile': {},
-                  'security_groups': []}
-        TOP_PORTS.append(t_port)
-        t_port = self.plugin.get_port(self.context, port_id)
+
+        t_vm_port = self._prepare_vm_port(t_net, t_subnet, 1)
+        t_port = self.plugin.get_port(self.context, t_vm_port['id'])
         b_port = get_resource('port', False, t_port['id'])
         self.assertDictEqual(t_port, b_port)
 
@@ -405,19 +466,9 @@ class PluginTest(unittest.TestCase):
     def test_get_ports(self):
         t_net, t_subnet, t_port, t_sg = self._prepare_resource()
         t_ports = []
-        for i in (4, 5):
-            port_id = uuidutils.generate_uuid()
-            t_port = {'id': port_id,
-                      'tenant_id': self.tenant_id,
-                      'admin_state_up': True,
-                      'network_id': t_net['id'],
-                      'mac_address': 'fa:16:3e:96:41:04',
-                      'fixed_ips': [{'subnet_id': t_subnet['id'],
-                                     'ip_address': '10.0.1.%d' % i}],
-                      'binding:profile': {},
-                      'security_groups': [t_sg['id']]}
-            TOP_PORTS.append(t_port)
-            t_ports.append(t_port)
+        for i in (1, 2):
+            t_vm_port = self._prepare_vm_port(t_net, t_subnet, i, [t_sg['id']])
+            t_ports.append(t_vm_port)
         self.plugin.get_ports(self.context,
                               {'id': [t_ports[0]['id'], t_ports[1]['id'],
                                       'fake_port_id']})
@@ -426,18 +477,111 @@ class PluginTest(unittest.TestCase):
             b_port.pop('project_id')
             self.assertDictEqual(t_ports[i], b_port)
 
+    @patch.object(FakeCorePlugin, 'update_port')
     @patch.object(t_context, 'get_context_from_neutron_context')
     @patch.object(FakeNeutronHandle, 'handle_update')
-    def test_update_port(self, mock_update, mock_context):
+    def test_update_port(self, mock_update, mock_context, mock_core_update):
+        t_net, t_subnet, _, _ = self._prepare_resource()
+        b_net = self.plugin.get_network(self.context, t_net['id'])
         cfg.CONF.set_override('region_name', 'Pod1', 'nova')
         mock_context.return_value = self.context
-        update_body = {'port': {'device_owner': 'compute:None',
-                                'binding:host_id': 'fake_host'}}
         port_id = 'fake_port_id'
+        host_id = 'fake_host'
+        fake_port = {
+            'id': port_id,
+            'network_id': b_net['id'],
+            'binding:vif_type': 'fake_vif_type'}
+        fake_agent = {
+            'agent_type': 'Open vSwitch agent',
+            'host': host_id,
+            'configurations': {
+                'tunneling_ip': '192.168.1.101'}}
+        create_resource('port', False, fake_port)
+        create_resource('agent', False, fake_agent)
+        update_body = {'port': {'device_owner': 'compute:None',
+                                'binding:host_id': host_id}}
+
         self.plugin.update_port(self.context, port_id, update_body)
-        mock_update.assert_called_once_with(
+        # network is not vxlan type
+        mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+        # update network type from vlan to vxlan
+        update_resource('network', False, b_net['id'],
+                        {'provider:network_type': 'vxlan'})
+
+        self.plugin.update_port(self.context, port_id, update_body)
+        # port vif type is not recognized
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+        # update network type from fake_vif_type to ovs
+        update_resource('port', False, port_id,
+                        {'binding:vif_type': 'ovs'})
+
+        self.plugin.update_port(self.context, port_id,
+                                {'port': {'device_owner': 'compute:None',
+                                 'binding:host_id': 'fake_another_host'}})
+        # agent in the specific host is not found
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+        self.plugin.update_port(self.context, port_id, update_body)
+        # default p2p mode, update with agent host tunnel ip
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'tunnel_ip': '192.168.1.101',
+                                          'type': 'Open vSwitch agent',
+                                          'host': host_id}}})
+
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
+        cfg.CONF.set_override('l2gw_tunnel_ip', '192.168.1.105', 'tricircle')
+        update_body = {'port': {'device_owner': 'compute:None',
+                                'binding:host_id': host_id}}
+        self.plugin.update_port(self.context, port_id, update_body)
+        # l2gw mode, update with configured l2 gateway tunnel ip
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'tunnel_ip': '192.168.1.105',
+                                          'type': 'Open vSwitch agent',
+                                          'host': host_id}}})
+
+        cfg.CONF.set_override('l2gw_tunnel_ip', '', 'tricircle')
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
+        self.plugin.update_port(self.context, port_id, update_body)
+        # l2gw mode, but l2 gateway tunnel ip is not configured
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'noop', 'client')
+        self.plugin.update_port(self.context, port_id, update_body)
+        # noop mode
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+        FakeCorePlugin.supported_extension_aliases = []
+        self.plugin.update_port(self.context, port_id, update_body)
+        # core plugin doesn't support "agent" extension
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1'}}})
+        FakeCorePlugin.supported_extension_aliases = ['agent']
+
+        self.plugin.update_port(self.context, port_id,
+                                {'port': {portbindings.PROFILE: {
+                                    constants.PROFILE_FORCE_UP: True}}})
+        mock_core_update.assert_called_with(
+            self.context, port_id,
+            {'port': {'status': q_constants.PORT_STATUS_ACTIVE,
+                      portbindings.PROFILE: {},
+                      portbindings.VNIC_TYPE: q_constants.ATTR_NOT_SPECIFIED}})
 
     @patch.object(t_context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):

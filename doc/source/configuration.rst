@@ -43,16 +43,16 @@ Central Plugin.
      - (String) keystone authorization url, for example, http://$service_host:5000/v3
    * - ``auto_refresh_endpoint`` = ``True``
      - (Boolean) if set to True, endpoint will be automatically refreshed if timeout accessing endpoint.
-   * - ``ew_bridge_cidr`` = ``100.0.0.0/9``
-     - (String) cidr pool of the east-west bridge network, for example, 100.0.0.0/9
+   * - ``bridge_cidr`` = ``100.0.0.0/9``
+     - (String) cidr pool of the bridge network, for example, 100.0.0.0/9
    * - ``identity_url`` = ``http://127.0.0.1:35357/v3``
      - (String) keystone service url, for example, http://$service_host:35357/v3
    * - ``neutron_timeout`` = ``60``
      - (Integer) timeout for neutron client in seconds.
-   * - ``ns_bridge_cidr`` = ``100.128.0.0/9``
-     - (String) cidr pool of the north-south bridge network, for example, 100.128.0.0/9
    * - ``top_region_name`` = ``None``
      - (String) region name of Central Neutron in which client needs to access, for example, CentralRegion.
+   * - ``cross_pod_vxlan_mode`` = ``p2p``
+     - (String) Cross-pod VxLAN networking support mode, possible choices are p2p l2gw and noop
 
 
 

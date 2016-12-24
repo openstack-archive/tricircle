@@ -85,6 +85,11 @@ tricircle_opts = [
                        'usable for VLAN provider and tenant networks, as '
                        'well as ranges of VLAN tags on each available for '
                        'allocation to tenant networks.')),
+    cfg.ListOpt('vni_ranges',
+                default=[],
+                help=_('Comma-separated list of <vni_min>:<vni_max> tuples '
+                       'enumerating ranges of VXLAN VNI IDs that are '
+                       'available for tenant network allocation.')),
     cfg.StrOpt('bridge_network_type',
                default='',
                help=_('Type of l3 bridge network, this type should be enabled '
@@ -603,12 +608,21 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # because its device_id is not empty
         if t_constants.PROFILE_REGION in port['port'].get(
                 'binding:profile', {}):
+            # this update request comes from local Neutron
             res = super(TricirclePlugin, self).update_port(context, port_id,
                                                            port)
-            region_name = port['port']['binding:profile'][
-                t_constants.PROFILE_REGION]
-
+            profile_dict = port['port']['binding:profile']
+            region_name = profile_dict[t_constants.PROFILE_REGION]
+            t_ctx = t_context.get_context_from_neutron_context(context)
             pod = db_api.get_pod_by_name(t_ctx, region_name)
+
+            net = self.get_network(context, res['network_id'])
+            if net[provider_net.NETWORK_TYPE] == t_constants.NT_VxLAN:
+                # if a local type network happens to be a vxlan network, local
+                # plugin will still send agent info, so we double check here
+                self.helper.create_shadow_agent_if_needed(t_ctx,
+                                                          profile_dict, pod)
+
             entries = [(ip['subnet_id'],
                         t_constants.RT_SUBNET) for ip in res['fixed_ips']]
             entries.append((res['network_id'], t_constants.RT_NETWORK))

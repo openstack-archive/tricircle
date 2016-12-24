@@ -33,7 +33,6 @@ import neutron_lib.context as q_context
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.plugins import directory
 
-import neutron.api.v2.attributes as neutron_attributes
 import neutron.conf.common as q_config
 
 from neutron.db import _utils
@@ -418,6 +417,18 @@ class FakeClient(object):
                 ret_list.append(res)
         return ret_list
 
+    def update_resources(self, _type, ctx, _id, body):
+        if self.region_name == 'top':
+            res_list = self._res_map[self.region_name][_type + 's']
+        else:
+            res_list = self._res_map[self.region_name][_type]
+        updated = False
+        for res in res_list:
+            if res['id'] == _id:
+                updated = True
+                res.update(body[_type])
+        return updated
+
     def delete_resources(self, _type, ctx, _id):
         index = -1
         if self.region_name == 'top':
@@ -448,17 +459,7 @@ class FakeClient(object):
         self.delete_resources('network', ctx, net_id)
 
     def update_networks(self, ctx, net_id, network):
-        net_data = network[neutron_attributes.NETWORK]
-        if self.region_name == 'pod_1':
-            bottom_nets = BOTTOM1_NETS
-        else:
-            bottom_nets = BOTTOM2_NETS
-
-        for net in bottom_nets:
-            if net['id'] == net_id:
-                net['description'] = net_data['description']
-                net['admin_state_up'] = net_data['admin_state_up']
-                net['shared'] = net_data['shared']
+        self.update_resources('network', ctx, net_id, network)
 
     def list_subnets(self, ctx, filters=None):
         return self.list_resources('subnet', ctx, filters)
@@ -472,33 +473,13 @@ class FakeClient(object):
         self.delete_resources('subnet', ctx, subnet_id)
 
     def update_ports(self, ctx, port_id, body):
-        subnet_data = body[neutron_attributes.PORT]
-        if self.region_name == 'pod_1':
-            ports = BOTTOM1_PORTS
-        else:
-            ports = BOTTOM2_PORTS
-
-        for port in ports:
-            if port['id'] == port_id:
-                for key in subnet_data:
-                    port[key] = subnet_data[key]
-                return
+        self.update_resources('port', ctx, port_id, body)
 
     def update_subnets(self, ctx, subnet_id, body):
-        subnet_data = body[neutron_attributes.SUBNET]
-        if self.region_name == 'pod_1':
-            subnets = BOTTOM1_SUBNETS
-        else:
-            subnets = BOTTOM2_SUBNETS
-
-        for subnet in subnets:
-            if subnet['id'] == subnet_id:
-                for key in subnet_data:
-                    subnet[key] = subnet_data[key]
-                return
-
-        raise ipam_exc.InvalidSubnetRequest(
-            reason=_("updated subnet id not found"))
+        updated = self.update_resources('subnet', ctx, subnet_id, body)
+        if not updated:
+            raise ipam_exc.InvalidSubnetRequest(
+                reason=_("updated subnet id not found"))
 
     def create_ports(self, ctx, body):
         return self.create_resources('port', ctx, body)
@@ -1733,10 +1714,17 @@ class PluginTest(unittest.TestCase,
 
     @staticmethod
     def _prepare_port_test(tenant_id, ctx, pod_name, index, t_net_id,
-                           b_net_id, vif_type=portbindings.VIF_TYPE_UNBOUND,
+                           b_net_id, t_subnet_id, b_subnet_id, add_ip=True,
+                           vif_type=portbindings.VIF_TYPE_UNBOUND,
                            device_onwer='compute:None'):
         t_port_id = uuidutils.generate_uuid()
         b_port_id = uuidutils.generate_uuid()
+
+        if add_ip:
+            ip_address = ''
+            for subnet in TOP_SUBNETS:
+                if subnet['id'] == t_subnet_id:
+                    ip_address = subnet['cidr'].replace('.0/24', '.5')
 
         t_port = {
             'id': t_port_id,
@@ -1755,6 +1743,9 @@ class PluginTest(unittest.TestCase,
             'binding:host_id': 'zhiyuan-5',
             'status': 'ACTIVE'
         }
+        if add_ip:
+            t_port.update({'fixed_ips': [{'subnet_id': t_subnet_id,
+                                          'ip_address': ip_address}]})
         TOP_PORTS.append(DotDict(t_port))
 
         b_port = {
@@ -1776,6 +1767,9 @@ class PluginTest(unittest.TestCase,
             'binding:host_id': 'zhiyuan-5',
             'status': 'ACTIVE'
         }
+        if add_ip:
+            b_port.update({'fixed_ips': [{'subnet_id': b_subnet_id,
+                                          'ip_address': ip_address}]})
 
         if pod_name == 'pod_1':
             BOTTOM1_PORTS.append(DotDict(b_port))
@@ -1794,7 +1788,8 @@ class PluginTest(unittest.TestCase,
 
     @staticmethod
     def _prepare_network_test(tenant_id, ctx, region_name, index,
-                              enable_dhcp=True, az_hints=None):
+                              enable_dhcp=True, az_hints=None,
+                              network_type=constants.NT_LOCAL):
         t_net_id = b_net_id = uuidutils.generate_uuid()
         t_subnet_id = b_subnet_id = uuidutils.generate_uuid()
 
@@ -1807,6 +1802,7 @@ class PluginTest(unittest.TestCase,
             'description': 'description',
             'admin_state_up': False,
             'shared': False,
+            'provider:network_type': network_type,
             'availability_zone_hints': az_hints
         }
         t_subnet = {
@@ -2069,10 +2065,12 @@ class PluginTest(unittest.TestCase,
         self._basic_pod_route_setup()
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
-        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_test(
             project_id, t_ctx, 'pod_1', 1)
         t_port_id, b_port_id = self._prepare_port_test(
-            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id)
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
         t_sg_id, _ = self._prepare_sg_test(project_id, t_ctx, 'pod_1')
 
         fake_plugin = FakePlugin()
@@ -2147,11 +2145,13 @@ class PluginTest(unittest.TestCase,
         self._basic_pod_route_setup()
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
-        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_test(
             tenant_id, t_ctx, 'pod_1', 1)
         (t_port_id, b_port_id) = self._prepare_port_test(
-            tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id, vif_type='ovs',
-            device_onwer='compute:None')
+            tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id,
+            vif_type='ovs', device_onwer='compute:None')
 
         fake_plugin = FakePlugin()
         mock_context.return_value = t_ctx
@@ -2175,7 +2175,8 @@ class PluginTest(unittest.TestCase,
         t_ctx = context.get_db_context()
         neutron_context = FakeNeutronContext()
         mock_context.return_value = t_ctx
-        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_test(
             tenant_id, t_ctx, 'pod_1', 1)
         fake_plugin = FakePlugin()
         fake_client = FakeClient('pod_1')
@@ -2186,7 +2187,7 @@ class PluginTest(unittest.TestCase,
         for port_type in non_vm_port_types:
             (t_port_id, b_port_id) = self._prepare_port_test(
                 tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
-                device_onwer=port_type)
+                t_subnet_id, b_subnet_id, add_ip=False, device_onwer=port_type)
             update_body = {
                 'port': {'binding:host_id': 'zhiyuan-6'}
             }
@@ -2199,6 +2200,53 @@ class PluginTest(unittest.TestCase,
             # update bottom, so bottom not changed
             bottom_port = fake_client.get_ports(t_ctx, b_port_id)
             self.assertEqual(bottom_port['binding:host_id'], 'zhiyuan-5')
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_vm_port(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, network_type=constants.NT_LOCAL)
+        fake_plugin = FakePlugin()
+
+        (t_port_id, b_port_id) = self._prepare_port_test(
+            tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+        update_body = {
+            'port': {'binding:profile': {
+                'region': 'pod_1',
+                'host': 'fake_host',
+                'type': 'Open vSwitch agent',
+                'tunnel_ip': '192.168.1.101'
+            }}
+        }
+        fake_plugin.update_port(
+            neutron_context, t_port_id, update_body)
+        agents = core.query_resource(t_ctx, models.ShadowAgent, [], [])
+        # we only create shadow agent for vxlan network
+        self.assertEqual(len(agents), 0)
+
+        client = FakeClient()
+        # in fact provider attribute is not allowed to be updated, but in test
+        # we just change the network type for convenience
+        client.update_networks(
+            t_ctx, t_net_id,
+            {'network': {'provider:network_type': constants.NT_VxLAN}})
+        fake_plugin.update_port(
+            neutron_context, t_port_id, update_body)
+        agents = core.query_resource(t_ctx, models.ShadowAgent, [], [])
+        self.assertEqual(len(agents), 1)
+        self.assertEqual(agents[0]['type'], 'Open vSwitch agent')
+        self.assertEqual(agents[0]['host'], 'fake_host')
+        self.assertEqual(agents[0]['tunnel_ip'], '192.168.1.101')
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
