@@ -96,13 +96,26 @@ def _safe_operation(operation_name):
                     if i == retries:
                         raise
                     if cfg.CONF.client.auto_refresh_endpoint:
-                        msg = _LW("%(exception)s, "
-                                  "update endpoint and try again") % {
-                            "exception": e.message}
-                        LOG.warning(msg)
+                        LOG.warning(_LW('%(exception)s, '
+                                        'update endpoint and try again'),
+                                    {'exception': e.message})
                         instance._update_endpoint_from_keystone(context, True)
                     else:
                         raise
+                except exceptions.EndpointNotFound as e:
+                    # NOTE(zhiyuan) endpoints are not registered in Keystone
+                    # for the given pod and service, we add default behaviours
+                    # for the handle functions
+                    if i < retries and cfg.CONF.client.auto_refresh_endpoint:
+                        LOG.warning(_LW('%(exception)s, '
+                                        'update endpoint and try again'),
+                                    {'exception': e.message})
+                        instance._update_endpoint_from_keystone(context, True)
+                        continue
+                    if operation_name == 'list':
+                        return []
+                    else:
+                        return None
         return handle_args
     return handle_func
 
