@@ -83,7 +83,8 @@ for installing DevStack in virtual machine.
 Setup
 ^^^^^
 
-In pod1 in node1,
+In pod1 in node1 for Tricircle service, central Neutron and OpenStack
+RegionOne,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
@@ -108,22 +109,22 @@ In pod1 in node1,
       Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000)
 
   - the format of OVS_BRIDGE_MAPPINGS is <physical network name>:<ovs bridge name>,
-    you can change these names, but remember to adapt your change to the commands
-    showed in this guide::
+    you can change these names, but remember to adapt your change to the
+    commands showed in this guide::
 
-      OVS_BRIDGE_MAPPINGS=bridge:br-bridge
+      OVS_BRIDGE_MAPPINGS=bridge:br-vlan
 
-  - set Q_USE_PROVIDERNET_FOR_PUBLIC to True(it's False by default) if you would
-    like to try l3 north-south networking::
+  - set TRICIRCLE_START_SERVICES to True to install the Tricircle service and
+    central Neutron in node1::
 
-      Q_USE_PROVIDERNET_FOR_PUBLIC=True
+      TRICIRCLE_START_SERVICES=True
 
 - 4 Create OVS bridge and attach the VLAN network interface to it ::
 
-    sudo ovs-vsctl add-br br-bridge
-    sudo ovs-vsctl add-port br-bridge eth1
+    sudo ovs-vsctl add-br br-vlan
+    sudo ovs-vsctl add-port br-vlan eth1
 
-  br-bridge is the OVS bridge name you configure on OVS_PHYSICAL_BRIDGE, eth1 is
+  br-vlan is the OVS bridge name you configure on OVS_PHYSICAL_BRIDGE, eth1 is
   the device name of your VLAN network interface
 
 - 5 Run DevStack. In DevStack folder, run ::
@@ -132,7 +133,7 @@ In pod1 in node1,
 
 - 6 After DevStack successfully starts, begin to setup node2.
 
-In pod2 in node2,
+In pod2 in node2 for OpenStack RegionTwo,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
@@ -168,16 +169,12 @@ In pod2 in node2,
     you can change these names, but remember to adapt your change to the commands
     showed in this guide::
 
-      OVS_BRIDGE_MAPPINGS=bridge:br-bridge,extern:br-ext
+      OVS_BRIDGE_MAPPINGS=bridge:br-vlan,extern:br-ext
 
-  - set Q_USE_PROVIDERNET_FOR_PUBLIC to True(it's False by default) if you would
-    like to try l3 north-south networking::
+  - set TRICIRCLE_START_SERVICES to False(it's True by default) so Tricircle
+    services and central Neutron will not be started in node2::
 
-      Q_USE_PROVIDERNET_FOR_PUBLIC=True
-
-  - change the ip in central_neutron_url to management interface ip of node1::
-
-      central_neutron_url=http://10.250.201.24:$TRICIRCLE_NEUTRON_PORT
+      TRICIRCLE_START_SERVICES=False
 
   In this guide, we define two physical networks in node2, one is "bridge" for
   bridge network, the other one is "extern" for external network. If you do not
@@ -188,29 +185,20 @@ In pod2 in node2,
 
 - 4 Create OVS bridge and attach the VLAN network interface to it ::
 
-    sudo ovs-vsctl add-br br-bridge
-    sudo ovs-vsctl add-port br-bridge eth1
+    sudo ovs-vsctl add-br br-vlan
+    sudo ovs-vsctl add-port br-vlan eth1
     sudo ovs-vsctl add-br br-ext
     sudo ovs-vsctl add-port br-ext eth2
 
-  br-bridge and br-ext are the OVS bridge names you configure on
+  br-vlan and br-ext are the OVS bridge names you configure on
   OVS_PHYSICAL_BRIDGE, eth1 and eth2 are the device names of your VLAN network
   interfaces, for the "bridge" network and the external network.
 
-- 5 In /opt/stack folder (create this folder if it does not exist), then run ::
-
-    git clone https://github.com/openstack/tricircle
-
-- 6 After the Tricircle source code is cloned, install Tricircle manually ::
-
-    cd tricircle/
-    sudo pip install -e .
-
-- 7 Run DevStack. In DevStack folder, run ::
+- 5 Run DevStack. In DevStack folder, run ::
 
     ./stack.sh
 
-- 8 After DevStack successfully starts, the setup is finished.
+- 6 After DevStack successfully starts, the setup is finished.
 
 How to play
 ^^^^^^^^^^^

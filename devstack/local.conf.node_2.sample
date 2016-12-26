@@ -2,14 +2,16 @@
 # Sample DevStack local.conf.
 #
 # This sample file is intended to be used for your typical Tricircle DevStack
-# multi-node environment. As this file configures, DevStack will setup one
-# bottom region running original Nova, Cinder and Neutron.
+# multi-node environment. As this file has configuration values for DevStack
+# to result in RegionTwo running original Nova, Cinder and Neutron, and
+# the local Neutron will be configured with Tricircle Local Neutron Plugin
+# to work with central Neutron with Tricircle Central Neutron Plugin.
 #
 # This file works with local.conf.node_1.sample to help you build a two-node
-# three-region Tricircle environment. Keystone and Glance in top region are
-# shared by services in all the regions.
+# three-region environment(CentralRegion, RegionOne and RegionTwo). Keystone in
+# RegionOne is shared by services in all the regions.
 #
-# Some options needs to be change to adapt to your environment, see README.md
+# Some options need to be changed to adapt to your environment, see README.rst
 # for detail.
 #
 
@@ -20,22 +22,6 @@ RABBIT_PASSWORD=password
 SERVICE_PASSWORD=password
 SERVICE_TOKEN=password
 ADMIN_PASSWORD=password
-LOGFILE=/opt/stack/logs/stack.sh.log
-VERBOSE=True
-LOG_COLOR=True
-SCREEN_LOGDIR=/opt/stack/logs
-FIXED_RANGE=10.0.0.0/24
-NETWORK_GATEWAY=10.0.0.1
-FIXED_NETWORK_SIZE=256
-FLOATING_RANGE=10.100.100.160/24
-Q_FLOATING_ALLOCATION_POOL=start=10.100.100.160,end=10.100.100.192
-
-PUBLIC_NETWORK_GATEWAY=10.100.100.3
-
-Q_USE_SECGROUP=False
-LIBVIRT_FIREWALL_DRIVER=nova.virt.firewall.NoopFirewallDriver
-NEUTRON_CREATE_INITIAL_NETWORKS=False
-Q_USE_PROVIDERNET_FOR_PUBLIC=True
 
 HOST_IP=10.250.201.25
 REGION_NAME=RegionTwo
@@ -45,41 +31,16 @@ KEYSTONE_SERVICE_HOST=10.250.201.24
 KEYSTONE_AUTH_HOST=10.250.201.24
 
 Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
-OVS_BRIDGE_MAPPINGS=bridge:br-bridge,extern:br-ext
+OVS_BRIDGE_MAPPINGS=bridge:br-vlan,extern:br-ext
 
-# Use Neutron instead of nova-network
-disable_service n-net
-enable_service q-svc
-enable_service q-dhcp
-enable_service q-agt
-enable_service q-l3
+# Specify Central Region name
+# CENTRAL_REGION_NAME=CentralRegion
 
-enable_service c-api
-enable_service c-vol
-enable_service c-sch
+# Specify port for central Neutron server
+# TRICIRCLE_NEUTRON_PORT=20001
 
-disable_service n-obj
-disable_service c-bak
+TRICIRCLE_START_SERVICES=False
+enable_plugin tricircle https://github.com/openstack/tricircle/
+
 disable_service tempest
 disable_service horizon
-
-CENTRAL_REGION_NAME=CentralRegion
-TRICIRCLE_NEUTRON_PORT=20001
-
-[[post-config|$NEUTRON_CONF]]
-
-[DEFAULT]
-core_plugin=tricircle.network.local_plugin.TricirclePlugin
-service_plugins=tricircle.network.local_l3_plugin.TricircleL3Plugin
-
-[client]
-admin_username=admin
-admin_password=$ADMIN_PASSWORD
-admin_tenant=demo
-auto_refresh_endpoint=True
-top_region_name=$CENTRAL_REGION_NAME
-
-[tricircle]
-real_core_plugin=neutron.plugins.ml2.plugin.Ml2Plugin
-# change the ip to the ip of the machine hosting central Neutron server
-central_neutron_url=http://10.250.201.24:$TRICIRCLE_NEUTRON_PORT
