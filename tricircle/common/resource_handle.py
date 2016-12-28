@@ -65,7 +65,7 @@ class NeutronResourceHandle(ResourceHandle):
     support_resource = {
         'network': LIST | CREATE | DELETE | GET | UPDATE,
         'subnet': LIST | CREATE | DELETE | GET | UPDATE,
-        'port': LIST | CREATE | DELETE | GET,
+        'port': LIST | CREATE | DELETE | GET | UPDATE,
         'router': LIST | CREATE | DELETE | ACTION | GET | UPDATE,
         'security_group': LIST | CREATE | GET,
         'security_group_rule': LIST | CREATE | DELETE,

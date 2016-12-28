@@ -36,6 +36,7 @@ from neutron.db import portbindings_db
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
+from neutron.extensions import portbindings
 from neutron.extensions import providernet as provider
 from neutron_lib.api import validators
 from neutron_lib import constants
@@ -456,18 +457,71 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._process_port_create_security_group(context, result, sgids)
         return result
 
+    def _check_mac_update_allowed(self, orig_port, port):
+        unplugged_types = (portbindings.VIF_TYPE_BINDING_FAILED,
+                           portbindings.VIF_TYPE_UNBOUND)
+        new_mac = port.get('mac_address')
+        mac_change = (new_mac is not None and
+                      orig_port['mac_address'] != new_mac)
+
+        if mac_change and (
+                orig_port[portbindings.VIF_TYPE] not in unplugged_types):
+            raise exceptions.PortBound(
+                port_id=orig_port['id'],
+                vif_type=orig_port[portbindings.VIF_TYPE],
+                old_mac=orig_port['mac_address'],
+                new_mac=port['mac_address'])
+
+    def _filter_unsupported_attrs(self, port_data):
+        unsupported_attrs = ['fixed_ips', 'qos_policy',
+                             'allowed_address_pair']
+        remove_keys = [key for key in port_data.keys() if (
+            key in unsupported_attrs)]
+        for key in remove_keys:
+            port_data.pop(key)
+
+    def _log_update_port_sensitive_attrs(self, port_id, port):
+        sensitive_attrs = ['device_id', 'device_owner', portbindings.VNIC_TYPE,
+                           portbindings.PROFILE, portbindings.HOST_ID]
+        request_body = port['port']
+        updated_sens_attrs = []
+
+        for key in request_body.keys():
+            if key in sensitive_attrs:
+                updated_sens_attrs.append('%s = %s' % (key, request_body[key]))
+
+        warning_attrs = ', '.join(updated_sens_attrs)
+        LOG.warning(_LW('update port: %(port_id)s , %(warning_attrs)s'),
+                    {'port_id': port_id, 'warning_attrs': warning_attrs})
+
+    def _handle_bottom_security_group(self, t_ctx, top_sg, bottom_pod):
+        if top_sg:
+            b_region_name = bottom_pod['region_name']
+            for sg_id in top_sg:
+                b_client = self._get_client(region_name=b_region_name)
+                b_client.get_security_groups(t_ctx, sg_id)
+                if db_api.get_bottom_id_by_top_id_region_name(
+                        t_ctx, sg_id, b_region_name, t_constants.RT_SG):
+                    continue
+                db_api.create_resource_mapping(
+                    t_ctx, sg_id, sg_id, bottom_pod['pod_id'], t_ctx.tenant,
+                    t_constants.RT_SG)
+
     def update_port(self, context, port_id, port):
-        # TODO(zhiyuan) handle bottom port update
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        top_port = super(TricirclePlugin, self).get_port(context, port_id)
+
         # be careful that l3_db will call update_port to update device_id of
         # router interface, we cannot directly update bottom port in this case,
         # otherwise we will fail when attaching bottom port to bottom router
         # because its device_id is not empty
-        res = super(TricirclePlugin, self).update_port(context, port_id, port)
         if t_constants.PROFILE_REGION in port['port'].get(
                 'binding:profile', {}):
+            res = super(TricirclePlugin, self).update_port(context, port_id,
+                                                           port)
             region_name = port['port']['binding:profile'][
                 t_constants.PROFILE_REGION]
-            t_ctx = t_context.get_context_from_neutron_context(context)
+
             pod = db_api.get_pod_by_name(t_ctx, region_name)
             entries = [(ip['subnet_id'],
                         t_constants.RT_SUBNET) for ip in res['fixed_ips']]
@@ -503,6 +557,54 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
             self.xjob_handler.configure_security_group_rules(t_ctx,
                                                              res['tenant_id'])
+        # for vm port or port with empty device_owner, update top port and
+        # bottom port
+        elif top_port.get('device_owner') not in NON_VM_PORT_TYPES:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                t_ctx, port_id, t_constants.RT_PORT)
+            request_body = port[attributes.PORT]
+            if mappings:
+                with context.session.begin():
+                    b_pod, b_port_id = mappings[0]
+                    b_region_name = b_pod['region_name']
+                    b_client = self._get_client(region_name=b_region_name)
+                    b_port = b_client.get_ports(context, b_port_id)
+                    self._check_mac_update_allowed(b_port, request_body)
+                    self._filter_unsupported_attrs(request_body)
+                    request_body = port[attributes.PORT]
+                    if request_body.get('security_groups', None):
+                        self._handle_bottom_security_group(
+                            t_ctx, request_body['security_groups'], b_pod)
+
+                    res = super(TricirclePlugin, self).update_port(
+                        context, port_id, port)
+                    # name is not allowed to be updated, because it is used by
+                    # lock_handle to retrieve bottom/local resources that have
+                    # been created but not registered in the resource routing
+                    # table
+                    request_body.pop('name', None)
+
+                    try:
+                        b_client.update_ports(t_ctx, b_port_id, port)
+                    except q_cli_exceptions.NotFound:
+                        LOG.error(
+                            _LE('port: %(port_id)s not found, '
+                                'region name: %(name)s'),
+                            {'port_id': b_port_id, 'name': b_region_name})
+
+                    if request_body.get('security_groups', None):
+                        self.xjob_handler.configure_security_group_rules(
+                            t_ctx, res['tenant_id'])
+            else:
+                self._filter_unsupported_attrs(request_body)
+                res = super(TricirclePlugin, self).update_port(
+                    context, port_id, port)
+        else:
+            # for router interface, router gw, dhcp port, not directly
+            # update bottom port
+            res = super(TricirclePlugin, self).update_port(
+                context, port_id, port)
+        self._log_update_port_sensitive_attrs(port_id, port)
         return res
 
     def delete_port(self, context, port_id, l3_port_check=True):

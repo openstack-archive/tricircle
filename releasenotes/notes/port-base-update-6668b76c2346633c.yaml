@@ -1,0 +1,15 @@
+---
+features:
+  - |
+    Port
+
+    * Update port
+
+      * name, description, admin_state_up, extra_dhcp_opts, device_owner,
+        device_id, mac_address, security group attribute updates supported
+
+issues:
+  - |
+    Update port may not lead to the expected result if an instance is being
+    booted at the same time. You can redo the update operation later to make
+    it execute correctly.
