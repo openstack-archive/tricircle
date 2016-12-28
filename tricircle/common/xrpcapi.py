@@ -112,3 +112,10 @@ class XJobAPI(object):
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'update_subnet',
             payload={constants.JT_SUBNET_UPDATE: combine_id})
+
+    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+        combine_id = '%s#%s' % (pod_id, net_id)
+        db_api.new_job(ctxt, constants.JT_SHADOW_PORT_SETUP, combine_id)
+        self.client.prepare(exchange='openstack').cast(
+            ctxt, 'setup_shadow_ports',
+            payload={constants.JT_SHADOW_PORT_SETUP: combine_id})

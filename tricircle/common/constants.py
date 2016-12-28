@@ -79,6 +79,7 @@ PROFILE_HOST = 'host'
 PROFILE_AGENT_TYPE = 'type'
 PROFILE_TUNNEL_IP = 'tunnel_ip'
 PROFILE_FORCE_UP = 'force_up'
+DEVICE_OWNER_SHADOW = 'compute:shadow'
 
 # job type
 JT_ROUTER = 'router'
@@ -87,6 +88,8 @@ JT_PORT_DELETE = 'port_delete'
 JT_SEG_RULE_SETUP = 'seg_rule_setup'
 JT_NETWORK_UPDATE = 'update_network'
 JT_SUBNET_UPDATE = 'subnet_update'
+JT_SHADOW_PORT_SETUP = 'shadow_port_setup'
+
 # network type
 NT_LOCAL = 'local'
 NT_VLAN = 'vlan'

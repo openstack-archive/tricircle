@@ -35,6 +35,7 @@ import tricircle.network.exceptions as t_network_exc
 AZ_HINTS = 'availability_zone_hints'
 EXTERNAL = 'router:external'  # neutron.extensions.external_net.EXTERNAL
 TYPE_VLAN = 'vlan'  # neutron.plugins.common.constants.TYPE_VLAN
+VIF_TYPE_OVS = 'ovs'  # neutron.extensions.portbindings.VIF_TYPE_OVS
 
 OVS_AGENT_DATA_TEMPLATE = {
     'agent_type': None,
@@ -59,6 +60,9 @@ OVS_AGENT_DATA_TEMPLATE = {
         'extensions': [],
         'enable_distributed_routing': False,
         'bridge_mappings': {}}}
+
+VIF_AGENT_TYPE_MAP = {
+    VIF_TYPE_OVS: constants.AGENT_TYPE_OVS}
 
 AGENT_DATA_TEMPLATE_MAP = {
     constants.AGENT_TYPE_OVS: OVS_AGENT_DATA_TEMPLATE}
@@ -216,6 +220,9 @@ class NetworkHelper(object):
                 value = t_constants.shadow_port_name % ele_['id']
             elif _type_ == t_constants.RT_NETWORK:
                 value = utils.get_bottom_network_name(ele_)
+            elif _type_ == t_constants.RT_SD_PORT:
+                _type_ = t_constants.RT_PORT
+                value = t_constants.shadow_port_name % ele_['id']
             else:
                 value = ele_['id']
             return client.list_resources(_type_, t_ctx_,
@@ -228,6 +235,8 @@ class NetworkHelper(object):
             elif _type_ == t_constants.RT_SD_PORT:
                 _type_ = t_constants.RT_PORT
             client = self._get_client(pod_['region_name'])
+            if _type_ == t_constants.RT_SD_PORT:
+                _type_ = t_constants.RT_PORT
             return client.create_resources(_type_, t_ctx_, body_)
 
         return t_lock.get_or_create_element(
@@ -700,6 +709,10 @@ class NetworkHelper(object):
             return False
         router_az_hint = router_az_hints[0]
         return bool(db_api.get_pod_by_name(t_ctx, router_az_hint))
+
+    @staticmethod
+    def get_agent_type_by_vif(vif_type):
+        return VIF_AGENT_TYPE_MAP.get(vif_type)
 
     @staticmethod
     def construct_agent_data(agent_type, host, tunnel_ip):

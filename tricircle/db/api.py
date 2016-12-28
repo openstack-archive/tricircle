@@ -458,8 +458,7 @@ def ensure_agent_exists(context, pod_id, host, _type, tunnel_ip):
         context.session.begin()
         agents = core.query_resource(
             context, models.ShadowAgent,
-            [{'key': 'pod_id', 'comparator': 'eq', 'value': pod_id},
-             {'key': 'host', 'comparator': 'eq', 'value': host},
+            [{'key': 'host', 'comparator': 'eq', 'value': host},
              {'key': 'type', 'comparator': 'eq', 'value': _type}], [])
         if agents:
             return
@@ -475,6 +474,14 @@ def ensure_agent_exists(context, pod_id, host, _type, tunnel_ip):
         context.session.rollback()
     finally:
         context.session.close()
+
+
+def get_agent_by_host_type(context, host, _type):
+    agents = core.query_resource(
+        context, models.ShadowAgent,
+        [{'key': 'host', 'comparator': 'eq', 'value': host},
+         {'key': 'type', 'comparator': 'eq', 'value': _type}], [])
+    return agents[0] if agents else None
 
 
 def _is_user_context(context):

@@ -20,6 +20,7 @@ from oslo_log import log
 
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
+from neutron_lib.api import validators
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
@@ -53,9 +54,6 @@ cfg.CONF.register_opts(tricircle_opts, group=tricircle_opt_group)
 
 
 LOG = log.getLogger(__name__)
-
-VIF_AGENT_TYPE_MAP = {
-    portbindings.VIF_TYPE_OVS: q_constants.AGENT_TYPE_OVS}
 
 
 class TricirclePlugin(plugin.Ml2Plugin):
@@ -461,7 +459,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             # get_subnet will create bottom subnet if it doesn't exist
             self.get_subnet(context, subnet_id)
 
-        for field in ('name', 'device_id', 'binding:host_id'):
+        for field in ('name', 'device_id', 'device_owner', 'binding:host_id'):
             if port_body.get(field):
                 t_port[field] = port_body[field]
 
@@ -488,6 +486,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         if not utils.is_extension_supported(self.core_plugin, 'agent'):
             return
         profile_dict = port_body.get(portbindings.PROFILE, {})
+        if not validators.is_attr_set(profile_dict):
+            return
         if t_constants.PROFILE_TUNNEL_IP not in profile_dict:
             return
         agent_type = profile_dict[t_constants.PROFILE_AGENT_TYPE]
@@ -526,9 +526,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
             return
 
         vif_type = port[portbindings.VIF_TYPE]
-        if vif_type not in VIF_AGENT_TYPE_MAP:
+        agent_type = helper.NetworkHelper.get_agent_type_by_vif(vif_type)
+        if not agent_type:
             return
-        agent_type = VIF_AGENT_TYPE_MAP[vif_type]
         agents = self.core_plugin.get_agents(
             context, filters={'agent_type': [agent_type], 'host': [host]})
         if not agents:

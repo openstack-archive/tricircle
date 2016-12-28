@@ -489,8 +489,13 @@ class FakeClient(object):
         filters = filters or []
         for query_filter in filters:
             key = query_filter['key']
-            value = query_filter['value']
-            filter_dict[key] = value
+            # when querying ports, "fields" is passed in the query string to
+            # ask the server to only return necessary fields, which can reduce
+            # the data being transfered. in test, we just return all the fields
+            # since there's no need to optimize
+            if key != 'fields':
+                value = query_filter['value']
+                filter_dict[key] = value
         return self.client.get('', {'filters': filter_dict})['ports']
 
     def get_ports(self, ctx, port_id):
@@ -1009,6 +1014,12 @@ class FakeBaseRPCAPI(object):
         self.xmanager.update_subnet(
             ctxt, payload={constants.JT_SUBNET_UPDATE: combine_id})
 
+    def configure_security_group_rules(self, ctxt, project_id):
+        pass
+
+    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+        pass
+
 
 class FakeRPCAPI(FakeBaseRPCAPI):
     def __init__(self, fake_plugin):
@@ -1024,6 +1035,11 @@ class FakeRPCAPI(FakeBaseRPCAPI):
 
     def configure_security_group_rules(self, ctxt, project_id):
         pass
+
+    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+        combine_id = '%s#%s' % (pod_id, net_id)
+        self.xmanager.setup_shadow_ports(
+            ctxt, payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
 
 
 class FakeExtension(object):
@@ -1449,7 +1465,7 @@ class PluginTest(unittest.TestCase,
 
         az_hints = []
         region_names = []
-        t_net_id, _, _, _ = self._prepare_network_test(
+        t_net_id, _, _, _ = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
         net_filter = {'id': [t_net_id]}
         top_net = fake_plugin.get_networks(neutron_context, net_filter)
@@ -1458,8 +1474,8 @@ class PluginTest(unittest.TestCase,
 
         az_hints = '["az_name_1", "az_name_2"]'
         region_names = ['pod_1', 'pod_2']
-        t_net_id, _, _, _ = self._prepare_network_test(
-            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        t_net_id, _, _, _ = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 2, az_hints=az_hints)
         net_filter = {'id': [t_net_id]}
         top_net = fake_plugin.get_networks(neutron_context, net_filter)
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
@@ -1467,8 +1483,8 @@ class PluginTest(unittest.TestCase,
 
         az_hints = '["pod_1", "pod_2"]'
         region_names = ['pod_1', 'pod_2']
-        t_net_id, _, _, _ = self._prepare_network_test(
-            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        t_net_id, _, _, _ = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 3, az_hints=az_hints)
         net_filter = {'id': [t_net_id]}
         top_net = fake_plugin.get_networks(neutron_context, net_filter)
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
@@ -1476,8 +1492,8 @@ class PluginTest(unittest.TestCase,
 
         az_hints = '["pod_1", "az_name_2"]'
         region_names = ['pod_1', 'pod_2']
-        t_net_id, _, _, _ = self._prepare_network_test(
-            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        t_net_id, _, _, _ = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 4, az_hints=az_hints)
         net_filter = {'id': [t_net_id]}
         top_net = fake_plugin.get_networks(neutron_context, net_filter)
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
@@ -1489,8 +1505,8 @@ class PluginTest(unittest.TestCase,
         db_api.create_pod(self.context, pod4)
         az_hints = '["pod_1", "az_name_1"]'
         region_names = ['pod_1', 'pod_4']
-        t_net_id, _, _, _ = self._prepare_network_test(
-            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        t_net_id, _, _, _ = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 5, az_hints=az_hints)
         net_filter = {'id': [t_net_id]}
         top_net = fake_plugin.get_networks(neutron_context, net_filter)
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
@@ -1503,9 +1519,8 @@ class PluginTest(unittest.TestCase,
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
         t_ctx = context.get_db_context()
-        t_net_id, _, b_net_id, _ = self._prepare_network_test(tenant_id,
-                                                              t_ctx, 'pod_1',
-                                                              1)
+        t_net_id, _, b_net_id, _ = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 1)
         fake_plugin = FakePlugin()
         fake_client = FakeClient('pod_1')
         neutron_context = FakeNeutronContext()
@@ -1547,8 +1562,8 @@ class PluginTest(unittest.TestCase,
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
         t_ctx = context.get_db_context()
-        t_net_id, _, _, _ = self._prepare_network_test(tenant_id, t_ctx,
-                                                       'pod_1', 1)
+        t_net_id, _, _, _ = self._prepare_network_subnet(tenant_id, t_ctx,
+                                                         'pod_1', 1)
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
         mock_context.return_value = t_ctx
@@ -1568,8 +1583,8 @@ class PluginTest(unittest.TestCase,
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
         t_ctx = context.get_db_context()
-        t_net_id, _, _, _ = self._prepare_network_test(tenant_id, t_ctx,
-                                                       'pod_1', 1)
+        t_net_id, _, _, _ = self._prepare_network_subnet(tenant_id, t_ctx,
+                                                         'pod_1', 1)
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
         mock_context.return_value = t_ctx
@@ -1787,55 +1802,70 @@ class PluginTest(unittest.TestCase,
         return t_port_id, b_port_id
 
     @staticmethod
-    def _prepare_network_test(tenant_id, ctx, region_name, index,
-                              enable_dhcp=True, az_hints=None,
-                              network_type=constants.NT_LOCAL):
-        t_net_id = b_net_id = uuidutils.generate_uuid()
-        t_subnet_id = b_subnet_id = uuidutils.generate_uuid()
+    def _prepare_network_subnet(project_id, ctx, region_name, index,
+                                enable_dhcp=True, az_hints=None,
+                                network_type=constants.NT_LOCAL):
+        t_client = FakeClient()
+        t_net_name = 'top_net_%d' % index
+        t_nets = t_client.list_networks(ctx, [{'key': 'name',
+                                               'comparator': 'eq',
+                                               'value': t_net_name}])
+        if not t_nets:
+            t_net_id = uuidutils.generate_uuid()
+            t_subnet_id = uuidutils.generate_uuid()
+            t_net = {
+                'id': t_net_id,
+                'name': 'top_net_%d' % index,
+                'tenant_id': project_id,
+                'description': 'description',
+                'admin_state_up': False,
+                'shared': False,
+                'provider:network_type': network_type,
+                'availability_zone_hints': az_hints
+            }
+            t_subnet = {
+                'id': t_subnet_id,
+                'network_id': t_net_id,
+                'name': 'top_subnet_%d' % index,
+                'ip_version': 4,
+                'cidr': '10.0.%d.0/24' % index,
+                'allocation_pools': [],
+                'enable_dhcp': True,
+                'gateway_ip': '10.0.%d.1' % index,
+                'ipv6_address_mode': '',
+                'ipv6_ra_mode': '',
+                'tenant_id': project_id,
+                'description': 'description',
+                'host_routes': [],
+                'dns_nameservers': []
+            }
+            TOP_NETS.append(DotDict(t_net))
+            TOP_SUBNETS.append(DotDict(t_subnet))
+        else:
+            t_net_id = t_nets[0]['id']
+            t_subnet_name = 'top_subnet_%d' % index
+            t_subnets = t_client.list_subnets(ctx, [{'key': 'name',
+                                                     'comparator': 'eq',
+                                                     'value': t_subnet_name}])
+            t_subnet_id = t_subnets[0]['id']
+            # top and bottom ids are the same
+            return t_net_id, t_subnet_id, t_net_id, t_subnet_id
 
-        # no need to specify az, we will setup router in the pod where bottom
-        # network is created
-        t_net = {
-            'id': t_net_id,
-            'name': 'top_net_%d' % index,
-            'tenant_id': tenant_id,
-            'description': 'description',
-            'admin_state_up': False,
-            'shared': False,
-            'provider:network_type': network_type,
-            'availability_zone_hints': az_hints
-        }
-        t_subnet = {
-            'id': t_subnet_id,
-            'network_id': t_net_id,
-            'name': 'top_subnet_%d' % index,
-            'ip_version': 4,
-            'cidr': '10.0.%d.0/24' % index,
-            'allocation_pools': [],
-            'enable_dhcp': enable_dhcp,
-            'gateway_ip': '10.0.%d.1' % index,
-            'ipv6_address_mode': '',
-            'ipv6_ra_mode': '',
-            'tenant_id': tenant_id,
-            'description': 'description',
-            'host_routes': [],
-            'dns_nameservers': []
-        }
-        TOP_NETS.append(DotDict(t_net))
-        TOP_SUBNETS.append(DotDict(t_subnet))
-
+        b_net_id = t_net_id
+        b_subnet_id = t_subnet_id
         b_net = {
             'id': b_net_id,
             'name': t_net_id,
-            'tenant_id': tenant_id,
+            'tenant_id': project_id,
             'description': 'description',
             'admin_state_up': False,
-            'shared': False
+            'shared': False,
+            'tenant_id': project_id
         }
         b_subnet = {
             'id': b_subnet_id,
             'network_id': b_net_id,
-            'name': b_subnet_id,
+            'name': t_subnet_id,
             'ip_version': 4,
             'cidr': '10.0.%d.0/24' % index,
             'allocation_pools': [],
@@ -1843,7 +1873,7 @@ class PluginTest(unittest.TestCase,
             'gateway_ip': '10.0.%d.25' % index,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
-            'tenant_id': tenant_id,
+            'tenant_id': project_id,
             'description': 'description',
             'host_routes': [],
             'dns_nameservers': []
@@ -1860,21 +1890,74 @@ class PluginTest(unittest.TestCase,
                              {'top_id': t_net_id,
                               'bottom_id': b_net_id,
                               'pod_id': pod_id,
-                              'project_id': tenant_id,
+                              'project_id': project_id,
                               'resource_type': constants.RT_NETWORK})
         core.create_resource(ctx, models.ResourceRouting,
                              {'top_id': t_subnet_id,
                               'bottom_id': b_subnet_id,
                               'pod_id': pod_id,
-                              'project_id': tenant_id,
+                              'project_id': project_id,
                               'resource_type': constants.RT_SUBNET})
         return t_net_id, t_subnet_id, b_net_id, b_subnet_id
+
+    @staticmethod
+    def _prepare_port(project_id, ctx, region_name, index, extra_attrs={}):
+        t_client = FakeClient()
+        t_net_name = 'top_net_%d' % index
+        t_nets = t_client.list_networks(ctx, [{'key': 'name',
+                                               'comparator': 'eq',
+                                               'value': t_net_name}])
+        t_subnet_name = 'top_subnet_%d' % index
+        t_subnets = t_client.list_subnets(ctx, [{'key': 'name',
+                                                 'comparator': 'eq',
+                                                 'value': t_subnet_name}])
+
+        t_port_id = uuidutils.generate_uuid()
+        b_port_id = t_port_id
+        ip_suffix = index if region_name == 'pod_1' else 100 + index
+        t_port = {
+            'id': b_port_id,
+            'network_id': t_nets[0]['id'],
+            'device_id': 'vm%d_id' % index,
+            'device_owner': 'compute:None',
+            'fixed_ips': [{'subnet_id': t_subnets[0]['id'],
+                           'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
+            'security_groups': [],
+            'tenant_id': project_id
+        }
+        t_port.update(extra_attrs)
+        # resource ids in top and bottom pod are the same
+        b_port = {
+            'id': t_port_id,
+            'network_id': t_nets[0]['id'],
+            'device_id': 'vm%d_id' % index,
+            'device_owner': 'compute:None',
+            'fixed_ips': [{'subnet_id': t_subnets[0]['id'],
+                           'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
+            'security_groups': [],
+            'tenant_id': project_id
+        }
+        b_port.update(extra_attrs)
+        TOP_PORTS.append(DotDict(t_port))
+        if region_name == 'pod_1':
+            BOTTOM1_PORTS.append(DotDict(b_port))
+        else:
+            BOTTOM2_PORTS.append(DotDict(b_port))
+
+        pod_id = 'pod_id_1' if region_name == 'pod_1' else 'pod_id_2'
+        core.create_resource(ctx, models.ResourceRouting,
+                             {'top_id': t_port_id,
+                              'bottom_id': t_port_id,
+                              'pod_id': pod_id,
+                              'project_id': project_id,
+                              'resource_type': constants.RT_PORT})
+        return t_port_id, b_port_id
 
     def _prepare_router_test(self, tenant_id, ctx, region_name, index,
                              router_az_hints=None, net_az_hints=None,
                              create_new_router=False):
         (t_net_id, t_subnet_id, b_net_id,
-         b_subnet_id) = self._prepare_network_test(
+         b_subnet_id) = self._prepare_network_subnet(
             tenant_id, ctx, region_name, index, az_hints=net_az_hints)
         t_router_id = uuidutils.generate_uuid()
         t_router = {
@@ -1943,7 +2026,7 @@ class PluginTest(unittest.TestCase,
         self._basic_pod_route_setup()
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
-        _, t_subnet_id, _, b_subnet_id = self._prepare_network_test(
+        _, t_subnet_id, _, b_subnet_id = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1)
 
         fake_plugin = FakePlugin()
@@ -2012,7 +2095,7 @@ class PluginTest(unittest.TestCase,
         self._basic_pod_route_setup()
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
-        _, t_subnet_id, _, b_subnet_id = self._prepare_network_test(
+        _, t_subnet_id, _, b_subnet_id = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1, enable_dhcp=False)
 
         fake_plugin = FakePlugin()
@@ -2066,7 +2149,7 @@ class PluginTest(unittest.TestCase,
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
         (t_net_id, t_subnet_id,
-         b_net_id, b_subnet_id) = self._prepare_network_test(
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
             project_id, t_ctx, 'pod_1', 1)
         t_port_id, b_port_id = self._prepare_port_test(
             project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
@@ -2146,7 +2229,7 @@ class PluginTest(unittest.TestCase,
         neutron_context = FakeNeutronContext()
         t_ctx = context.get_db_context()
         (t_net_id, t_subnet_id,
-         b_net_id, b_subnet_id) = self._prepare_network_test(
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1)
         (t_port_id, b_port_id) = self._prepare_port_test(
             tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
@@ -2176,7 +2259,7 @@ class PluginTest(unittest.TestCase,
         neutron_context = FakeNeutronContext()
         mock_context.return_value = t_ctx
         (t_net_id, t_subnet_id,
-         b_net_id, b_subnet_id) = self._prepare_network_test(
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1)
         fake_plugin = FakePlugin()
         fake_client = FakeClient('pod_1')
@@ -2201,19 +2284,20 @@ class PluginTest(unittest.TestCase,
             bottom_port = fake_client.get_ports(t_ctx, b_port_id)
             self.assertEqual(bottom_port['binding:host_id'], 'zhiyuan-5')
 
+    @patch.object(FakeRPCAPI, 'setup_shadow_ports')
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_update_vm_port(self, mock_context):
+    def test_update_vm_port(self, mock_context, mock_setup):
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
         t_ctx = context.get_db_context()
         neutron_context = FakeNeutronContext()
         mock_context.return_value = t_ctx
         (t_net_id, t_subnet_id,
-         b_net_id, b_subnet_id) = self._prepare_network_test(
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
             tenant_id, t_ctx, 'pod_1', 1, network_type=constants.NT_LOCAL)
         fake_plugin = FakePlugin()
 
@@ -2233,6 +2317,7 @@ class PluginTest(unittest.TestCase,
         agents = core.query_resource(t_ctx, models.ShadowAgent, [], [])
         # we only create shadow agent for vxlan network
         self.assertEqual(len(agents), 0)
+        self.assertFalse(mock_setup.called)
 
         client = FakeClient()
         # in fact provider attribute is not allowed to be updated, but in test
@@ -2247,6 +2332,9 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(agents[0]['type'], 'Open vSwitch agent')
         self.assertEqual(agents[0]['host'], 'fake_host')
         self.assertEqual(agents[0]['tunnel_ip'], '192.168.1.101')
+        # we test the exact effect of setup_shadow_ports in
+        # test_update_port_trigger_l2pop
+        self.assertTrue(mock_setup.called)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -2361,7 +2449,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["pod_1", "az_name_2"]'
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 2, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         self.assertRaises(t_exceptions.RouterNetworkLocationMismatch,
@@ -2372,7 +2460,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["az_name_1", "pod_2"]'
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 3, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         self.assertRaises(t_exceptions.RouterNetworkLocationMismatch,
@@ -2383,7 +2471,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = None
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 4, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         self.assertRaises(t_exceptions.RouterNetworkLocationMismatch,
@@ -2394,7 +2482,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["pod_1", "az_name_2"]'
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 5, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
@@ -2405,7 +2493,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = None
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 6, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
@@ -2416,7 +2504,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["pod_1"]'
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 7, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
@@ -2427,7 +2515,7 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["az_name_2"]'
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 8, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
@@ -2439,7 +2527,7 @@ class PluginTest(unittest.TestCase,
         t_ctx.is_admin = True
         (t_net_id, t_subnet_id,
          t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
-            tenant_id, t_ctx, 'pod_1', 1, router_az_hints, net_az_hints, True)
+            tenant_id, t_ctx, 'pod_1', 9, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
@@ -2449,8 +2537,8 @@ class PluginTest(unittest.TestCase,
         net_az_hints = '["pod_1"]'
         t_ctx.is_admin = True
         (t_net_id, t_subnet_id, b_net_id,
-         b_subnet_id) = self._prepare_network_test(
-            tenant_id, t_ctx, 'pod_1', 1, az_hints=net_az_hints)
+         b_subnet_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 10, az_hints=net_az_hints)
 
         # add a use case: router's extra_attributes attr is not exist but
         # availability_zone_hints attr exist
@@ -3141,10 +3229,13 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
-        # check routing entry for copied port has been created
+
+        # both creating floating ip and booting instance in vxlan network will
+        # create shadow port, so we leave shadow port deletion work to central
+        # plugin, it will delete shadow port when deleting instance port
         cp_port_mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, t_port_id, constants.RT_SD_PORT)
-        self.assertEqual(0, len(cp_port_mappings))
+        self.assertEqual(1, len(cp_port_mappings))
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -3365,6 +3456,57 @@ class PluginTest(unittest.TestCase,
         self._test_delete_security_group_rule_exception(
             fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, TOP_SG_RULES,
             BOTTOM1_SGS)
+
+    @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
+    @patch.object(FakeClient, 'update_ports')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port_trigger_l2pop(self, mock_context, mock_update,
+                                       mock_setup):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        t_ctx.project_id = TEST_TENANT_ID
+        mock_context.return_value = t_ctx
+
+        self._basic_pod_route_setup()
+        (t_net_id, _, _, _) = self._prepare_network_subnet(
+            TEST_TENANT_ID, t_ctx, 'pod_1', 1, network_type=constants.NT_VxLAN)
+        self._prepare_network_subnet(TEST_TENANT_ID, t_ctx, 'pod_2', 1,
+                                     network_type=constants.NT_VxLAN)
+
+        t_port_id1, b_port_id1 = self._prepare_port(
+            TEST_TENANT_ID, t_ctx, 'pod_1', 1,
+            {'binding:host_id': 'host1',
+             'binding:vif_type': helper.VIF_TYPE_OVS})
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_1',
+                constants.PROFILE_HOST: 'host1',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.101'}}}
+        fake_plugin.update_port(q_ctx, t_port_id1, update_body)
+
+        t_port_id2, b_port_id2 = self._prepare_port(
+            TEST_TENANT_ID, t_ctx, 'pod_2', 1,
+            {'binding:host_id': 'host2',
+             'binding:vif_type': helper.VIF_TYPE_OVS})
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_2',
+                constants.PROFILE_HOST: 'host2',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.102'}}}
+        fake_plugin.update_port(q_ctx, t_port_id2, update_body)
+
+        # shadow port is created
+        b_sd_port_id1 = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_port_id1, 'pod_2', constants.RT_SD_PORT)
+        # shadow port is updated to active
+        mock_update.assert_called_once_with(
+            t_ctx, b_sd_port_id1, {'port': {
+                'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}}})
+        # asynchronous job in pod_1 is registered
+        mock_setup.assert_called_once_with(t_ctx, 'pod_id_1', t_net_id)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

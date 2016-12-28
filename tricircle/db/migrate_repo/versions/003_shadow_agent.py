@@ -30,8 +30,8 @@ def upgrade(migrate_engine):
         sql.Column('type', sql.String(length=36), nullable=False),
         sql.Column('tunnel_ip', sql.String(length=48), nullable=False),
         migrate.UniqueConstraint(
-            'pod_id', 'host', 'type',
-            name='pod_id0host0type'),
+            'host', 'type',
+            name='host0type'),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
     shadow_agents.create()

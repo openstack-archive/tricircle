@@ -118,8 +118,8 @@ class ShadowAgent(core.ModelBase, core.DictBase):
     __tablename__ = 'shadow_agents'
     __table_args__ = (
         schema.UniqueConstraint(
-            'pod_id', 'host', 'type',
-            name='pod_id0host0type'),
+            'host', 'type',
+            name='host0type'),
     )
 
     attributes = ['id', 'pod_id', 'host', 'type', 'tunnel_ip']

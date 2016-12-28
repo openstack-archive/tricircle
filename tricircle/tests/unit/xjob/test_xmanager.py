@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import datetime
 import mock
 from mock import patch
@@ -20,6 +21,7 @@ import six
 from six.moves import xrange
 import unittest
 
+import neutron_lib.constants as q_constants
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
@@ -28,6 +30,7 @@ from tricircle.common import context
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.network import helper
 from tricircle.xjob import xmanager
 from tricircle.xjob import xservice
 
@@ -72,11 +75,22 @@ RES_MAP = {'top': {'network': TOP_NETWORK,
                      'floatingips': BOTTOM2_FIP}}
 
 
+def fake_get_client(self, region_name=None):
+    return FakeClient(region_name)
+
+
 class FakeXManager(xmanager.XManager):
     def __init__(self):
         self.clients = {'top': FakeClient(),
                         'pod_1': FakeClient('pod_1'),
                         'pod_2': FakeClient('pod_2')}
+        self.helper = helper.NetworkHelper()
+        self.xjob_handler = FakeXJobAPI()
+
+
+class FakeXJobAPI(object):
+    def setup_shadow_ports(self, ctx, pod_id, t_net_id):
+        pass
 
 
 class FakeClient(object):
@@ -92,6 +106,9 @@ class FakeClient(object):
         for res in RES_MAP[self.region_name][resource]:
             is_selected = True
             for _filter in filters:
+                if _filter['key'] == 'fields':
+                    # in test, we don't need to filter fields
+                    continue
                 if _filter['key'] not in res:
                     is_selected = False
                     break
@@ -99,11 +116,31 @@ class FakeClient(object):
                     is_selected = False
                     break
             if is_selected:
-                res_list.append(res)
+                res_list.append(copy.copy(res))
         return res_list
+
+    def create_resources(self, resource, cxt, body):
+        res = body[resource]
+        if 'id' not in res:
+            res['id'] = uuidutils.generate_uuid()
+        RES_MAP[self.region_name][resource].append(res)
+        return res
+
+    def update_resources(self, resource, cxt, _id, body):
+        for res in RES_MAP[self.region_name][resource]:
+            if res['id'] == _id:
+                res.update(body[resource])
 
     def list_ports(self, cxt, filters=None):
         return self.list_resources('port', cxt, filters)
+
+    def get_ports(self, cxt, port_id):
+        return self.list_resources(
+            'port', cxt,
+            [{'key': 'id', 'comparator': 'eq', 'value': port_id}])[0]
+
+    def update_ports(self, cxt, _id, body):
+        self.update_resources('port', cxt, _id, body)
 
     def list_subnets(self, cxt, filters=None):
         return self.list_resources('subnet', cxt, filters)
@@ -112,6 +149,11 @@ class FakeClient(object):
         return self.list_resources(
             'subnet', cxt,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
+
+    def get_networks(self, cxt, net_id):
+        return self.list_resources(
+            'network', cxt,
+            [{'key': 'id', 'comparator': 'eq', 'value': net_id}])[0]
 
     def get_routers(self, cxt, router_id):
         return self.list_resources(
@@ -469,6 +511,100 @@ class XManagerTest(unittest.TestCase):
                                 'port_range_min': -1,
                                 'security_group_id': sg_id}]})]
         mock_create.assert_has_calls(calls)
+
+    @patch.object(helper.NetworkHelper, '_get_client', new=fake_get_client)
+    @patch.object(FakeXJobAPI, 'setup_shadow_ports')
+    def test_setup_shadow_ports(self, mock_setup):
+        project_id = uuidutils.generate_uuid()
+        net1_id = uuidutils.generate_uuid()
+        subnet1_id = uuidutils.generate_uuid()
+        port1_id = uuidutils.generate_uuid()
+        port2_id = uuidutils.generate_uuid()
+        for i in (1, 2):
+            pod_id = 'pod_id_%d' % i
+            pod_dict = {'pod_id': pod_id,
+                        'region_name': 'pod_%d' % i,
+                        'az_name': 'az_name_%d' % i}
+            db_api.create_pod(self.context, pod_dict)
+            db_api.create_resource_mapping(
+                self.context, net1_id, net1_id, pod_id, project_id,
+                constants.RT_NETWORK)
+        TOP_NETWORK.append({'id': net1_id, 'tenant_id': project_id})
+        BOTTOM1_PORT.append({'id': port1_id,
+                             'network_id': net1_id,
+                             'device_owner': 'compute:None',
+                             'binding:vif_type': 'ovs',
+                             'binding:host_id': 'host1',
+                             'fixed_ips': [{'subnet_id': subnet1_id,
+                                            'ip_address': '10.0.1.3'}]})
+        BOTTOM2_PORT.append({'id': port2_id,
+                             'network_id': net1_id,
+                             'device_owner': 'compute:None',
+                             'binding:vif_type': 'ovs',
+                             'binding:host_id': 'host2',
+                             'fixed_ips': [{'subnet_id': subnet1_id,
+                                            'ip_address': '10.0.1.4'}]})
+        db_api.ensure_agent_exists(
+            self.context, 'pod_id_1', 'host1', q_constants.AGENT_TYPE_OVS,
+            '192.168.1.101')
+        db_api.ensure_agent_exists(
+            self.context, 'pod_id_2', 'host2', q_constants.AGENT_TYPE_OVS,
+            '192.168.1.102')
+
+        resource_id = 'pod_id_1#' + net1_id
+        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
+                       resource_id)
+        self.xmanager.setup_shadow_ports(
+            self.context,
+            payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
+
+        # check shadow port in pod1 is created and updated
+        client1 = FakeClient('pod_1')
+        sd_ports = client1.list_ports(
+            self.context, [{'key': 'device_owner',
+                            'comparator': 'eq',
+                            'value': constants.DEVICE_OWNER_SHADOW}])
+        self.assertEqual(sd_ports[0]['fixed_ips'][0]['ip_address'],
+                         '10.0.1.4')
+        self.assertIn(constants.PROFILE_FORCE_UP,
+                      sd_ports[0]['binding:profile'])
+
+        # check job to setup shadow ports for pod2 is registered
+        mock_setup.assert_called_once_with(self.context, 'pod_id_2', net1_id)
+
+        # update shadow port to down and test again, this is possible when we
+        # succeed to create shadow port but fail to update it to active
+        profile = sd_ports[0]['binding:profile']
+        profile.pop(constants.PROFILE_FORCE_UP)
+        client1.update_ports(self.context, sd_ports[0]['id'],
+                             {'port': {'status': q_constants.PORT_STATUS_DOWN,
+                                       'binding:profile': profile}})
+
+        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
+                       resource_id)
+        self.xmanager.setup_shadow_ports(
+            self.context,
+            payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
+
+        # check shadow port is udpated to active again
+        sd_port = client1.get_ports(self.context, sd_ports[0]['id'])
+        self.assertIn(constants.PROFILE_FORCE_UP, sd_port['binding:profile'])
+
+        # manually trigger shadow ports setup in pod2
+        resource_id = 'pod_id_2#' + net1_id
+        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
+                       resource_id)
+        self.xmanager.setup_shadow_ports(
+            self.context,
+            payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
+
+        client2 = FakeClient('pod_2')
+        sd_ports = client2.list_ports(
+            self.context, [{'key': 'device_owner',
+                            'comparator': 'eq',
+                            'value': constants.DEVICE_OWNER_SHADOW}])
+        self.assertEqual(sd_ports[0]['fixed_ips'][0]['ip_address'],
+                         '10.0.1.3')
 
     def test_job_handle(self):
         job_type = 'fake_resource'

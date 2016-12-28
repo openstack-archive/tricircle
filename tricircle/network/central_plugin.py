@@ -617,7 +617,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             pod = db_api.get_pod_by_name(t_ctx, region_name)
 
             net = self.get_network(context, res['network_id'])
-            if net[provider_net.NETWORK_TYPE] == t_constants.NT_VxLAN:
+            is_vxlan_network = (
+                net[provider_net.NETWORK_TYPE] == t_constants.NT_VxLAN)
+            if is_vxlan_network:
                 # if a local type network happens to be a vxlan network, local
                 # plugin will still send agent info, so we double check here
                 self.helper.create_shadow_agent_if_needed(t_ctx,
@@ -657,6 +659,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
             self.xjob_handler.configure_security_group_rules(t_ctx,
                                                              res['tenant_id'])
+            if is_vxlan_network and (
+                    cfg.CONF.client.cross_pod_vxlan_mode in (
+                        t_constants.NM_P2P, t_constants.NM_L2GW)):
+                self.xjob_handler.setup_shadow_ports(t_ctx, pod['pod_id'],
+                                                     res['network_id'])
         # for vm port or port with empty device_owner, update top port and
         # bottom port
         elif top_port.get('device_owner') not in NON_VM_PORT_TYPES:

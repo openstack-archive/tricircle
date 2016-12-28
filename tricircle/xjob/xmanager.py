@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
 import datetime
 import eventlet
 import netaddr
@@ -33,8 +34,6 @@ from tricircle.common import constants
 from tricircle.common.i18n import _LE, _LI, _LW
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
-from tricircle.db import core
-from tricircle.db import models
 import tricircle.network.exceptions as t_network_exc
 from tricircle.network import helper
 
@@ -152,7 +151,8 @@ class XManager(PeriodicTasks):
             constants.JT_PORT_DELETE: self.delete_server_port,
             constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
             constants.JT_NETWORK_UPDATE: self.update_network,
-            constants.JT_SUBNET_UPDATE: self.update_subnet}
+            constants.JT_SUBNET_UPDATE: self.update_subnet,
+            constants.JT_SHADOW_PORT_SETUP: self.setup_shadow_ports}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -419,10 +419,11 @@ class XManager(PeriodicTasks):
 
             if b_ext_pod['pod_id'] != b_pod['pod_id']:
                 # if the internal port is not located in the external network
-                # pod, we need to create a copied port in that pod for floating
+                # pod, we need to create a shadow port in that pod for floating
                 # ip association purpose
                 t_int_net_id = t_int_port['network_id']
                 t_int_subnet_id = t_int_port['fixed_ips'][0]['subnet_id']
+                # TODO(zhiyuan) adapt shadow agent way to create shadow port
                 port_body = {
                     'port': {
                         'tenant_id': project_id,
@@ -436,7 +437,7 @@ class XManager(PeriodicTasks):
                 self.helper.prepare_bottom_element(
                     ctx, project_id, b_ext_pod, t_int_port,
                     constants.RT_SD_PORT, port_body)
-                # create routing entries for copied network and subnet so we
+                # create routing entries for shadow network and subnet so we
                 # can easily find them during central network and subnet
                 # deletion, create_resource_mapping will catch DBDuplicateEntry
                 # exception and ignore it so it's safe to call this function
@@ -456,44 +457,10 @@ class XManager(PeriodicTasks):
         for del_fip in del_fips:
             fip = b_ip_fip_map[del_fip]
             if b_ext_pod['pod_id'] != b_pod['pod_id'] and fip['port_id']:
-                # expire the routing entry for copy port
-                with ctx.session.begin():
-                    core.update_resources(
-                        ctx, models.ResourceRouting,
-                        [{'key': 'bottom_id', 'comparator': 'eq',
-                          'value': fip['port_id']},
-                         {'key': 'resource_type', 'comparator': 'eq',
-                          'value': constants.RT_SD_PORT}],
-                        {'bottom_id': None,
-                         'created_at': constants.expire_time,
-                         'updated_at': constants.expire_time})
-                # delete copy port
-                b_ext_client.delete_ports(ctx, fip['port_id'])
-                # delete the expired entry, even if this deletion fails, we
-                # still have a chance that lock_handle module will delete it
-                with ctx.session.begin():
-                    core.delete_resources(ctx, models.ResourceRouting,
-                                          [{'key': 'top_id',
-                                            'comparator': 'eq',
-                                            'value': fip['port_id']},
-                                           {'key': 'resource_type',
-                                            'comparator': 'eq',
-                                            'value': constants.RT_SD_PORT}])
-                    # delete port before floating ip disassociation, copy
-                    # network and copy subnet are deleted during central
-                    # network and subnet deletion
+                # shadow port is created in this case, but we leave shadow port
+                # deletion work to plugin, so do nothing
+                pass
             b_ext_client.delete_floatingips(ctx, fip['id'])
-            # we first delete the internal port then delete the floating
-            # ip. during the deletion of the internal port, the floating
-            # ip will be disassociated automatically.
-
-            # the reason we delete the internal port first is that if we
-            # succeed to delete the internal port but fail to delete the
-            # floating ip, in the next run, we can still find the floating
-            # ip and try to delete it. but if we delete the floating ip
-            # first, after we fail to delete the internal port, it's not
-            # easy for us to find the internal port again because we cannot
-            # find the internal port id the floating ip body
 
     @_job_handle(constants.JT_ROUTER_SETUP)
     def setup_bottom_router(self, ctx, payload):
@@ -914,3 +881,144 @@ class XManager(PeriodicTasks):
             LOG.error(_LE('subnet: %(subnet_id)s not found, '
                           'pod name: %(name)s'),
                       {'subnet_id': b_subnet_id, 'name': b_region_name})
+
+    @_job_handle(constants.JT_SHADOW_PORT_SETUP)
+    def setup_shadow_ports(self, ctx, payload):
+        """Setup shadow ports for the target pod and network
+
+        this job workes as following:
+        (1) query all shadow ports from pods the target network is mapped to
+        (2) query all real ports from pods the target network is mapped to
+        (3) check the shadow ports and real ports in the target pod, create
+            needed shadow ports
+        (4) check the shadow ports and real ports in other pods, create a new
+            job if the pod lacks some shadow ports
+
+        :param ctx: tricircle context
+        :param payload: {JT_SHADOW_PORT_SETUP: pod_id#network_id}
+        :return: None
+        """
+        run_label = 'during shadow ports setup'
+
+        (target_pod_id,
+         t_net_id) = payload[constants.JT_SHADOW_PORT_SETUP].split('#')
+        target_pod = db_api.get_pod(ctx, target_pod_id)
+        t_client = self._get_client()
+        t_net = t_client.get_networks(ctx, t_net_id)
+        if not t_net:
+            # we just end this job if top network no longer exists
+            return
+        project_id = t_net['tenant_id']
+        mappings = db_api.get_bottom_mappings_by_top_id(ctx, t_net_id,
+                                                        constants.RT_NETWORK)
+        pod_ids = set([pod['pod_id'] for pod, _ in mappings])
+        pod_port_ids_map = collections.defaultdict(set)
+        pod_sw_port_ids_map = {}
+        port_info_map = {}
+        if target_pod_id not in pod_ids:
+            LOG.debug('Pod %s not found %s', target_pod_id, run_label)
+            # network is not mapped to the specified pod, nothing to do
+            return
+        for b_pod, b_net_id in mappings:
+            b_client = self._get_client(b_pod['region_name'])
+            # port table has (network_id, device_owner) index
+            b_sw_ports = b_client.list_ports(
+                ctx, filters=[{'key': 'network_id', 'comparator': 'eq',
+                               'value': b_net_id},
+                              {'key': 'device_owner', 'comparator': 'eq',
+                               'value': constants.DEVICE_OWNER_SHADOW},
+                              {'key': 'status', 'comparator': 'eq',
+                               'value': q_constants.PORT_STATUS_ACTIVE},
+                              {'key': 'fields', 'comparator': 'eq',
+                               'value': 'id'}])
+            b_sw_port_ids = set([port['id'] for port in b_sw_ports])
+            pod_sw_port_ids_map[b_pod['pod_id']] = b_sw_port_ids
+            # port table has (network_id, device_owner) index
+            b_ports = b_client.list_ports(
+                ctx, filters=[{'key': 'network_id', 'comparator': 'eq',
+                               'value': b_net_id},
+                              {'key': 'fields', 'comparator': 'eq',
+                               'value': ['id', 'binding:vif_type',
+                                         'binding:host_id', 'fixed_ips',
+                                         'device_owner']}])
+            LOG.debug('Shadow ports %s in pod %s %s',
+                      b_sw_ports, target_pod_id, run_label)
+            LOG.debug('Ports %s in pod %s %s',
+                      b_ports, target_pod_id, run_label)
+            for b_port in b_ports:
+                if not b_port['device_owner'].startswith('compute:'):
+                    continue
+                if b_port['device_owner'] == constants.DEVICE_OWNER_SHADOW:
+                    continue
+                b_port_id = b_port['id']
+                pod_port_ids_map[b_pod['pod_id']].add(b_port_id)
+                port_info_map[b_port_id] = b_port
+
+        all_port_ids = set()
+        for port_ids in six.itervalues(pod_port_ids_map):
+            all_port_ids |= port_ids
+        sync_port_ids = all_port_ids - (
+            pod_port_ids_map[target_pod_id] | pod_sw_port_ids_map[
+                target_pod_id])
+        sync_pod_list = []
+        for pod_id in pod_port_ids_map:
+            if pod_id == target_pod_id:
+                continue
+            if pod_port_ids_map[target_pod_id] - (
+                    pod_port_ids_map[pod_id] | pod_sw_port_ids_map[pod_id]):
+                sync_pod_list.append(pod_id)
+
+        LOG.debug('Sync port ids %s %s', sync_port_ids, run_label)
+        LOG.debug('Sync pod ids %s %s', sync_pod_list, run_label)
+
+        agent_info_map = {}
+        for port_id in sync_port_ids:
+            port_body = port_info_map[port_id]
+            host = port_body['binding:host_id']
+            agent_type = self.helper.get_agent_type_by_vif(
+                port_body['binding:vif_type'])
+            if not agent_type:
+                continue
+            key = '%s#%s' % (host, agent_type)
+            if key in agent_info_map:
+                agent = agent_info_map[key]
+            else:
+                agent = db_api.get_agent_by_host_type(ctx, host, agent_type)
+                if not agent:
+                    LOG.error(_LE('Agent of type %(agent_type)s in '
+                                  'host %(host)s not found during shadow '
+                                  'ports setup'), {'agent_type': agent_type,
+                                                   'host': host})
+                    continue
+                agent_info_map[key] = agent
+
+            create_body = {
+                'port': {
+                    'tenant_id': project_id,
+                    'admin_state_up': True,
+                    'name': constants.shadow_port_name % port_id,
+                    'network_id': t_net_id,
+                    'fixed_ips': [{
+                        'ip_address': port_body[
+                            'fixed_ips'][0]['ip_address']}],
+                    'device_owner': constants.DEVICE_OWNER_SHADOW,
+                    'binding:host_id': host,
+                    'binding:profile': {
+                        constants.PROFILE_AGENT_TYPE: agent_type,
+                        constants.PROFILE_TUNNEL_IP: agent['tunnel_ip']}
+                }
+            }
+            # value for key constants.PROFILE_FORCE_UP does not matter
+            update_body = {
+                'port': {
+                    'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}
+                }
+            }
+            _, sw_port_id = self.helper.prepare_bottom_element(
+                ctx, project_id, target_pod, {'id': port_id},
+                constants.RT_SD_PORT, create_body)
+            self._get_client(target_pod['region_name']).update_ports(
+                ctx, sw_port_id, update_body)
+
+        for pod_id in sync_pod_list:
+            self.xjob_handler.setup_shadow_ports(ctx, pod_id, t_net_id)
