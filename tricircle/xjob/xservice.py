@@ -49,7 +49,7 @@ common_opts = [
     cfg.IntOpt('worker_handle_timeout', default=1800,
                help=_("Timeout for worker's one turn of processing, in"
                       " seconds")),
-    cfg.IntOpt('job_run_expire', default=60,
+    cfg.IntOpt('job_run_expire', default=180,
                help=_("Running job is considered expires after this time, in"
                       " seconds")),
     cfg.FloatOpt('worker_sleep_time', default=0.1,
