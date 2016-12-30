@@ -1,3 +1,6 @@
+===================
+Configuration Guide
+===================
 A brief introduction to configure Tricircle service. Only the
 configuration items for Tricircle will be described here. Logging,
 messaging, database, keystonemiddleware etc configuration which are
@@ -5,9 +8,8 @@ generated from OpenStack Oslo library, will not be described here. Since
 these configuration items are common to Nova, Cinder, Neutron. Please
 refer to corresponding description from Nova, Cinder or Neutron.
 
-----------------
-Common options
-----------------
+Common Options
+==============
 In the common configuration options, the group of "client" need to be
 configured in Admin API, XJob, Local Plugin and Central Plugin. The
 "tricircle_db_connection" should be configured in Admin API, XJob and
@@ -54,9 +56,9 @@ Central Plugin.
 
 
 
-------------------------------
- Tricircle Admin API settings
-------------------------------
+
+Tricircle Admin API Settings
+============================
 
 Tricircle Admin API servers for managing the mapping between OpenStack instances
 and availability zone, retrieving object uuid routing and exposing API for
@@ -81,9 +83,9 @@ maintenance. The following items should be configured in Tricircle's api.conf.
    * - ``bind_port`` = ``19999``
      -  (Integer) The port to bind to
 
------------------------
-Tricircle XJob settings
------------------------
+
+Tricircle XJob Settings
+=======================
 
 Tricircle XJob serves for receiving and processing cross OpenStack
 functionality and other async jobs from Admin API or Tricircle Central
@@ -117,15 +119,13 @@ xjob.conf.
    * - ``worker_sleep_time`` = ``60``
      - (Float) Seconds a worker sleeps after one run in a loop
 
--------------------------------
-Networking settings for Tricircle
--------------------------------
+Networking Setting for Tricircle
+================================
 To make the networking automation work, two plugins need to be configured:
 Tricircle Central Neutron Plugin and Tricircle Local Neutron Plugin.
 
-================================
-Tricircle Central Neutron Plugin
-================================
+**Tricircle Central Neutron Plugin**
+
 The Tricircle Central Neutron Plugin serves for tenant level L2/L3 networking
 automation across multiple OpenStack instances. The following items should be
 configured in central Neutron's neutron.conf.
@@ -154,9 +154,8 @@ configured in central Neutron's neutron.conf.
      - (String) List of network type driver entry points to be loaded from the tricircle.network.type_drivers namespace. For example, local and shared_vlan.
 
 
-===============================
-Tricircle Local Neutron Plugin
-===============================
+
+**Tricircle Local Neutron Plugin**
 
 The Tricircle Local Neutron Plugin serves for cross Neutron networking
 automation triggering. It is a shim layer between real core plugin and
