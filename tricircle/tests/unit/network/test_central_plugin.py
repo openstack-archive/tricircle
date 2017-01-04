@@ -25,14 +25,19 @@ from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
 
 import neutron_lib.constants as q_constants
+import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.plugins import directory
 
+import neutron.api.v2.attributes as neutron_attributes
 import neutron.conf.common as q_config
+
 from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
 from neutron.db import ipam_pluggable_backend
 from neutron.db import l3_db
 from neutron.db import models_v2
+from neutron.db import rbac_db_models as rbac_db
+
 from neutron.extensions import availability_zone as az_ext
 from neutron.ipam import driver
 from neutron.ipam import requests
@@ -74,6 +79,7 @@ TOP_EXTNETS = []
 TOP_FLOATINGIPS = []
 TOP_SGS = []
 TOP_SG_RULES = []
+TOP_NETWORK_RBAC = []
 BOTTOM1_NETS = []
 BOTTOM1_SUBNETS = []
 BOTTOM1_PORTS = []
@@ -107,7 +113,8 @@ RES_MAP = {'networks': TOP_NETS,
            'externalnetworks': TOP_EXTNETS,
            'floatingips': TOP_FLOATINGIPS,
            'securitygroups': TOP_SGS,
-           'securitygrouprules': TOP_SG_RULES}
+           'securitygrouprules': TOP_SG_RULES,
+           'networkrbacs': TOP_NETWORK_RBAC}
 SUBNET_INFOS = {}
 TEST_TENANT_ID = 'test_tenant_id'
 
@@ -154,6 +161,24 @@ class FakeIpamSubnet(driver.Subnet):
                                               self._subnet['pools'])
 
 
+class FakeNetworkRBAC(object):
+    def __init__(self, **kwargs):
+        self.__tablename__ = 'networkrbacs'
+        self.project_id = kwargs['tenant_id']
+        self.id = uuidutils.generate_uuid()
+        self.target_tenant = kwargs['target_tenant']
+        self.action = kwargs['action']
+        network = kwargs['network']
+        self.object_id = network['id']
+
+    def _as_dict(self):
+        return {'porject_id': self.project_id,
+                'id': self.id,
+                'target_tenant': self.target_tenant,
+                'action': self.action,
+                'object': self.object_id}
+
+
 class FakePool(driver.Pool):
     def allocate_subnet(self, subnet_request):
         if isinstance(subnet_request, requests.SpecificSubnetRequest):
@@ -197,6 +222,8 @@ class DotDict(dict):
                 self[key] = value
 
     def __getattr__(self, item):
+        if item == 'rbac_entries':
+            return []
         return self.get(item)
 
 
@@ -375,6 +402,19 @@ class FakeClient(object):
 
     def delete_networks(self, ctx, net_id):
         self.delete_resources('network', ctx, net_id)
+
+    def update_networks(self, ctx, net_id, network):
+        net_data = network[neutron_attributes.NETWORK]
+        if self.pod_name == 'pod_1':
+            bottom_nets = BOTTOM1_NETS
+        else:
+            bottom_nets = BOTTOM2_NETS
+
+        for net in bottom_nets:
+            if net['id'] == net_id:
+                net['description'] = net_data['description']
+                net['admin_state_up'] = net_data['admin_state_up']
+                net['shared'] = net_data['shared']
 
     def list_subnets(self, ctx, filters=None):
         return self.list_resources('subnet', ctx, filters)
@@ -815,6 +855,14 @@ class FakeSession(object):
                     net['external'] = True
                     net['router:external'] = True
                     break
+        if model_obj.__tablename__ == 'networkrbacs':
+            if (model_dict['action'] == 'access_as_shared' and
+                    model_dict['target_tenant'] == '*'):
+                for net in TOP_NETS:
+                    if net['id'] == model_dict['object']:
+                        net['shared'] = True
+                        break
+
         link_models(model_obj, model_dict,
                     'routerports', 'router_id',
                     'routers', 'id', 'attached_ports')
@@ -840,7 +888,7 @@ class FakeSession(object):
             delete_model(res_list, model_obj)
 
 
-class FakeXManager(xmanager.XManager):
+class FakeBaseManager(xmanager.XManager):
     def __init__(self, fake_plugin):
         self.clients = {constants.TOP: client.Client()}
         self.job_handles = {
@@ -848,15 +896,28 @@ class FakeXManager(xmanager.XManager):
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port}
         self.helper = FakeHelper(fake_plugin)
-        self.xjob_handler = FakeBaseRPCAPI()
 
     def _get_client(self, pod_name=None):
         return FakeClient(pod_name)
 
 
+class FakeXManager(FakeBaseManager):
+    def __init__(self, fake_plugin):
+        super(FakeXManager, self).__init__(fake_plugin)
+        self.xjob_handler = FakeBaseRPCAPI(fake_plugin)
+
+
 class FakeBaseRPCAPI(object):
+    def __init__(self, fake_plugin):
+        self.xmanager = FakeBaseManager(fake_plugin)
+
     def configure_extra_routes(self, ctxt, router_id):
         pass
+
+    def update_network(self, ctxt, network_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, network_id)
+        self.xmanager.update_network(
+            ctxt, payload={constants.JT_NETWORK_UPDATE: combine_id})
 
 
 class FakeRPCAPI(FakeBaseRPCAPI):
@@ -1264,6 +1325,98 @@ class PluginTest(unittest.TestCase,
         fake_plugin.create_network(neutron_context, network)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
+    def test_update_network(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        t_net_id, _, b_net_id, _ = self._prepare_network_test(tenant_id,
+                                                              t_ctx, 'pod_1',
+                                                              1)
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'network': {
+                'name': 'new_name',
+                'description': 'new_description',
+                'admin_state_up': True,
+                'shared': True}
+        }
+        fake_plugin.update_network(neutron_context, t_net_id, update_body)
+
+        top_net = fake_plugin.get_network(neutron_context, t_net_id)
+        self.assertEqual(top_net['name'], update_body['network']['name'])
+        self.assertEqual(top_net['description'],
+                         update_body['network']['description'])
+        self.assertEqual(top_net['admin_state_up'],
+                         update_body['network']['admin_state_up'])
+        self.assertEqual(top_net['shared'], True)
+
+        bottom_net = fake_client.get_networks(t_ctx, b_net_id)
+        # name is set to top resource id, which is used by lock_handle to
+        # retrieve bottom/local resources that have been created but not
+        # registered in the resource routing table, so it's not allowed to
+        # be updated
+        self.assertEqual(bottom_net['name'], t_net_id)
+        self.assertEqual(bottom_net['description'],
+                         update_body['network']['description'])
+        self.assertEqual(bottom_net['admin_state_up'],
+                         update_body['network']['admin_state_up'])
+        self.assertEqual(bottom_net['shared'], True)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
+    def test_update_network_external_attr(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        t_net_id, _, _, _ = self._prepare_network_test(tenant_id, t_ctx,
+                                                       'pod_1', 1)
+        fake_plugin = FakePlugin()
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'network': {
+                'router:external': True
+            }
+        }
+        self.assertRaises(q_lib_exc.InvalidInput, fake_plugin.update_network,
+                          neutron_context, t_net_id, update_body)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
+    def test_update_network_provider_attrs(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        t_net_id, _, _, _ = self._prepare_network_test(tenant_id, t_ctx,
+                                                       'pod_1', 1)
+        fake_plugin = FakePlugin()
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+
+        provider_attrs = {'provider:network_type': 'vlan',
+                          'provider:physical_network': 'br-vlan',
+                          'provider:segmentation_id': 1234}
+
+        for key, value in provider_attrs.items():
+            update_body = {
+                'network': {
+                    key: value
+                }
+            }
+            self.assertRaises(q_lib_exc.InvalidInput,
+                              fake_plugin.update_network,
+                              neutron_context, t_net_id, update_body)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -1330,7 +1483,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(bottom_entry_map['port']['bottom_id'], b_port_id)
 
     @staticmethod
-    def _prepare_router_test(tenant_id, ctx, pod_name, index):
+    def _prepare_network_test(tenant_id, ctx, pod_name, index):
         t_net_id = uuidutils.generate_uuid()
         t_subnet_id = uuidutils.generate_uuid()
         b_net_id = uuidutils.generate_uuid()
@@ -1341,7 +1494,10 @@ class PluginTest(unittest.TestCase,
         t_net = {
             'id': t_net_id,
             'name': 'top_net_%d' % index,
-            'tenant_id': tenant_id
+            'tenant_id': tenant_id,
+            'description': 'description',
+            'admin_state_up': False,
+            'shared': False
         }
         t_subnet = {
             'id': t_subnet_id,
@@ -1368,7 +1524,10 @@ class PluginTest(unittest.TestCase,
         b_net = {
             'id': b_net_id,
             'name': t_net_id,
-            'tenant_id': tenant_id
+            'tenant_id': tenant_id,
+            'description': 'description',
+            'admin_state_up': False,
+            'shared': False
         }
         b_subnet = {
             'id': b_subnet_id,
@@ -1403,6 +1562,12 @@ class PluginTest(unittest.TestCase,
                               'pod_id': pod_id,
                               'project_id': tenant_id,
                               'resource_type': constants.RT_SUBNET})
+        return t_net_id, t_subnet_id, b_net_id, b_subnet_id
+
+    def _prepare_router_test(self, tenant_id, ctx, pod_name, index):
+        (t_net_id, t_subnet_id, b_net_id,
+         b_subnet_id) = self._prepare_network_test(tenant_id, ctx, pod_name,
+                                                   index)
 
         if len(TOP_ROUTERS) == 0:
             t_router_id = uuidutils.generate_uuid()

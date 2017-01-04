@@ -97,3 +97,9 @@ class XJobAPI(object):
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'configure_security_group_rules',
             payload={constants.JT_SEG_RULE_SETUP: project_id})
+
+    def update_network(self, ctxt, network_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, network_id)
+        self.client.prepare(exchange='openstack').cast(
+            ctxt, 'update_network',
+            payload={constants.JT_NETWORK_UPDATE: combine_id})
