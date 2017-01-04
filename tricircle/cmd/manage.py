@@ -22,15 +22,14 @@ from tricircle.db import core
 from tricircle.db import migration_helpers
 
 
-def main(argv=None, config_files=None):
+def main():
     core.initialize()
-    cfg.CONF(args=argv[2:],
+    cfg.CONF(args=sys.argv[2:],
              project='tricircle',
-             default_config_files=config_files)
+             default_config_files=[sys.argv[1]])
     migration_helpers.find_migrate_repo()
     migration_helpers.sync_repo(2)
 
 
 if __name__ == '__main__':
-    config_file = sys.argv[1]
-    main(argv=sys.argv, config_files=[config_file])
+    main()

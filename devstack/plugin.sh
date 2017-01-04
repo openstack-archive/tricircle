@@ -153,7 +153,7 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
         setup_package $TRICIRCLE_DIR -e
 
         recreate_database tricircle
-        python "$TRICIRCLE_DIR/cmd/manage.py" "$TRICIRCLE_API_CONF"
+        tricircle-db-manage "$TRICIRCLE_API_CONF"
 
         if is_service_enabled q-svc ; then
             start_central_neutron_server $CENTRAL_REGION_NAME $TRICIRCLE_NEUTRON_PORT
@@ -166,12 +166,12 @@ if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
 
             create_tricircle_accounts
 
-            run_process t-api "python $TRICIRCLE_API --config-file $TRICIRCLE_API_CONF"
+            run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
         fi
 
         if is_service_enabled t-job; then
 
-            run_process t-job "python $TRICIRCLE_XJOB --config-file $TRICIRCLE_XJOB_CONF"
+            run_process t-job "tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
         fi
     fi
 
