@@ -127,7 +127,7 @@ def get_pod_service_endpoint(context, region_name, st):
     return ''
 
 
-def get_pod_service_ctx(context, t_url, region_name, s_type=cons.ST_NOVA):
+def get_pod_service_ctx(context, t_url, region_name, s_type=cons.ST_NEUTRON):
     t_ver = get_version_from_url(t_url)
     b_endpoint = get_pod_service_endpoint(context,
                                           region_name,
@@ -196,5 +196,5 @@ def convert_header(from_release, to_release, header):
 
 
 def convert_object(from_release, to_release, res_object,
-                   res_type=cons.RT_VOLUME):
+                   res_type=cons.RT_NETWORK):
     return res_object

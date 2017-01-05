@@ -17,18 +17,10 @@ import datetime
 
 
 # service type
-ST_NOVA = 'nova'
-# only support cinder v2
-ST_CINDER = 'cinderv2'
 ST_NEUTRON = 'neutron'
-ST_GLANCE = 'glance'
+
 
 # resource_type
-RT_SERVER = 'server'
-RT_VOLUME = 'volume'
-RT_VOl_METADATA = 'volume_metadata'
-RT_BACKUP = 'backup'
-RT_SNAPSHOT = 'snapshot'
 RT_NETWORK = 'network'
 RT_SUBNET = 'subnet'
 RT_PORT = 'port'
@@ -43,8 +35,6 @@ def is_valid_resource_type(resource_type):
 
 
 # version list
-NOVA_VERSION_V21 = 'v2.1'
-CINDER_VERSION_V2 = 'v2'
 NEUTRON_VERSION_V2 = 'v2'
 
 # supported release
@@ -92,22 +82,3 @@ JT_NETWORK_UPDATE = 'update_network'
 # network type
 NT_LOCAL = 'local'
 NT_SHARED_VLAN = 'shared_vlan'
-
-
-# nova microverson headers key word
-NOVA_API_VERSION_REQUEST_HEADER = 'OpenStack-API-Version'
-LEGACY_NOVA_API_VERSION_REQUEST_HEADER = 'X-OpenStack-Nova-API-Version'
-HTTP_NOVA_API_VERSION_REQUEST_HEADER = 'HTTP_OPENSTACK_API_VERSION'
-HTTP_LEGACY_NOVA_API_VERSION_REQUEST_HEADER = \
-    'HTTP_X_OPENSTACK_NOVA_API_VERSION'
-
-# nova microverson prefix
-NOVA_MICRO_VERSION_PREFIX = 'compute'
-
-
-# support nova version range
-NOVA_APIGW_MIN_VERSION = '2.1'
-NOVA_APIGW_MAX_VERSION = '2.36'
-
-# server action url(part url)
-SERVER_ACTION_URL = '/servers/%s/action'
