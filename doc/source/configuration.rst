@@ -118,6 +118,10 @@ xjob.conf.
      - (Integer) Timeout for worker's one turn of processing, in seconds
    * - ``worker_sleep_time`` = ``60``
      - (Float) Seconds a worker sleeps after one run in a loop
+   * - ``redo_time_span`` = ``172800``
+     - (Integer) Time span in seconds, we calculate the latest job timestamp by
+       subtracting this time span from the current timestamp, jobs created
+       between these two timestamps will be redone
 
 Networking Setting for Tricircle
 ================================

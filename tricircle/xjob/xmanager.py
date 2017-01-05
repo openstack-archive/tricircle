@@ -30,7 +30,7 @@ import neutronclient.common.exceptions as q_cli_exceptions
 
 from tricircle.common import client
 from tricircle.common import constants
-from tricircle.common.i18n import _, _LE, _LI, _LW
+from tricircle.common.i18n import _LE, _LI, _LW
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
@@ -61,7 +61,6 @@ def _job_handle(job_type):
             payload = kwargs['payload']
 
             resource_id = payload[job_type]
-            db_api.new_job(ctx, job_type, resource_id)
             start_time = datetime.datetime.now()
 
             while True:
@@ -72,6 +71,8 @@ def _job_handle(job_type):
                     break
                 time_new = db_api.get_latest_timestamp(ctx, constants.JS_New,
                                                        job_type, resource_id)
+                if not time_new:
+                    break
                 time_success = db_api.get_latest_timestamp(
                     ctx, constants.JS_Success, job_type, resource_id)
                 if time_success and time_success >= time_new:
@@ -136,7 +137,7 @@ class XManager(PeriodicTasks):
 
     def __init__(self, host=None, service_name='xjob'):
 
-        LOG.debug(_('XManager initialization...'))
+        LOG.debug('XManager initialization...')
 
         if not host:
             host = CONF.host
@@ -167,7 +168,6 @@ class XManager(PeriodicTasks):
         return self.run_periodic_tasks(context, raise_on_error=raise_on_error)
 
     def init_host(self):
-
         """init_host
 
         Hook to do additional manager initialization when one requests
@@ -175,25 +175,17 @@ class XManager(PeriodicTasks):
         is created.
         Child classes should override this method.
         """
-
-        LOG.debug(_('XManager init_host...'))
-
-        pass
+        LOG.debug('XManager init_host...')
 
     def cleanup_host(self):
-
         """cleanup_host
 
         Hook to do cleanup work when the service shuts down.
         Child classes should override this method.
         """
-
-        LOG.debug(_('XManager cleanup_host...'))
-
-        pass
+        LOG.debug('XManager cleanup_host...')
 
     def pre_start_hook(self):
-
         """pre_start_hook
 
         Hook to provide the manager the ability to do additional
@@ -202,13 +194,9 @@ class XManager(PeriodicTasks):
         record is created.
         Child classes should override this method.
         """
-
-        LOG.debug(_('XManager pre_start_hook...'))
-
-        pass
+        LOG.debug('XManager pre_start_hook...')
 
     def post_start_hook(self):
-
         """post_start_hook
 
         Hook to provide the manager the ability to do additional
@@ -216,10 +204,7 @@ class XManager(PeriodicTasks):
         and starts 'running'.
         Child classes should override this method.
         """
-
-        LOG.debug(_('XManager post_start_hook...'))
-
-        pass
+        LOG.debug('XManager post_start_hook...')
 
     # rpc message endpoint handling
     def test_rpc(self, ctx, payload):
@@ -245,21 +230,31 @@ class XManager(PeriodicTasks):
                            'value': router_id}])
 
     @periodic_task.periodic_task
-    def redo_failed_job(self, ctx):
-        failed_jobs = db_api.get_latest_failed_jobs(ctx)
+    def redo_failed_or_new_job(self, ctx):
+        failed_jobs, new_jobs = db_api.get_latest_failed_or_new_jobs(ctx)
         failed_jobs = [
             job for job in failed_jobs if job['type'] in self.job_handles]
-        if not failed_jobs:
+        new_jobs = [
+            job for job in new_jobs if job['type'] in self.job_handles]
+        if not failed_jobs and not new_jobs:
             return
+        if new_jobs:
+            jobs = new_jobs
+            is_new_job = True
+        else:
+            jobs = failed_jobs
+            is_new_job = False
         # in one run we only pick one job to handle
-        job_index = random.randint(0, len(failed_jobs) - 1)
-        failed_job = failed_jobs[job_index]
-        job_type = failed_job['type']
-        payload = {job_type: failed_job['resource_id']}
-        LOG.debug(_('Redo failed job for %(resource_id)s of type '
-                    '%(job_type)s'),
-                  {'resource_id': failed_job['resource_id'],
-                   'job_type': job_type})
+        job_index = random.randint(0, len(jobs) - 1)
+        job_type = jobs[job_index]['type']
+        resource_id = jobs[job_index]['resource_id']
+        payload = {job_type: resource_id}
+        LOG.debug('Redo %(status)s job for %(resource_id)s of type '
+                  '%(job_type)s',
+                  {'status': 'new' if is_new_job else 'failed',
+                   'resource_id': resource_id, 'job_type': job_type})
+        if not is_new_job:
+            db_api.new_job(ctx, job_type, resource_id)
         self.job_handles[job_type](ctx, payload=payload)
 
     @staticmethod

@@ -49,7 +49,7 @@ def upgrade(migrate_engine):
         sql.Column('id', sql.String(length=36), primary_key=True),
         sql.Column('type', sql.String(length=36)),
         sql.Column('timestamp', sql.TIMESTAMP,
-                   server_default=sql.text('CURRENT_TIMESTAMP')),
+                   server_default=sql.text('CURRENT_TIMESTAMP'), index=True),
         sql.Column('status', sql.String(length=36)),
         sql.Column('resource_id', sql.String(length=127)),
         sql.Column('extra_id', sql.String(length=36)),
@@ -59,7 +59,17 @@ def upgrade(migrate_engine):
         mysql_engine='InnoDB',
         mysql_charset='utf8')
 
-    tables = [async_jobs, resource_routings]
+    async_job_logs = sql.Table(
+        'async_job_logs', meta,
+        sql.Column('id', sql.String(length=36), primary_key=True),
+        sql.Column('resource_id', sql.String(length=127)),
+        sql.Column('type', sql.String(length=36)),
+        sql.Column('timestamp', sql.TIMESTAMP,
+                   server_default=sql.text('CURRENT_TIMESTAMP'), index=True),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8')
+
+    tables = [async_jobs, resource_routings, async_job_logs]
     for table in tables:
         table.create()
 

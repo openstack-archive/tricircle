@@ -23,6 +23,7 @@ from tricircle.common import constants
 from tricircle.common import rpc
 from tricircle.common import serializer as t_serializer
 from tricircle.common import topics
+import tricircle.db.api as db_api
 
 
 CONF = cfg.CONF
@@ -73,6 +74,7 @@ class XJobAPI(object):
 
     def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
         combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
+        db_api.new_job(ctxt, constants.JT_ROUTER_SETUP, combine_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'setup_bottom_router',
             payload={constants.JT_ROUTER_SETUP: combine_id})
@@ -82,23 +84,27 @@ class XJobAPI(object):
         # control exchange is "neutron", however, we starts xjob without
         # specifying its control exchange, so the default value "openstack" is
         # used, thus we need to pass exchange as "openstack" here.
+        db_api.new_job(ctxt, constants.JT_ROUTER, router_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'configure_extra_routes',
             payload={constants.JT_ROUTER: router_id})
 
     def delete_server_port(self, ctxt, port_id, pod_id):
         combine_id = '%s#%s' % (pod_id, port_id)
+        db_api.new_job(ctxt, constants.JT_PORT_DELETE, combine_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'delete_server_port',
             payload={constants.JT_PORT_DELETE: combine_id})
 
     def configure_security_group_rules(self, ctxt, project_id):
+        db_api.new_job(ctxt, constants.JT_SEG_RULE_SETUP, project_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'configure_security_group_rules',
             payload={constants.JT_SEG_RULE_SETUP: project_id})
 
     def update_network(self, ctxt, network_id, pod_id):
         combine_id = '%s#%s' % (pod_id, network_id)
+        db_api.new_job(ctxt, constants.JT_NETWORK_UPDATE, combine_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'update_network',
             payload={constants.JT_NETWORK_UPDATE: combine_id})

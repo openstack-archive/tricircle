@@ -66,10 +66,10 @@ DEFAULT_DESTINATION = '0.0.0.0/0'
 expire_time = datetime.datetime(2000, 1, 1)
 
 # job status
-JS_New = 'New'
-JS_Running = 'Running'
-JS_Success = 'Success'
-JS_Fail = 'Fail'
+JS_New = '3_New'
+JS_Running = '2_Running'
+JS_Success = '1_Success'
+JS_Fail = '0_Fail'
 
 SP_EXTRA_ID = '00000000-0000-0000-0000-000000000000'
 TOP = 'top'

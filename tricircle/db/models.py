@@ -94,7 +94,21 @@ class AsyncJob(core.ModelBase, core.DictBase):
     id = sql.Column('id', sql.String(length=36), primary_key=True)
     type = sql.Column('type', sql.String(length=36))
     timestamp = sql.Column('timestamp', sql.TIMESTAMP,
-                           server_default=sql.text('CURRENT_TIMESTAMP'))
+                           server_default=sql.text('CURRENT_TIMESTAMP'),
+                           index=True)
     status = sql.Column('status', sql.String(length=36))
     resource_id = sql.Column('resource_id', sql.String(length=127))
     extra_id = sql.Column('extra_id', sql.String(length=36))
+
+
+class AsyncJobLog(core.ModelBase, core.DictBase):
+    __tablename__ = 'async_job_logs'
+
+    attributes = ['id', 'resource_id', 'type', 'timestamp']
+
+    id = sql.Column('id', sql.String(length=36), primary_key=True)
+    resource_id = sql.Column('resource_id', sql.String(length=127))
+    type = sql.Column('type', sql.String(length=36))
+    timestamp = sql.Column('timestamp', sql.TIMESTAMP,
+                           server_default=sql.text('CURRENT_TIMESTAMP'),
+                           index=True)

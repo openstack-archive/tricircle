@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import datetime
 import functools
 import sqlalchemy as sql
 import time
@@ -20,6 +21,7 @@ import time
 from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_log import log as logging
+from oslo_utils import timeutils
 from oslo_utils import uuidutils
 
 from tricircle.common import constants
@@ -346,24 +348,40 @@ def register_job(context, _type, resource_id):
         context.session.close()
 
 
-def get_latest_failed_jobs(context):
-    jobs = []
+def get_latest_failed_or_new_jobs(context):
+    current_timestamp = timeutils.utcnow()
+    time_span = datetime.timedelta(seconds=CONF.redo_time_span)
+    latest_timestamp = current_timestamp - time_span
+    failed_jobs = []
+    new_jobs = []
+
+    # first we group the jobs by type and resource id, and in each group we
+    # pick the latest timestamp
+    stmt = context.session.query(
+        models.AsyncJob.type, models.AsyncJob.resource_id,
+        sql.func.max(models.AsyncJob.timestamp).label('timestamp'))
+    stmt = stmt.filter(models.AsyncJob.timestamp >= latest_timestamp)
+    stmt = stmt.group_by(models.AsyncJob.type,
+                         models.AsyncJob.resource_id).subquery()
+
+    # then we join the result with the original table and group again, in each
+    # group, we pick the "minimum" of the status, for status, the ascendant
+    # sort sequence is "0_Fail", "1_Success", "2_Running", "3_New"
     query = context.session.query(models.AsyncJob.type,
                                   models.AsyncJob.resource_id,
-                                  sql.func.count(models.AsyncJob.id))
-    query = query.group_by(models.AsyncJob.type, models.AsyncJob.resource_id)
-    for job_type, resource_id, count in query:
-        _query = context.session.query(models.AsyncJob)
-        _query = _query.filter_by(type=job_type, resource_id=resource_id)
-        _query = _query.order_by(sql.desc('timestamp'))
-        # when timestamps of async job entries are the same, sort entries by
-        # status so "Fail" async job is placed before "New" and "Success"
-        # async jobs
-        _query = _query.order_by(sql.asc('status'))
-        latest_job = _query[0].to_dict()
-        if latest_job['status'] == constants.JS_Fail:
-            jobs.append(latest_job)
-    return jobs
+                                  sql.func.min(models.AsyncJob.status)).join(
+        stmt, sql.and_(models.AsyncJob.type == stmt.c.type,
+                       models.AsyncJob.resource_id == stmt.c.resource_id,
+                       models.AsyncJob.timestamp == stmt.c.timestamp))
+    query = query.group_by(models.AsyncJob.type,
+                           models.AsyncJob.resource_id)
+
+    for job_type, resource_id, status in query:
+        if status == constants.JS_Fail:
+            failed_jobs.append({'type': job_type, 'resource_id': resource_id})
+        elif status == constants.JS_New:
+            new_jobs.append({'type': job_type, 'resource_id': resource_id})
+    return failed_jobs, new_jobs
 
 
 def get_latest_timestamp(context, status, _type, resource_id):
@@ -397,8 +415,27 @@ def finish_job(context, job_id, successful, timestamp):
         job_dict = {'status': status,
                     'timestamp': timestamp,
                     'extra_id': uuidutils.generate_uuid()}
-        core.update_resource(context, models.AsyncJob,
-                             job_id, job_dict)
+        job = core.update_resource(context, models.AsyncJob, job_id, job_dict)
+        if status == constants.JS_Success:
+            log_dict = {'id': uuidutils.generate_uuid(),
+                        'type': job['type'],
+                        'timestamp': timestamp,
+                        'resource_id': job['resource_id']}
+            context.session.query(models.AsyncJob).filter(
+                sql.and_(models.AsyncJob.type == job['type'],
+                         models.AsyncJob.resource_id == job['resource_id'],
+                         models.AsyncJob.timestamp <= timestamp)).delete(
+                synchronize_session=False)
+            core.create_resource(context, models.AsyncJobLog, log_dict)
+        else:
+            # sqlite has problem handling "<" operator on timestamp, so we
+            # slide the timestamp a bit and use "<="
+            timestamp = timestamp - datetime.timedelta(microseconds=1)
+            context.session.query(models.AsyncJob).filter(
+                sql.and_(models.AsyncJob.type == job['type'],
+                         models.AsyncJob.resource_id == job['resource_id'],
+                         models.AsyncJob.timestamp <= timestamp)).delete(
+                synchronize_session=False)
 
 
 def _is_user_context(context):
