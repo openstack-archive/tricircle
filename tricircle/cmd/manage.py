@@ -17,19 +17,52 @@
 import sys
 
 from oslo_config import cfg
+from oslo_log import log as logging
 
 from tricircle.db import core
 from tricircle.db import migration_helpers
 
+import pbr.version
+
+CONF = cfg.CONF
+
+
+def do_db_version():
+    print(migration_helpers.db_version())
+
+
+def do_db_sync():
+    migration_helpers.sync_repo(CONF.command.version)
+
+
+def add_command_parsers(subparsers):
+    parser = subparsers.add_parser('db_version')
+    parser.set_defaults(func=do_db_version)
+
+    parser = subparsers.add_parser('db_sync')
+    parser.set_defaults(func=do_db_sync)
+    parser.add_argument('version', nargs='?')
+
+command_opt = cfg.SubCommandOpt('command',
+                                title='Commands',
+                                help='Show available commands.',
+                                handler=add_command_parsers)
+
 
 def main():
     core.initialize()
-    cfg.CONF(args=sys.argv[2:],
-             project='tricircle',
-             default_config_files=[sys.argv[1]])
-    migration_helpers.find_migrate_repo()
-    migration_helpers.sync_repo(2)
+    logging.register_options(CONF)
+    logging.setup(CONF, 'tricircle-db-manage')
+    CONF.register_cli_opt(command_opt)
+    version_info = pbr.version.VersionInfo('tricircle')
 
+    try:
+        CONF(sys.argv[1:], project='tricircle', prog='tricircle-db-manage',
+             version=version_info.version_string())
+    except RuntimeError as e:
+        sys.exit("ERROR: %s" % e)
 
-if __name__ == '__main__':
-    main()
+    try:
+        CONF.command.func()
+    except Exception as e:
+        sys.exit("ERROR: %s" % e)
