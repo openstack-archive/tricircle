@@ -185,15 +185,18 @@ class ClientTest(unittest.TestCase):
         resources = self.client.list_resources(FAKE_RESOURCE, self.context)
         self.assertEqual(resources, [{'name': 'res3'}, {'name': 'res2'}])
 
-    def test_list_endpoint_not_found(self):
+    def test_list_create_endpoint_not_found(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
                               group='client')
         # delete the configuration so endpoint cannot be found
         api.delete_cached_endpoints(self.context, FAKE_SERVICE_ID)
-        # auto refresh set to False, directly raise exception
-        self.assertRaises(exceptions.EndpointNotFound,
-                          self.client.list_resources,
-                          FAKE_RESOURCE, self.context, [])
+        resources = self.client.list_resources(FAKE_RESOURCE, self.context)
+        # list_resources returns [] by default
+        self.assertEqual(resources, [])
+        resource = self.client.create_resources(FAKE_RESOURCE, self.context,
+                                                'res3')
+        # create_resources returns None by default
+        self.assertEqual(resource, None)
 
     def test_resource_not_supported(self):
         # no such resource
