@@ -18,6 +18,8 @@ import copy
 import mock
 from mock import patch
 import netaddr
+import six
+from six.moves import xrange
 import unittest
 
 from sqlalchemy.orm import attributes
@@ -217,7 +219,7 @@ class FakePool(driver.Pool):
 class DotDict(dict):
     def __init__(self, normal_dict=None):
         if normal_dict:
-            for key, value in normal_dict.iteritems():
+            for key, value in six.iteritems(normal_dict):
                 self[key] = value
 
     def __getattr__(self, item):
@@ -255,7 +257,7 @@ class FakeNeutronClient(object):
             return_list = []
             for port in port_list:
                 is_selected = True
-                for key, value in params['filters'].iteritems():
+                for key, value in six.iteritems(params['filters']):
                     if key not in port or not port[key] or (
                             port[key] not in value):
                         is_selected = False
@@ -725,7 +727,7 @@ class FakeQuery(object):
         filtered_list = []
         for record in self.records:
             selected = True
-            for key, value in kwargs.iteritems():
+            for key, value in six.iteritems(kwargs):
                 if key not in record or record[key] != value:
                     selected = False
                     break
@@ -761,6 +763,8 @@ class FakeQuery(object):
         self.index += 1
         return self.records[self.index - 1]
 
+    __next__ = next
+
     def one(self):
         if len(self.records) == 0:
             raise exc.NoResultFound()
@@ -774,7 +778,7 @@ class FakeQuery(object):
 
     def update(self, values):
         for record in self.records:
-            for key, value in values.iteritems():
+            for key, value in six.iteritems(values):
                 record[key] = value
         return len(self.records)
 
@@ -1017,7 +1021,7 @@ class FakePlugin(plugin.TricirclePlugin):
         for allocation in TOP_IPALLOCATIONS:
             if allocation['port_id'] == port['id']:
                 ret = {}
-                for key, value in port.iteritems():
+                for key, value in six.iteritems(port):
                     if key == 'fixed_ips':
                         ret[key] = [{'subnet_id': allocation['subnet_id'],
                                      'ip_address': allocation['ip_address']}]
@@ -1215,10 +1219,10 @@ class PluginTest(unittest.TestCase,
                           {'id': 'top_id_3', 'name': 'top'}]
         for _ports in (ports1, ports2, ports3, ports4):
             ports.extend(_ports)
-        self.assertItemsEqual(expected_ports, ports)
+        six.assertCountEqual(self, expected_ports, ports)
 
         ports = fake_plugin.get_ports(neutron_context)
-        self.assertItemsEqual(expected_ports, ports)
+        six.assertCountEqual(self, expected_ports, ports)
 
     @patch.object(context, 'get_context_from_neutron_context',
                   new=fake_get_context_from_neutron_context)
@@ -1267,7 +1271,7 @@ class PluginTest(unittest.TestCase,
                      'device_id': 'router_id'},
                     {'id': 'top_id_2', 'name': 'bottom',
                      'device_id': 'router_id'}]
-        self.assertItemsEqual(expected, ports)
+        six.assertCountEqual(self, expected, ports)
 
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'delete_port')
@@ -1669,7 +1673,7 @@ class PluginTest(unittest.TestCase,
         # only one VLAN allocated since we just create one bridge network
         allocations = [
             allocation['allocated'] for allocation in TOP_VLANALLOCATIONS]
-        self.assertItemsEqual([True, False], allocations)
+        six.assertCountEqual(self, [True, False], allocations)
         for segment in TOP_SEGMENTS:
             self.assertIn(segment['segmentation_id'], (2000, 2001))
 

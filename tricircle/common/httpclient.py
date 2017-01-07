@@ -13,8 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import urllib
-import urlparse
+from six.moves.urllib import parse as urlparse
 
 from requests import Request
 from requests import Session
@@ -104,7 +103,7 @@ def get_bottom_url(t_ver, t_url, b_ver, b_endpoint):
         if k == 'availability_zone':
             continue
         query_filters.append((k, v))
-    query = urllib.urlencode(query_filters)
+    query = urlparse.urlencode(query_filters)
 
     fragment = t_parse.fragment
 

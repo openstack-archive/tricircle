@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
 import unittest
 
 from oslo_utils import uuidutils
@@ -42,14 +43,16 @@ class HelperTest(unittest.TestCase):
         }
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
                                                   b_net_id, '10.0.1.2')
-        self.assertItemsEqual([{'start': '10.0.1.3', 'end': '10.0.1.254'}],
-                              body['subnet']['allocation_pools'])
+        six.assertCountEqual(self,
+                             [{'start': '10.0.1.3', 'end': '10.0.1.254'}],
+                             body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.2', body['subnet']['gateway_ip'])
 
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
                                                   b_net_id, '10.0.1.254')
-        self.assertItemsEqual([{'start': '10.0.1.2', 'end': '10.0.1.253'}],
-                              body['subnet']['allocation_pools'])
+        six.assertCountEqual(self,
+                             [{'start': '10.0.1.2', 'end': '10.0.1.253'}],
+                             body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.254', body['subnet']['gateway_ip'])
 
         t_subnet['allocation_pools'] = [
@@ -57,8 +60,8 @@ class HelperTest(unittest.TestCase):
             {'start': '10.0.1.20', 'end': '10.0.1.254'}]
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
                                                   b_net_id, '10.0.1.5')
-        self.assertItemsEqual([{'start': '10.0.1.2', 'end': '10.0.1.4'},
-                               {'start': '10.0.1.6', 'end': '10.0.1.10'},
-                               {'start': '10.0.1.20', 'end': '10.0.1.254'}],
-                              body['subnet']['allocation_pools'])
+        six.assertCountEqual(self, [{'start': '10.0.1.2', 'end': '10.0.1.4'},
+                             {'start': '10.0.1.6', 'end': '10.0.1.10'},
+                             {'start': '10.0.1.20', 'end': '10.0.1.254'}],
+                             body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.5', body['subnet']['gateway_ip'])

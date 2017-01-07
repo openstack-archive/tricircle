@@ -13,6 +13,7 @@
 import mock
 from mock import patch
 from oslo_utils import uuidutils
+import six
 import unittest
 
 import pecan
@@ -41,7 +42,7 @@ class RoutingControllerTest(unittest.TestCase):
         policy.populate_default_rules()
 
     def _validate_error_code(self, res, code):
-        self.assertEqual(res[res.keys()[0]]['code'], code)
+        self.assertEqual(res[list(res.keys())[0]]['code'], code)
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
@@ -234,7 +235,7 @@ class RoutingControllerTest(unittest.TestCase):
                   for routing in routings['routings']]
         expect = [('c7f641c9-8462-4007-84b2-3035d8cfb7a3', pod_id1),
                   ('b669a2da-ca95-47db-a2a9-ba9e546d82ee', pod_id2)]
-        self.assertItemsEqual(expect, actual)
+        six.assertCountEqual(self, expect, actual)
 
         # apply a resource type filter to the retrieved routings.
         kw_filter1 = {'resource_type': 'port'}
@@ -243,7 +244,7 @@ class RoutingControllerTest(unittest.TestCase):
                   routing['resource_type'])
                   for routing in routings['routings']]
         expect = [('b669a2da-ca95-47db-a2a9-ba9e546d82ee', pod_id2, 'port')]
-        self.assertItemsEqual(expect, actual)
+        six.assertCountEqual(self, expect, actual)
 
         # apply a filter and if it doesn't match with any of the retrieved
         # routings, then all of them will be discarded and the method returns
@@ -259,7 +260,7 @@ class RoutingControllerTest(unittest.TestCase):
                   for routing in routings['routings']]
         expect = [('c7f641c9-8462-4007-84b2-3035d8cfb7a3', pod_id1),
                   ('b669a2da-ca95-47db-a2a9-ba9e546d82ee', pod_id2)]
-        self.assertItemsEqual(expect, actual)
+        six.assertCountEqual(self, expect, actual)
 
         # failure case, only admin can show all resource routings
         self.context.is_admin = False

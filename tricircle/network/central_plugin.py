@@ -15,6 +15,7 @@
 
 import collections
 import copy
+import six
 
 from oslo_config import cfg
 from oslo_db.sqlalchemy import utils as sa_utils
@@ -549,7 +550,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             port['id'] = port_id
             if fields:
                 port = dict(
-                    [(k, v) for k, v in port.iteritems() if k in fields])
+                    [(k, v) for k, v in six.iteritems(port) if k in fields])
             if 'network_id' not in port and 'fixed_ips' not in port:
                 return port
 
@@ -589,7 +590,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             query = query.filter(
                 models_v2.IPAllocation.subnet_id.in_(subnet_ids))
 
-        for key, value in filters.iteritems():
+        for key, value in six.iteritems(filters):
             column = getattr(model, key, None)
             if column is not None:
                 if not value:
@@ -870,7 +871,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     continue
                 _filters = []
                 if filters:
-                    for key, value in filters.iteritems():
+                    for key, value in six.iteritems(filters):
                         if key == 'fixed_ips':
                             if 'ip_address' in value:
                                 _filters.append(

@@ -17,6 +17,7 @@ import collections
 import functools
 import inspect
 import six
+from six.moves import xrange
 import uuid
 
 from keystoneclient.auth.identity import v3 as auth_identity

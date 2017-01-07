@@ -17,8 +17,8 @@ from oslo_config import cfg
 from oslo_middleware import request_id
 from oslo_service import service
 
-import exceptions as t_exc
-from i18n import _
+from tricircle.common import exceptions as t_exc
+from tricircle.common.i18n import _
 
 
 def auth_app(app):

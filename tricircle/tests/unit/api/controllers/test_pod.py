@@ -15,6 +15,7 @@
 
 import mock
 from mock import patch
+import six
 import unittest
 
 import pecan
@@ -88,7 +89,7 @@ class PodsControllerTest(unittest.TestCase):
         actual = [(pod['region_name'],
                    pod['az_name']) for pod in pods['pods']]
         expect = [('TopPod', ''), ('BottomPod', 'TopAZ')]
-        self.assertItemsEqual(expect, actual)
+        six.assertCountEqual(self, expect, actual)
 
     @patch.object(pecan, 'response', new=mock.Mock)
     @patch.object(context, 'extract_context_from_environ')

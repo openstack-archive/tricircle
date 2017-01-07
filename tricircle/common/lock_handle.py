@@ -15,6 +15,7 @@
 
 import datetime
 import eventlet
+from six.moves import xrange
 
 import oslo_db.exception as db_exc
 
