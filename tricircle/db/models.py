@@ -60,8 +60,8 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
     __tablename__ = 'resource_routings'
     __table_args__ = (
         schema.UniqueConstraint(
-            'top_id', 'pod_id',
-            name='resource_routings0top_id0pod_id'),
+            'top_id', 'pod_id', 'resource_type',
+            name='resource_routings0top_id0pod_id0resource_type'),
     )
     attributes = ['id', 'top_id', 'bottom_id', 'pod_id', 'project_id',
                   'resource_type', 'created_at', 'updated_at']

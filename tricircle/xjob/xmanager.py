@@ -24,6 +24,7 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import periodic_task
 
+import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 import neutronclient.common.exceptions as q_cli_exceptions
 
@@ -36,7 +37,6 @@ from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.exceptions as t_network_exc
 from tricircle.network import helper
-
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -294,8 +294,13 @@ class XManager(PeriodicTasks):
                 raise
 
     def _setup_router_one_pod(self, ctx, t_pod, b_pod, t_client, t_net,
-                              t_router, t_ew_bridge_net, t_ew_bridge_subnet,
-                              need_ns_bridge):
+                              t_router, t_bridge_net, t_bridge_subnet,
+                              is_ext_net_pod):
+        # NOTE(zhiyuan) after the bridge network combination, external network
+        # is attached to a separate router, which is created in central plugin,
+        # so is_ext_net_pod is not used in the current implementation, but we
+        # choose to keep this parameter since it's an important attribute of a
+        # pod and we may need to use it later.
         b_client = self._get_client(b_pod['region_name'])
 
         router_body = {'router': {'name': t_router['id'],
@@ -304,62 +309,32 @@ class XManager(PeriodicTasks):
 
         # create bottom router in target bottom pod
         _, b_router_id = self.helper.prepare_bottom_element(
-            ctx, project_id, b_pod, t_router, 'router', router_body)
+            ctx, project_id, b_pod, t_router, constants.RT_ROUTER, router_body)
 
-        # handle E-W networking
-        # create top E-W bridge port
+        # create top bridge port
         q_ctx = None  # no need to pass neutron context when using client
-        t_ew_bridge_port_id = self.helper.get_bridge_interface(
-            ctx, q_ctx, project_id, t_pod, t_ew_bridge_net['id'],
-            b_router_id, None, True)
+        t_bridge_port_id = self.helper.get_bridge_interface(
+            ctx, q_ctx, project_id, t_pod, t_bridge_net['id'], b_router_id)
 
-        # create bottom E-W bridge port
-        t_ew_bridge_port = t_client.get_ports(ctx, t_ew_bridge_port_id)
-        (is_new, b_ew_bridge_port_id,
-         _, _) = self.helper.get_bottom_bridge_elements(
-            ctx, project_id, b_pod, t_ew_bridge_net, False, t_ew_bridge_subnet,
-            t_ew_bridge_port)
+        # create bottom bridge port
+        # if target bottom pod is hosting real external network, we create
+        # another bottom router and attach the bridge network as internal
+        # network, but this work is done by central plugin when user sets
+        # router gateway.
+        t_bridge_port = t_client.get_ports(ctx, t_bridge_port_id)
+        (is_new, b_bridge_port_id, b_bridge_subnet_id,
+         b_bridge_net_id) = self.helper.get_bottom_bridge_elements(
+            ctx, project_id, b_pod, t_bridge_net, True, t_bridge_subnet, None)
 
-        # attach bottom E-W bridge port to bottom router
-        if is_new:
-            # only attach bridge port the first time
-            b_client.action_routers(ctx, 'add_interface', b_router_id,
-                                    {'port_id': b_ew_bridge_port_id})
-        else:
-            # still need to check if the bridge port is bound
-            port = b_client.get_ports(ctx, b_ew_bridge_port_id)
-            if not port.get('device_id'):
-                b_client.action_routers(ctx, 'add_interface', b_router_id,
-                                        {'port_id': b_ew_bridge_port_id})
-
-        # handle N-S networking
-        if need_ns_bridge:
-            t_ns_bridge_net_name = constants.ns_bridge_net_name % project_id
-            t_ns_bridge_subnet_name = constants.ns_bridge_subnet_name % (
-                project_id)
-            t_ns_bridge_net = self._get_resource_by_name(
-                t_client, ctx, 'network', t_ns_bridge_net_name)
-            t_ns_bridge_subnet = self._get_resource_by_name(
-                t_client, ctx, 'subnet', t_ns_bridge_subnet_name)
-            # create bottom N-S bridge network and subnet
-            (_, _, b_ns_bridge_subnet_id,
-             b_ns_bridge_net_id) = self.helper.get_bottom_bridge_elements(
-                ctx, project_id, b_pod, t_ns_bridge_net, True,
-                t_ns_bridge_subnet, None)
-            # create top N-S bridge gateway port
-            t_ns_bridge_gateway_id = self.helper.get_bridge_interface(
-                ctx, q_ctx, project_id, t_pod, t_ns_bridge_net['id'],
-                b_router_id, None, False)
-            t_ns_bridge_gateway = t_client.get_ports(ctx,
-                                                     t_ns_bridge_gateway_id)
-            # add external gateway for bottom router
-            # add gateway is update operation, can run multiple times
-            gateway_ip = t_ns_bridge_gateway['fixed_ips'][0]['ip_address']
-            b_client.action_routers(
-                ctx, 'add_gateway', b_router_id,
-                {'network_id': b_ns_bridge_net_id,
-                 'external_fixed_ips': [{'subnet_id': b_ns_bridge_subnet_id,
-                                         'ip_address': gateway_ip}]})
+        # we attach the bridge port as router gateway
+        # add_gateway is update operation, which can run multiple times
+        gateway_ip = t_bridge_port['fixed_ips'][0]['ip_address']
+        b_client.action_routers(
+            ctx, 'add_gateway', b_router_id,
+            {'network_id': b_bridge_net_id,
+             'enable_snat': False,
+             'external_fixed_ips': [{'subnet_id': b_bridge_subnet_id,
+                                     'ip_address': gateway_ip}]})
 
         # attach internal port to bottom router
         t_ports = self._get_router_interfaces(t_client, ctx, t_router['id'],
@@ -438,107 +413,84 @@ class XManager(PeriodicTasks):
             if t_int_port['network_id'] != t_net['id']:
                 # only handle floating ip association for the given top network
                 continue
-            if need_ns_bridge:
-                # create top N-S bridge interface port
-                t_ns_bridge_port_id = self.helper.get_bridge_interface(
-                    ctx, q_ctx, project_id, t_pod, t_ns_bridge_net['id'], None,
-                    b_int_port_id, False)
-                t_ns_bridge_port = t_client.get_ports(ctx, t_ns_bridge_port_id)
-                b_ext_bridge_net_id = \
-                    db_api.get_bottom_id_by_top_id_region_name(
-                        ctx, t_ns_bridge_net['id'], b_ext_pod['region_name'],
-                        constants.RT_NETWORK)
+
+            if b_ext_pod['pod_id'] != b_pod['pod_id']:
+                # if the internal port is not located in the external network
+                # pod, we need to create a copied port in that pod for floating
+                # ip association purpose
+                t_int_net_id = t_int_port['network_id']
+                t_int_subnet_id = t_int_port['fixed_ips'][0]['subnet_id']
                 port_body = {
                     'port': {
                         'tenant_id': project_id,
                         'admin_state_up': True,
-                        'name': 'ns_bridge_port',
-                        'network_id': b_ext_bridge_net_id,
-                        'fixed_ips': [{'ip_address': t_ns_bridge_port[
+                        'name': constants.shadow_port_name % t_int_port['id'],
+                        'network_id': t_int_net_id,
+                        'fixed_ips': [{'ip_address': t_int_port[
                             'fixed_ips'][0]['ip_address']}]
                     }
                 }
-                _, b_ns_bridge_port_id = self.helper.prepare_bottom_element(
-                    ctx, project_id, b_ext_pod, t_ns_bridge_port,
-                    constants.RT_PORT, port_body)
-                # swap these two lines
-                self._safe_create_bottom_floatingip(
-                    ctx, b_pod, b_client, b_ns_bridge_net_id,
-                    t_ns_bridge_port['fixed_ips'][0]['ip_address'],
-                    b_int_port_id)
-                self._safe_create_bottom_floatingip(
-                    ctx, b_ext_pod, b_ext_client, b_ext_net_id, add_fip,
-                    b_ns_bridge_port_id)
-            else:
-                self._safe_create_bottom_floatingip(
-                    ctx, b_pod, b_client, b_ext_net_id, add_fip,
-                    b_int_port_id)
+                self.helper.prepare_bottom_element(
+                    ctx, project_id, b_ext_pod, t_int_port,
+                    constants.RT_SD_PORT, port_body)
+                # create routing entries for copied network and subnet so we
+                # can easily find them during central network and subnet
+                # deletion, create_resource_mapping will catch DBDuplicateEntry
+                # exception and ignore it so it's safe to call this function
+                # multiple times
+                db_api.create_resource_mapping(ctx, t_int_net_id, t_int_net_id,
+                                               b_ext_pod['pod_id'], project_id,
+                                               constants.RT_SD_NETWORK)
+                db_api.create_resource_mapping(ctx, t_int_subnet_id,
+                                               t_int_subnet_id,
+                                               b_ext_pod['pod_id'], project_id,
+                                               constants.RT_SD_SUBNET)
+
+            self._safe_create_bottom_floatingip(
+                ctx, b_pod, b_ext_client, b_ext_net_id, add_fip,
+                b_int_port_id)
 
         for del_fip in del_fips:
             fip = b_ip_fip_map[del_fip]
-            if not fip['port_id']:
-                b_ext_client.delete_floatingips(ctx, fip['id'])
-                continue
-            if need_ns_bridge:
-                b_ns_bridge_port = b_ext_client.get_ports(ctx, fip['port_id'])
-                entries = core.query_resource(
-                    ctx, models.ResourceRouting,
-                    [{'key': 'bottom_id', 'comparator': 'eq',
-                      'value': b_ns_bridge_port['id']},
-                     {'key': 'pod_id', 'comparator': 'eq',
-                      'value': b_ext_pod['pod_id']}], [])
-                t_ns_bridge_port_id = entries[0]['top_id']
-                top_entries = core.query_resource(
-                    ctx, models.ResourceRouting,
-                    [{'key': 'bottom_id', 'comparator': 'eq',
-                      'value': t_ns_bridge_port_id},
-                     {'key': 'pod_id', 'comparator': 'eq',
-                      'value': t_pod['pod_id']}], [])
-                t_ns_bridge_port_name = top_entries[0]['top_id']
-                b_int_fips = b_client.list_floatingips(
-                    ctx,
-                    [{'key': 'floating_ip_address',
-                      'comparator': 'eq',
-                      'value': b_ns_bridge_port['fixed_ips'][0]['ip_address']},
-                     {'key': 'floating_network_id',
-                      'comparator': 'eq',
-                      'value': b_ns_bridge_net_id}])
-                if b_int_fips:
-                    b_client.delete_floatingips(ctx, b_int_fips[0]['id'])
-
-                # for bridge port, we have two resource routing entries, one
-                # for bridge port in top pod, another for bridge port in bottom
-                # pod. calling t_client.delete_ports will delete bridge port in
-                # bottom pod as well as routing entry for it, but we also need
-                # to remove routing entry for bridge port in top pod, bridge
-                # network will be deleted when deleting router
-
-                # first we update the routing entry to set bottom_id to None
-                # and expire the entry, so if we succeed to delete the bridge
-                # port next, this expired entry will be deleted; otherwise, we
-                # fail to delete the bridge port, when the port is accessed via
-                # lock_handle module, that module will find the port and update
-                # the entry
+            if b_ext_pod['pod_id'] != b_pod['pod_id'] and fip['port_id']:
+                # expire the routing entry for copy port
                 with ctx.session.begin():
                     core.update_resources(
                         ctx, models.ResourceRouting,
                         [{'key': 'bottom_id', 'comparator': 'eq',
-                          'value': t_ns_bridge_port_id},
-                         {'key': 'pod_id', 'comparator': 'eq',
-                          'value': t_pod['pod_id']}],
+                          'value': fip['port_id']},
+                         {'key': 'resource_type', 'comparator': 'eq',
+                          'value': constants.RT_SD_PORT}],
                         {'bottom_id': None,
                          'created_at': constants.expire_time,
                          'updated_at': constants.expire_time})
-                # delete bridge port
-                t_client.delete_ports(ctx, t_ns_bridge_port_id)
+                # delete copy port
+                b_ext_client.delete_ports(ctx, fip['port_id'])
                 # delete the expired entry, even if this deletion fails, we
                 # still have a chance that lock_handle module will delete it
                 with ctx.session.begin():
                     core.delete_resources(ctx, models.ResourceRouting,
                                           [{'key': 'top_id',
                                             'comparator': 'eq',
-                                            'value': t_ns_bridge_port_name}])
+                                            'value': fip['port_id']},
+                                           {'key': 'resource_type',
+                                            'comparator': 'eq',
+                                            'value': constants.RT_SD_PORT}])
+                    # delete port before floating ip disassociation, copy
+                    # network and copy subnet are deleted during central
+                    # network and subnet deletion
             b_ext_client.delete_floatingips(ctx, fip['id'])
+            # we first delete the internal port then delete the floating
+            # ip. during the deletion of the internal port, the floating
+            # ip will be disassociated automatically.
+
+            # the reason we delete the internal port first is that if we
+            # succeed to delete the internal port but fail to delete the
+            # floating ip, in the next run, we can still find the floating
+            # ip and try to delete it. but if we delete the floating ip
+            # first, after we fail to delete the internal port, it's not
+            # easy for us to find the internal port again because we cannot
+            # find the internal port id the floating ip body
 
     @_job_handle(constants.JT_ROUTER_SETUP)
     def setup_bottom_router(self, ctx, payload):
@@ -570,12 +522,12 @@ class XManager(PeriodicTasks):
 
         b_pod = db_api.get_pod(ctx, b_pod_id)
 
-        t_ew_bridge_net_name = constants.ew_bridge_net_name % project_id
-        t_ew_bridge_subnet_name = constants.ew_bridge_subnet_name % project_id
-        t_ew_bridge_net = self._get_resource_by_name(t_client, ctx, 'network',
-                                                     t_ew_bridge_net_name)
-        t_ew_bridge_subnet = self._get_resource_by_name(
-            t_client, ctx, 'subnet', t_ew_bridge_subnet_name)
+        t_bridge_net_name = constants.bridge_net_name % project_id
+        t_bridge_subnet_name = constants.bridge_subnet_name % project_id
+        t_bridge_net = self._get_resource_by_name(t_client, ctx, 'network',
+                                                  t_bridge_net_name)
+        t_bridge_subnet = self._get_resource_by_name(
+            t_client, ctx, 'subnet', t_bridge_subnet_name)
 
         ext_nets = t_client.list_networks(ctx,
                                           filters=[{'key': 'router:external',
@@ -585,48 +537,79 @@ class XManager(PeriodicTasks):
             [ext_net[AZ_HINTS][0] for ext_net in ext_nets])
 
         if not ext_net_region_names:
-            need_ns_bridge = False
+            is_ext_net_pod = False
         elif b_pod['region_name'] in ext_net_region_names:
-            need_ns_bridge = False
+            is_ext_net_pod = True
         else:
-            need_ns_bridge = True
+            is_ext_net_pod = False
         self._setup_router_one_pod(ctx, t_pod, b_pod, t_client, t_net,
-                                   t_router, t_ew_bridge_net,
-                                   t_ew_bridge_subnet, need_ns_bridge)
+                                   t_router, t_bridge_net,
+                                   t_bridge_subnet, is_ext_net_pod)
 
         self.xjob_handler.configure_extra_routes(ctx, t_router_id)
 
     @_job_handle(constants.JT_ROUTER)
     def configure_extra_routes(self, ctx, payload):
         t_router_id = payload[constants.JT_ROUTER]
+        t_client = self._get_client()
+        t_router = t_client.get_routers(ctx, t_router_id)
+        if not t_router:
+            return
+        if t_router.get('external_gateway_info'):
+            t_ext_net_id = t_router['external_gateway_info']['network_id']
+        else:
+            t_ext_net_id = None
 
-        non_vm_port_types = ['network:router_interface',
-                             'network:router_gateway',
-                             'network:dhcp']
+        non_vm_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                             q_constants.DEVICE_OWNER_ROUTER_GW,
+                             q_constants.DEVICE_OWNER_DHCP]
+        ew_attached_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                                  q_constants.DEVICE_OWNER_ROUTER_GW]
+        ns_attached_port_types = q_constants.DEVICE_OWNER_ROUTER_INTF
 
-        b_pods, b_router_ids = zip(*db_api.get_bottom_mappings_by_top_id(
-            ctx, t_router_id, constants.RT_ROUTER))
+        mappings = db_api.get_bottom_mappings_by_top_id(ctx, t_router_id,
+                                                        constants.RT_ROUTER)
+        if not mappings:
+            b_pods, b_router_ids = [], []
+        else:
+            b_pods, b_router_ids = map(list, zip(*mappings))
+        ns_mappings = db_api.get_bottom_mappings_by_top_id(
+            ctx, t_router_id, constants.RT_NS_ROUTER)
+        b_ns_pdd, b_ns_router_id = None, None
+        if ns_mappings:
+            b_ns_pdd, b_ns_router_id = ns_mappings[0]
+            b_pods.append(b_ns_pdd)
+            b_router_ids.append(b_ns_router_id)
 
-        router_bridge_ip_map = {}
+        router_ew_bridge_ip_map = {}
+        router_ns_bridge_ip_map = {}
         router_ips_map = {}
         for i, b_pod in enumerate(b_pods):
-            bottom_client = self._get_client(region_name=b_pod['region_name'])
+            is_ns_router = b_router_ids[i] == b_ns_router_id
+            bottom_client = self._get_client(b_pod['region_name'])
+            if is_ns_router:
+                device_owner_filter = ns_attached_port_types
+            else:
+                device_owner_filter = ew_attached_port_types
             b_interfaces = bottom_client.list_ports(
                 ctx, filters=[{'key': 'device_id',
                                'comparator': 'eq',
                                'value': b_router_ids[i]},
                               {'key': 'device_owner',
                                'comparator': 'eq',
-                               'value': 'network:router_interface'}])
+                               'value': device_owner_filter}])
             router_ips_map[b_router_ids[i]] = {}
             for b_interface in b_interfaces:
                 ip = b_interface['fixed_ips'][0]['ip_address']
-                ew_bridge_cidr = CONF.client.ew_bridge_cidr
-                ns_bridge_cidr = CONF.client.ns_bridge_cidr
-                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ew_bridge_cidr):
-                    router_bridge_ip_map[b_router_ids[i]] = ip
-                    continue
-                if netaddr.IPAddress(ip) in netaddr.IPNetwork(ns_bridge_cidr):
+                bridge_cidr = CONF.client.bridge_cidr
+                if netaddr.IPAddress(ip) in netaddr.IPNetwork(bridge_cidr):
+                    if is_ns_router:
+                        # this ip is the default gateway ip for north-south
+                        # networking
+                        router_ns_bridge_ip_map[b_router_ids[i]] = ip
+                    else:
+                        # this ip is the next hop for east-west networking
+                        router_ew_bridge_ip_map[b_router_ids[i]] = ip
                     continue
                 b_net_id = b_interface['network_id']
                 b_subnet = bottom_client.get_subnets(
@@ -641,9 +624,11 @@ class XManager(PeriodicTasks):
                     'ip_address'] for vm_port in b_vm_ports]
                 router_ips_map[b_router_ids[i]][b_subnet['cidr']] = ips
 
+        # handle extra routes for east-west traffic
         for i, b_router_id in enumerate(b_router_ids):
-            bottom_client = self._get_client(
-                region_name=b_pods[i]['region_name'])
+            if b_router_id == b_ns_router_id:
+                continue
+            bottom_client = self._get_client(b_pods[i]['region_name'])
             extra_routes = []
             if not router_ips_map[b_router_id]:
                 bottom_client.update_routers(
@@ -656,11 +641,48 @@ class XManager(PeriodicTasks):
                     if cidr in router_ips_map[b_router_id]:
                         continue
                     for ip in ips:
-                        extra_routes.append(
-                            {'nexthop': router_bridge_ip_map[router_id],
-                             'destination': ip + '/32'})
+                        route = {'nexthop': router_ew_bridge_ip_map[router_id],
+                                 'destination': ip + '/32'}
+                        extra_routes.append(route)
+
+            if router_ns_bridge_ip_map and t_ext_net_id:
+                extra_routes.append(
+                    {'nexthop': router_ns_bridge_ip_map.values()[0],
+                     'destination': constants.DEFAULT_DESTINATION})
             bottom_client.update_routers(
                 ctx, b_router_id, {'router': {'routes': extra_routes}})
+
+        if not b_ns_router_id:
+            # router for north-south networking not exist, skip extra routes
+            # configuration for north-south router
+            return
+        if not t_ext_net_id:
+            # router not attached to external gateway but router for north-
+            # south networking exists, clear the extra routes
+            bottom_client = self._get_client(pod_name=b_ns_pdd['pod_name'])
+            bottom_client.update_routers(
+                ctx, b_ns_router_id, {'router': {'routes': []}})
+            return
+
+        # handle extra routes for north-south router
+        ip_bridge_ip_map = {}
+        for router_id, cidr_ips_map in router_ips_map.iteritems():
+            if router_id not in router_ew_bridge_ip_map:
+                continue
+            for cidr, ips in cidr_ips_map.iteritems():
+                for ip in ips:
+                    nexthop = router_ew_bridge_ip_map[router_id]
+                    destination = ip + '/32'
+                    ip_bridge_ip_map[destination] = nexthop
+
+        bottom_client = self._get_client(pod_name=b_ns_pdd['pod_name'])
+        extra_routes = []
+        for fixed_ip in ip_bridge_ip_map:
+            extra_routes.append(
+                {'nexthop': ip_bridge_ip_map[fixed_ip],
+                 'destination': fixed_ip})
+        bottom_client.update_routers(
+            ctx, b_ns_router_id, {'router': {'routes': extra_routes}})
 
     @_job_handle(constants.JT_PORT_DELETE)
     def delete_server_port(self, ctx, payload):
@@ -727,14 +749,10 @@ class XManager(PeriodicTasks):
                 subnets = top_client.list_subnets(
                     ctx, [{'key': 'tenant_id', 'comparator': 'eq',
                            'value': project_id}])
-                ew_bridge_ip_net = netaddr.IPNetwork(
-                    CONF.client.ew_bridge_cidr)
-                ns_bridge_ip_net = netaddr.IPNetwork(
-                    CONF.client.ns_bridge_cidr)
+                bridge_ip_net = netaddr.IPNetwork(CONF.client.bridge_cidr)
                 for subnet in subnets:
                     ip_net = netaddr.IPNetwork(subnet['cidr'])
-                    if ip_net in ew_bridge_ip_net or (
-                            ip_net in ns_bridge_ip_net):
+                    if ip_net in bridge_ip_net:
                         continue
                     # leave sg_id empty here
                     new_b_rules.append(

@@ -70,6 +70,7 @@ TRICIRCLE_NEUTRON_PORT=20001
 
 [DEFAULT]
 core_plugin=tricircle.network.local_plugin.TricirclePlugin
+service_plugins=tricircle.network.local_l3_plugin.TricircleL3Plugin
 
 [client]
 admin_username=admin

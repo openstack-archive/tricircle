@@ -40,7 +40,9 @@ def get_or_create_route(t_ctx, q_ctx,
             t_ctx, models.ResourceRouting,
             [{'key': 'top_id', 'comparator': 'eq', 'value': _id},
              {'key': 'pod_id', 'comparator': 'eq',
-              'value': pod['pod_id']}], [])
+              'value': pod['pod_id']},
+             {'key': 'resource_type', 'comparator': 'eq',
+              'value': _type}], [])
         if routes:
             route = routes[0]
             if route['bottom_id']:
@@ -109,7 +111,7 @@ def get_or_create_element(t_ctx, q_ctx,
                         core.delete_resource(t_ctx,
                                              models.ResourceRouting,
                                              route['id'])
-                    except db_exc.ResourceNotFound:
+                    except db_exc.ColumnError:
                         # NOTE(zhiyuan) this is a rare case that other worker
                         # considers the route expires and delete it though it
                         # was just created, maybe caused by out-of-sync time

@@ -38,27 +38,36 @@ BOTTOM1_SUBNET = []
 BOTTOM2_SUBNET = []
 BOTTOM1_PORT = []
 BOTTOM2_PORT = []
+TOP_ROUTER = []
 BOTTOM1_ROUTER = []
 BOTTOM2_ROUTER = []
 TOP_SG = []
 BOTTOM1_SG = []
 BOTTOM2_SG = []
+TOP_FIP = []
+BOTTOM1_FIP = []
+BOTTOM2_FIP = []
 RES_LIST = [TOP_NETWORK, BOTTOM1_NETWORK, BOTTOM2_NETWORK, TOP_SUBNET,
             BOTTOM1_SUBNET, BOTTOM2_SUBNET, BOTTOM1_PORT, BOTTOM2_PORT,
-            BOTTOM1_ROUTER, BOTTOM2_ROUTER, TOP_SG, BOTTOM1_SG, BOTTOM2_SG]
+            TOP_ROUTER, BOTTOM1_ROUTER, BOTTOM2_ROUTER, TOP_SG, BOTTOM1_SG,
+            BOTTOM2_SG, TOP_FIP, BOTTOM1_FIP, BOTTOM2_FIP]
 RES_MAP = {'top': {'network': TOP_NETWORK,
                    'subnet': TOP_SUBNET,
-                   'security_group': TOP_SG},
+                   'router': TOP_ROUTER,
+                   'security_group': TOP_SG,
+                   'floatingips': TOP_FIP},
            'pod_1': {'network': BOTTOM1_NETWORK,
                      'subnet': BOTTOM1_SUBNET,
                      'port': BOTTOM1_PORT,
                      'router': BOTTOM1_ROUTER,
-                     'security_group': BOTTOM1_SG},
+                     'security_group': BOTTOM1_SG,
+                     'floatingips': BOTTOM1_FIP},
            'pod_2': {'network': BOTTOM2_NETWORK,
                      'subnet': BOTTOM2_SUBNET,
                      'port': BOTTOM2_PORT,
                      'router': BOTTOM2_ROUTER,
-                     'security_group': BOTTOM2_SG}}
+                     'security_group': BOTTOM2_SG,
+                     'floatingips': BOTTOM2_FIP}}
 
 
 class FakeXManager(xmanager.XManager):
@@ -84,7 +93,7 @@ class FakeClient(object):
                 if _filter['key'] not in res:
                     is_selected = False
                     break
-                if res[_filter['key']] != _filter['value']:
+                if res[_filter['key']] not in _filter['value']:
                     is_selected = False
                     break
             if is_selected:
@@ -101,6 +110,11 @@ class FakeClient(object):
         return self.list_resources(
             'subnet', cxt,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
+
+    def get_routers(self, cxt, router_id):
+        return self.list_resources(
+            'router', cxt,
+            [{'key': 'id', 'comparator': 'eq', 'value': router_id}])[0]
 
     def update_routers(self, cxt, *args, **kwargs):
         pass
@@ -119,6 +133,9 @@ class FakeClient(object):
     def create_security_group_rules(self, cxt, *args, **kwargs):
         pass
 
+    def list_floatingips(self, cxt, filters=None):
+        return self.list_resources('floatingips', cxt, filters)
+
 
 class XManagerTest(unittest.TestCase):
     def setUp(self):
@@ -132,11 +149,68 @@ class XManagerTest(unittest.TestCase):
                 cfg.CONF.register_opt(opt)
         self.context = context.Context()
         self.xmanager = FakeXManager()
-        self.xmanager = FakeXManager()
 
-    @patch.object(FakeClient, 'update_routers')
-    def test_configure_extra_routes(self, mock_update):
-        top_router_id = 'router_id'
+    def _prepare_dnat_test(self):
+        for subnet in BOTTOM2_SUBNET:
+            if 'ext' in subnet['id']:
+                ext_subnet = subnet
+        ext_cidr = ext_subnet['cidr']
+        ext_cidr_prefix = ext_cidr[:ext_cidr.rindex('.')]
+        vm_ports = []
+        # get one vm port from each bottom pod
+        for ports in [BOTTOM1_PORT, BOTTOM2_PORT]:
+            for port in ports:
+                if port['device_owner'] == 'compute:None':
+                    vm_ports.append(port)
+                    break
+        for i, vm_port in enumerate(vm_ports):
+            vm_ip = vm_port['fixed_ips'][0]['ip_address']
+            fip = {'floating_network_id': ext_subnet['network_id'],
+                   'floating_ip_address': '%s.%d' % (ext_cidr_prefix, i + 1),
+                   'port_id': vm_port['id'],
+                   'fixed_ip_address': vm_ip}
+            TOP_FIP.append(fip)
+            BOTTOM2_FIP.append(fip)
+
+    def _prepare_snat_test(self, top_router_id):
+        ext_network = {'id': 'ext_network_id',
+                       'router:external': True}
+        ext_subnet = {
+            'id': 'ext_subnet_id',
+            'network_id': ext_network['id'],
+            'cidr': '162.3.124.0/24',
+            'gateway_ip': '162.3.124.1'
+        }
+        for router in TOP_ROUTER:
+            if router['id'] == top_router_id:
+                router['external_gateway_info'] = {
+                    'network_id': ext_network['id']}
+        router = {'id': 'ns_router_id'}
+        for subnet in BOTTOM2_SUBNET:
+            if 'bridge' in subnet['id']:
+                bridge_subnet = subnet
+        bridge_port = {
+            'network_id': bridge_subnet['network_id'],
+            'device_id': router['id'],
+            'device_owner': 'network:router_interface',
+            'fixed_ips': [{'subnet_id': bridge_subnet['id'],
+                           'ip_address': bridge_subnet['gateway_ip']}]
+        }
+        BOTTOM2_NETWORK.append(ext_network)
+        BOTTOM2_SUBNET.append(ext_subnet)
+        BOTTOM2_PORT.append(bridge_port)
+        BOTTOM2_ROUTER.append(router)
+        route = {'top_id': top_router_id, 'bottom_id': router['id'],
+                 'pod_id': 'pod_id_2', 'resource_type': constants.RT_NS_ROUTER}
+        with self.context.session.begin():
+            core.create_resource(self.context, models.ResourceRouting, route)
+        return bridge_subnet['gateway_ip'], router['id']
+
+    def _prepare_east_west_network_test(self, top_router_id):
+        bridge_infos = []
+
+        router = {'id': top_router_id}
+        TOP_ROUTER.append(router)
         for i in xrange(1, 3):
             pod_dict = {'pod_id': 'pod_id_%d' % i,
                         'region_name': 'pod_%d' % i,
@@ -156,7 +230,7 @@ class XManagerTest(unittest.TestCase):
                 'id': 'bridge_subnet_%d_id' % i,
                 'network_id': bridge_network['id'],
                 'cidr': '100.0.1.0/24',
-                'gateway_ip': '100.0.1.%d' % i,
+                'gateway_ip': '100.0.1.1',
             }
             port = {
                 'network_id': network['id'],
@@ -166,18 +240,22 @@ class XManagerTest(unittest.TestCase):
                                'ip_address': subnet['gateway_ip']}]
             }
             vm_port = {
+                'id': 'vm_port_%d_id' % i,
                 'network_id': network['id'],
                 'device_id': 'vm%d_id' % i,
                 'device_owner': 'compute:None',
                 'fixed_ips': [{'subnet_id': subnet['id'],
                                'ip_address': '10.0.%d.3' % i}]
             }
+            bridge_cidr = bridge_subnet['cidr']
+            bridge_port_ip = '%s.%d' % (bridge_cidr[:bridge_cidr.rindex('.')],
+                                        2 + i)
             bridge_port = {
                 'network_id': bridge_network['id'],
                 'device_id': router['id'],
-                'device_owner': 'network:router_interface',
+                'device_owner': 'network:router_gateway',
                 'fixed_ips': [{'subnet_id': bridge_subnet['id'],
-                               'ip_address': bridge_subnet['gateway_ip']}]
+                               'ip_address': bridge_port_ip}]
             }
             region_name = 'pod_%d' % i
             RES_MAP[region_name]['network'].append(network)
@@ -194,6 +272,13 @@ class XManagerTest(unittest.TestCase):
             with self.context.session.begin():
                 core.create_resource(self.context, models.ResourceRouting,
                                      route)
+
+            bridge_info = {
+                'router_id': router['id'],
+                'bridge_ip': bridge_port['fixed_ips'][0]['ip_address'],
+                'vm_ips': ['10.0.%d.3' % i]}
+            bridge_infos.append(bridge_info)
+
         BOTTOM1_NETWORK.append({'id': 'network_3_id'})
         BOTTOM1_SUBNET.append({'id': 'subnet_3_id',
                                'network_id': 'network_3_id',
@@ -209,30 +294,88 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'compute:None',
                              'fixed_ips': [{'subnet_id': 'subnet_3_id',
                                             'ip_address': '10.0.3.3'}]})
+        bridge_infos[0]['vm_ips'].append('10.0.3.3')
+        return bridge_infos
 
+    def _check_extra_routes_calls(self, except_list, actual_list):
+        except_map = {}
+        for except_call in except_list:
+            ctx, router_id, routes_body = except_call[1]
+            except_map[router_id] = (ctx, routes_body['router']['routes'])
+        for actual_call in actual_list:
+            ctx, router_id, routes_body = actual_call[0]
+            expect_ctx, expect_routes = except_map[router_id]
+            self.assertEqual(expect_ctx, ctx)
+            self.assertItemsEqual(expect_routes,
+                                  routes_body['router']['routes'])
+
+    @patch.object(FakeClient, 'update_routers')
+    def test_configure_extra_routes_with_floating_ips(self, mock_update):
+        top_router_id = 'router_id'
+        bridge_infos = self._prepare_east_west_network_test(top_router_id)
+        ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
+        self._prepare_dnat_test()
         self.xmanager.configure_extra_routes(self.context,
                                              payload={'router': top_router_id})
-        calls = [mock.call(self.context, 'router_1_id',
-                           {'router': {
-                               'routes': [{'nexthop': '100.0.1.2',
-                                           'destination': '10.0.2.3/32'}]}}),
-                 mock.call(self.context, 'router_2_id',
-                           {'router': {
-                               'routes': [{'nexthop': '100.0.1.1',
-                                           'destination': '10.0.1.3/32'},
-                                          {'nexthop': '100.0.1.1',
-                                           'destination': '10.0.3.3/32'}]}}),
-                 mock.call(self.context, 'router_2_id',
-                           {'router': {
-                               'routes': [{'nexthop': '100.0.1.1',
-                                           'destination': '10.0.3.3/32'},
-                                          {'nexthop': '100.0.1.1',
-                                           'destination': '10.0.1.3/32'}]}})]
+        calls = []
+        ns_routes = []
+        for i in range(2):
+            routes = []
+            for ip in bridge_infos[i]['vm_ips']:
+                route = {'nexthop': bridge_infos[i]['bridge_ip'],
+                         'destination': ip + '/32'}
+                routes.append(route)
+                ns_routes.append(route)
+            routes.append({'nexthop': ns_bridge_ip,
+                           'destination': '0.0.0.0/0'})
+            call = mock.call(self.context, bridge_infos[1 - i]['router_id'],
+                             {'router': {'routes': routes}})
+            calls.append(call)
+        calls.append(mock.call(self.context, ns_router_id,
+                               {'router': {'routes': ns_routes}}))
+        self._check_extra_routes_calls(calls, mock_update.call_args_list)
 
-        called = mock_update.call_args_list[1] == calls[1]
-        called = called or (mock_update.call_args_list[1] == calls[2])
-        called = called and (mock_update.call_args_list[0] == calls[0])
-        self.assertTrue(called)
+    @patch.object(FakeClient, 'update_routers')
+    def test_configure_extra_routes_with_external_network(self, mock_update):
+        top_router_id = 'router_id'
+        bridge_infos = self._prepare_east_west_network_test(top_router_id)
+        ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
+        self.xmanager.configure_extra_routes(self.context,
+                                             payload={'router': top_router_id})
+        calls = []
+        ns_routes = []
+        for i in range(2):
+            routes = []
+            for ip in bridge_infos[i]['vm_ips']:
+                route = {'nexthop': bridge_infos[i]['bridge_ip'],
+                         'destination': ip + '/32'}
+                routes.append(route)
+                ns_routes.append(route)
+            routes.append({'nexthop': ns_bridge_ip,
+                           'destination': '0.0.0.0/0'})
+            call = mock.call(self.context, bridge_infos[1 - i]['router_id'],
+                             {'router': {'routes': routes}})
+            calls.append(call)
+        calls.append(mock.call(self.context, ns_router_id,
+                               {'router': {'routes': ns_routes}}))
+        self._check_extra_routes_calls(calls, mock_update.call_args_list)
+
+    @patch.object(FakeClient, 'update_routers')
+    def test_configure_extra_routes(self, mock_update):
+        top_router_id = 'router_id'
+        bridge_infos = self._prepare_east_west_network_test(top_router_id)
+        self.xmanager.configure_extra_routes(self.context,
+                                             payload={'router': top_router_id})
+        calls = []
+        for i in range(2):
+            routes = []
+            for ip in bridge_infos[i]['vm_ips']:
+                routes.append({'nexthop': bridge_infos[i]['bridge_ip'],
+                               'destination': ip + '/32'})
+            call = mock.call(self.context, bridge_infos[1 - i]['router_id'],
+                             {'router': {'routes': routes}})
+            calls.append(call)
+        self._check_extra_routes_calls(calls, mock_update.call_args_list)
 
     @patch.object(FakeClient, 'delete_security_group_rules')
     @patch.object(FakeClient, 'create_security_group_rules')
