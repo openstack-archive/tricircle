@@ -382,12 +382,13 @@ class XManagerTest(unittest.TestCase):
     def test_configure_security_group_rules(self, mock_create, mock_delete):
         project_id = uuidutils.generate_uuid()
         sg_id = uuidutils.generate_uuid()
-        sg_rule_id = uuidutils.generate_uuid()
+        sg_rule_id_1 = uuidutils.generate_uuid()
+        sg_rule_id_2 = uuidutils.generate_uuid()
         sg = {'id': sg_id,
               'tenant_id': project_id,
               'name': 'default',
               'security_group_rules': [{
-                  'id': sg_rule_id,
+                  'id': sg_rule_id_1,
                   'remote_group_id': sg_id,
                   'direction': 'ingress',
                   'remote_ip_prefix': None,
@@ -395,7 +396,16 @@ class XManagerTest(unittest.TestCase):
                   'ethertype': 'IPv4',
                   'port_range_max': -1,
                   'port_range_min': -1,
-                  'security_group_id': sg_id}]}
+                  'security_group_id': sg_id},
+                  {'id': sg_rule_id_2,
+                   'remote_group_id': None,
+                   'direction': 'engress',
+                   'remote_ip_prefix': None,
+                   'protocol': None,
+                   'ethertype': 'IPv4',
+                   'port_range_max': -1,
+                   'port_range_min': -1,
+                   'security_group_id': sg_id}]}
         RES_MAP['top']['security_group'].append(sg)
 
         for i in xrange(1, 3):
@@ -426,8 +436,14 @@ class XManagerTest(unittest.TestCase):
         self.xmanager.configure_security_group_rules(
             self.context, payload={'seg_rule_setup': project_id})
 
-        calls = [mock.call(self.context, sg_rule_id)]
+        calls = [mock.call(self.context, sg_rule_id_1)]
         mock_delete.assert_has_calls(calls)
+        call_rules_id = [
+            call_arg[0][1] for call_arg in mock_delete.call_args_list]
+        # bottom security group already has sg_rule_id_2, so this rule will
+        # not be deleted
+        self.assertNotIn(sg_rule_id_2, call_rules_id)
+
         calls = [mock.call(self.context,
                            {'security_group_rules': [
                                {'remote_group_id': None,
