@@ -18,8 +18,7 @@
 
 import eventlet
 
-if __name__ == "__main__":
-    eventlet.monkey_patch()
+eventlet.monkey_patch()
 
 import sys
 
