@@ -23,6 +23,7 @@ import unittest
 from sqlalchemy.orm import attributes
 from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
+from sqlalchemy.sql import selectable
 
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_lib_exc
@@ -697,11 +698,13 @@ class FakeQuery(object):
                 # then no records will be returned
                 keys.append('INVALID_FIELD')
                 values.append(False)
-            elif not isinstance(e.right, elements.Null):
+            elif hasattr(e, 'right') and not isinstance(e.right,
+                                                        elements.Null):
                 _filter.append(e)
-            else:
-                if e.left.name == 'network_id' and (
-                        e.expression.operator.__name__ == 'isnot'):
+            elif isinstance(e, selectable.Exists):
+                # handle external network filter
+                expression = e.element.element._whereclause
+                if expression.right.name == 'network_id':
                     keys.append('router:external')
                     values.append(True)
         if not _filter:
