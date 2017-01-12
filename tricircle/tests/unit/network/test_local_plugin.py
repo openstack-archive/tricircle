@@ -287,19 +287,19 @@ class PluginTest(unittest.TestCase):
         def ip_to_digit(ip):
             return int(ip[ip.rindex('.') + 1:])
 
-        pool_range = range(ip_to_digit(pool['start']),
-                           ip_to_digit(pool['end']) + 1)
-        b_pool_range1 = range(ip_to_digit(b_pools[0]['start']),
-                              ip_to_digit(b_pools[0]['end']) + 1)
-        b_pool_range2 = range(ip_to_digit(b_pools[1]['start']),
-                              ip_to_digit(b_pools[1]['end']) + 1)
+        pool_range = list(range(ip_to_digit(pool['start']),
+                                ip_to_digit(pool['end']) + 1))
+        b_pool_range1 = list(range(ip_to_digit(b_pools[0]['start']),
+                                   ip_to_digit(b_pools[0]['end']) + 1))
+        b_pool_range2 = list(range(ip_to_digit(b_pools[1]['start']),
+                                   ip_to_digit(b_pools[1]['end']) + 1))
         b_pool_range = b_pool_range1 + [
             ip_to_digit(b_gateway_ip)] + b_pool_range2
         port.pop('name')
         b_port.pop('name')
         self.assertDictEqual(net, b_net)
         self.assertDictEqual(subnet, b_subnet)
-        self.assertEqual(pool_range, b_pool_range)
+        self.assertListEqual(pool_range, b_pool_range)
         self.assertEqual('vlan', b_net_type)
         self.assertDictEqual(port, b_port)
 

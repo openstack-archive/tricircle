@@ -13,6 +13,7 @@
 import pecan
 from pecan import expose
 from pecan import rest
+import six
 
 from oslo_log import log as logging
 
@@ -113,7 +114,7 @@ class RoutingController(rest.RestController):
         filters = self._get_filters(kwargs)
         filters = [{'key': key,
                     'comparator': 'eq',
-                    'value': value} for key, value in filters.iteritems()]
+                    'value': value} for key, value in six.iteritems(filters)]
 
         try:
             return {'routings': db_api.list_resource_routings(context,

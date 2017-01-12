@@ -634,10 +634,10 @@ class XManager(PeriodicTasks):
                 bottom_client.update_routers(
                     ctx, b_router_id, {'router': {'routes': extra_routes}})
                 continue
-            for router_id, cidr_ips_map in router_ips_map.iteritems():
+            for router_id, cidr_ips_map in six.iteritems(router_ips_map):
                 if router_id == b_router_id:
                     continue
-                for cidr, ips in cidr_ips_map.iteritems():
+                for cidr, ips in six.iteritems(cidr_ips_map):
                     if cidr in router_ips_map[b_router_id]:
                         continue
                     for ip in ips:
@@ -666,10 +666,10 @@ class XManager(PeriodicTasks):
 
         # handle extra routes for north-south router
         ip_bridge_ip_map = {}
-        for router_id, cidr_ips_map in router_ips_map.iteritems():
+        for router_id, cidr_ips_map in six.iteritems(router_ips_map):
             if router_id not in router_ew_bridge_ip_map:
                 continue
-            for cidr, ips in cidr_ips_map.iteritems():
+            for cidr, ips in six.iteritems(cidr_ips_map):
                 for ip in ips:
                     nexthop = router_ew_bridge_ip_map[router_id]
                     destination = ip + '/32'

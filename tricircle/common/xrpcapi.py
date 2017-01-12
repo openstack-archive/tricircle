@@ -19,11 +19,10 @@ Client side of the job daemon RPC API.
 from oslo_config import cfg
 import oslo_messaging as messaging
 
-import rpc
-from serializer import TricircleSerializer as Serializer
-import topics
-
 from tricircle.common import constants
+from tricircle.common import rpc
+from tricircle.common import serializer as t_serializer
+from tricircle.common import topics
 
 
 CONF = cfg.CONF
@@ -59,7 +58,7 @@ class XJobAPI(object):
         else:
             version_cap = self.VERSION_ALIASES.get(upgrade_level,
                                                    upgrade_level)
-        serializer = Serializer()
+        serializer = t_serializer.TricircleSerializer()
         self.client = rpc.get_client(target,
                                      version_cap=version_cap,
                                      serializer=serializer)

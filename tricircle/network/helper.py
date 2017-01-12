@@ -14,6 +14,7 @@
 #    under the License.
 
 import netaddr
+import six
 
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
@@ -376,7 +377,7 @@ class NetworkHelper(object):
             subnet_dhcp_map[subnet['id']] = subnet['enable_dhcp']
 
         # dhcp port
-        for t_subnet_id, b_subnet_id in subnet_map.iteritems():
+        for t_subnet_id, b_subnet_id in six.iteritems(subnet_map):
             if not subnet_dhcp_map[t_subnet_id]:
                 continue
             self.prepare_dhcp_port(t_ctx, project_id, pod, t_net['id'],
