@@ -55,25 +55,25 @@ class HttpClientTest(unittest.TestCase):
         self.context = context.Context()
 
     def test_get_version_from_url(self):
-        url = 'http://127.0.0.1:8774/v2.1/$(tenant_id)s'
+        url = 'http://127.0.0.1:9696/v2.0/networks'
         ver = hclient.get_version_from_url(url)
-        self.assertEqual(ver, 'v2.1')
+        self.assertEqual(ver, 'v2.0')
 
-        url = 'http://127.0.0.1:8774/v2.1/'
+        url = 'http://127.0.0.1:9696/v2.0/'
         ver = hclient.get_version_from_url(url)
-        self.assertEqual(ver, 'v2.1')
+        self.assertEqual(ver, 'v2.0')
 
-        url = 'http://127.0.0.1:8774/v2.1/'
+        url = 'http://127.0.0.1:9696/v2.0/'
         ver = hclient.get_version_from_url(url)
-        self.assertEqual(ver, 'v2.1')
+        self.assertEqual(ver, 'v2.0')
 
-        url = 'https://127.0.0.1:8774/v2.1/'
+        url = 'https://127.0.0.1:9696/v2.0/'
         ver = hclient.get_version_from_url(url)
-        self.assertEqual(ver, 'v2.1')
+        self.assertEqual(ver, 'v2.0')
 
-        url = 'https://127.0.0.1/v2.1/'
+        url = 'https://127.0.0.1/v2.0/'
         ver = hclient.get_version_from_url(url)
-        self.assertEqual(ver, 'v2.1')
+        self.assertEqual(ver, 'v2.0')
 
         url = 'https://127.0.0.1/'
         ver = hclient.get_version_from_url(url)
@@ -88,41 +88,41 @@ class HttpClientTest(unittest.TestCase):
         self.assertEqual(ver, '')
 
     def test_get_bottom_url(self):
-        b_endpoint = 'http://127.0.0.1:8774/v2.1/$(tenant_id)s'
-        t_url = 'http://127.0.0.1:8774/v2/my_tenant_id/volumes'
+        b_endpoint = 'http://127.0.0.1:9696/v2.0/networks'
+        t_url = 'http://127.0.0.1:9696/v2.0/networks'
         t_ver = hclient.get_version_from_url(t_url)
         b_ver = hclient.get_version_from_url(b_endpoint)
 
-        self.assertEqual(t_ver, 'v2')
-        self.assertEqual(b_ver, 'v2.1')
+        self.assertEqual(t_ver, 'v2.0')
+        self.assertEqual(b_ver, 'v2.0')
 
         b_url = hclient.get_bottom_url(t_ver, t_url, b_ver, b_endpoint)
         self.assertEqual(b_url,
-                         'http://127.0.0.1:8774/v2.1/my_tenant_id/volumes')
+                         'http://127.0.0.1:9696/v2.0/networks')
 
-        b_endpoint = 'http://127.0.0.1:8774/'
+        b_endpoint = 'http://127.0.0.1:9696/v2.0'
         b_ver = hclient.get_version_from_url(b_endpoint)
-        self.assertEqual(b_ver, '')
+        self.assertEqual(b_ver, 'v2.0')
 
         b_url = hclient.get_bottom_url(t_ver, t_url, b_ver, b_endpoint)
         self.assertEqual(b_url,
-                         'http://127.0.0.1:8774/my_tenant_id/volumes')
+                         'http://127.0.0.1:9696/v2.0/networks')
 
-        b_endpoint = 'http://127.0.0.1:8774/v2.1'
+        b_endpoint = 'http://127.0.0.1:9696/v2.0/'
         b_ver = hclient.get_version_from_url(b_endpoint)
-        self.assertEqual(b_ver, 'v2.1')
+        self.assertEqual(b_ver, 'v2.0')
 
         b_url = hclient.get_bottom_url(t_ver, t_url, b_ver, b_endpoint)
         self.assertEqual(b_url,
-                         'http://127.0.0.1:8774/v2.1/my_tenant_id/volumes')
+                         'http://127.0.0.1:9696/v2.0/networks')
 
-        b_endpoint = 'http://127.0.0.1:8774/v2.1/'
+        b_endpoint = 'http://127.0.0.1:9696/v2.0/'
         b_ver = hclient.get_version_from_url(b_endpoint)
-        self.assertEqual(b_ver, 'v2.1')
+        self.assertEqual(b_ver, 'v2.0')
 
         b_url = hclient.get_bottom_url(t_ver, t_url, b_ver, b_endpoint)
         self.assertEqual(b_url,
-                         'http://127.0.0.1:8774/v2.1/my_tenant_id/volumes')
+                         'http://127.0.0.1:9696/v2.0/networks')
 
     @patch.object(hclient, 'get_pod_service_endpoint',
                   new=fake_get_pod_service_endpoint)
@@ -136,35 +136,35 @@ class HttpClientTest(unittest.TestCase):
         config_dict = {
             'service_id': 'fake_service_id',
             'pod_id': 'fake_pod_id',
-            'service_type': cons.ST_CINDER,
-            'service_url': 'http://127.0.0.1:8774/v2.1/$(tenant_id)s'
+            'service_type': cons.ST_NEUTRON,
+            'service_url': 'http://127.0.0.1:9696/v2.0/networks'
         }
-        t_url = 'http://127.0.0.1:8774/v2/my_tenant_id/volumes'
+        t_url = 'http://127.0.0.1:9696/v2.0/networks'
         api.create_pod(self.context, pod_dict)
         api.create_cached_endpoints(self.context, config_dict)
 
-        b_url = 'http://127.0.0.1:8774/v2.1/my_tenant_id/volumes'
+        b_url = 'http://127.0.0.1:9696/v2.0/networks'
 
         b_endpoint = hclient.get_pod_service_endpoint(self.context,
                                                       pod_dict['region_name'],
-                                                      cons.ST_CINDER)
+                                                      cons.ST_NEUTRON)
         self.assertEqual(b_endpoint, config_dict['service_url'])
 
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
                                             pod_dict['region_name'],
-                                            cons.ST_CINDER)
-        self.assertEqual(b_ctx['t_ver'], 'v2')
+                                            cons.ST_NEUTRON)
+        self.assertEqual(b_ctx['t_ver'], 'v2.0')
         self.assertEqual(b_ctx['t_url'], t_url)
-        self.assertEqual(b_ctx['b_ver'], 'v2.1')
+        self.assertEqual(b_ctx['b_ver'], 'v2.0')
         self.assertEqual(b_ctx['b_url'], b_url)
 
         # wrong pod name
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
                                             pod_dict['region_name'] + '1',
-                                            cons.ST_CINDER)
-        self.assertEqual(b_ctx['t_ver'], 'v2')
+                                            cons.ST_NEUTRON)
+        self.assertEqual(b_ctx['t_ver'], 'v2.0')
         self.assertEqual(b_ctx['t_url'], t_url)
         self.assertEqual(b_ctx['b_ver'], '')
         self.assertEqual(b_ctx['b_url'], '')
@@ -173,8 +173,8 @@ class HttpClientTest(unittest.TestCase):
         b_ctx = hclient.get_pod_service_ctx(self.context,
                                             t_url,
                                             pod_dict['region_name'],
-                                            cons.ST_CINDER + '1')
-        self.assertEqual(b_ctx['t_ver'], 'v2')
+                                            cons.ST_NEUTRON + '1')
+        self.assertEqual(b_ctx['t_ver'], 'v2.0')
         self.assertEqual(b_ctx['t_url'], t_url)
         self.assertEqual(b_ctx['b_ver'], '')
         self.assertEqual(b_ctx['b_url'], '')
@@ -200,8 +200,8 @@ class HttpClientTest(unittest.TestCase):
         config_dict = {
             'service_id': 'fake_service_id',
             'pod_id': 'fake_pod_id',
-            'service_type': cons.ST_CINDER,
-            'service_url': 'http://127.0.0.1:8774/v2.1/$(tenant_id)s'
+            'service_type': cons.ST_NEUTRON,
+            'service_url': 'http://127.0.0.1:9696/v2.0/networks'
         }
         api.create_cached_endpoints(self.context, config_dict)
 
