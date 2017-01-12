@@ -659,7 +659,7 @@ class XManager(PeriodicTasks):
         if not t_ext_net_id:
             # router not attached to external gateway but router for north-
             # south networking exists, clear the extra routes
-            bottom_client = self._get_client(pod_name=b_ns_pdd['pod_name'])
+            bottom_client = self._get_client(b_ns_pdd['region_name'])
             bottom_client.update_routers(
                 ctx, b_ns_router_id, {'router': {'routes': []}})
             return
@@ -675,7 +675,7 @@ class XManager(PeriodicTasks):
                     destination = ip + '/32'
                     ip_bridge_ip_map[destination] = nexthop
 
-        bottom_client = self._get_client(pod_name=b_ns_pdd['pod_name'])
+        bottom_client = self._get_client(b_ns_pdd['region_name'])
         extra_routes = []
         for fixed_ip in ip_bridge_ip_map:
             extra_routes.append(

@@ -38,8 +38,8 @@ def upgrade(migrate_engine):
         sql.Column('created_at', sql.DateTime),
         sql.Column('updated_at', sql.DateTime),
         migrate.UniqueConstraint(
-            'top_id', 'pod_id',
-            name='resource_routings0top_id0pod_id'
+            'top_id', 'pod_id', 'resource_type',
+            name='resource_routings0top_id0pod_id0resource_type'
         ),
         mysql_engine='InnoDB',
         mysql_charset='utf8')
