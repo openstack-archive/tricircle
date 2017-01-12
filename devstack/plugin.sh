@@ -54,6 +54,59 @@ function init_common_tricircle_conf {
     iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 }
 
+# common config-file configuration for local Neutron(s)
+function init_local_neutron_conf {
+
+    iniset $NEUTRON_CONF DEFAULT core_plugin tricircle.network.local_plugin.TricirclePlugin
+    iniset $NEUTRON_CONF DEFAULT service_plugins tricircle.network.local_l3_plugin.TricircleL3Plugin
+
+    iniset $NEUTRON_CONF client admin_username admin
+    iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
+    iniset $NEUTRON_CONF client admin_tenant demo
+    iniset $NEUTRON_CONF client auto_refresh_endpoint True
+    iniset $NEUTRON_CONF client top_pod_name $CENTRAL_REGION_NAME
+
+    iniset $NEUTRON_CONF tricircle real_core_plugin neutron.plugins.ml2.plugin.Ml2Plugin
+    iniset $NEUTRON_CONF tricircle central_neutron_url http://$KEYSTONE_SERVICE_HOST:$TRICIRCLE_NEUTRON_PORT
+}
+
+# Set the environment variables for local Neutron(s)
+function init_local_neutron_variables {
+
+    export Q_USE_PROVIDERNET_FOR_PUBLIC=True
+
+    Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=${Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS:-}
+    # if VLAN options were not set in local.conf, use default VLAN bridge
+    # and VLAN options
+    if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" == "" ]; then
+
+        export TRICIRCLE_ADD_DEFAULT_BRIDGES=True
+
+        local vlan_option="bridge:$TRICIRCLE_DEFAULT_VLAN_RANGE"
+        local ext_option="extern:$TRICIRCLE_DEFAULT_EXT_RANGE"
+        local vlan_ranges=(network_vlan_ranges=$vlan_option)
+        if [ "$TRICIRCLE_START_SERVICES" == "False" ]; then
+            vlan_ranges=(network_vlan_ranges=$vlan_option,$ext_option)
+        fi
+        Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=$vlan_ranges
+
+        local vlan_mapping="bridge:$TRICIRCLE_DEFAULT_VLAN_BRIDGE"
+        local ext_mapping="extern:$TRICIRCLE_DEFAULT_EXT_BRIDGE"
+        OVS_BRIDGE_MAPPINGS=$vlan_mapping
+        if [ "$TRICIRCLE_START_SERVICES" == "False" ]; then
+            OVS_BRIDGE_MAPPINGS=$vlan_mapping,$ext_mapping
+        fi
+    fi
+}
+
+function add_default_bridges {
+
+    if [ "$TRICIRCLE_ADD_DEFAULT_BRIDGES" == "True" ]; then
+        _neutron_ovs_base_add_bridge $TRICIRCLE_DEFAULT_VLAN_BRIDGE
+        _neutron_ovs_base_add_bridge $TRICIRCLE_DEFAULT_EXT_BRIDGE
+    fi
+}
+
 function configure_tricircle_api {
 
     if is_service_enabled t-api ; then
@@ -132,61 +185,77 @@ function start_central_neutron_server {
     run_process q-svc$server_index "$NEUTRON_BIN_DIR/neutron-server --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE"
 }
 
+# if the plugin is enabled to run, that means the Tricircle is enabled
+# by default, so no need to judge the variable Q_ENABLE_TRICIRCLE
 
-if [[ "$Q_ENABLE_TRICIRCLE" == "True" ]]; then
-    if [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
-        echo summary "Tricircle pre-install"
-    elif [[ "$1" == "stack" && "$2" == "install" ]]; then
-        echo_summary "Installing Tricircle"
-    elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-        echo_summary "Configuring Tricircle"
-        export NEUTRON_CREATE_INITIAL_NETWORKS=False
-        sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
+if [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
+    echo_summary "Tricircle pre-install"
 
+    # init_local_neutron_variables before installation
+    init_local_neutron_variables
+
+elif [[ "$1" == "stack" && "$2" == "install" ]]; then
+    echo_summary "Installing Tricircle"
+elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
+
+    echo_summary "Configuring Tricircle"
+    export NEUTRON_CREATE_INITIAL_NETWORKS=False
+    sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
+
+    if [[ "$TRICIRCLE_START_SERVICES" == "True" ]]; then
         enable_service t-api t-job
-
         configure_tricircle_api
         configure_tricircle_xjob
+    fi
 
-        echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
+    echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
 
-        setup_package $TRICIRCLE_DIR -e
+    setup_package $TRICIRCLE_DIR -e
 
+    if [[ "$TRICIRCLE_START_SERVICES" == "True" ]]; then
         recreate_database tricircle
         tricircle-db-manage "$TRICIRCLE_API_CONF"
 
         if is_service_enabled q-svc ; then
             start_central_neutron_server $CENTRAL_REGION_NAME $TRICIRCLE_NEUTRON_PORT
         fi
-
-    elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
-        echo_summary "Initializing Tricircle Service"
-
-        if is_service_enabled t-api; then
-
-            create_tricircle_accounts
-
-            run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
-        fi
-
-        if is_service_enabled t-job; then
-
-            run_process t-job "tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
-        fi
     fi
 
-    if [[ "$1" == "unstack" ]]; then
+    # update the local neutron.conf after the central Neutron has started
+    init_local_neutron_conf
 
-        if is_service_enabled t-api; then
-           stop_process t-api
-        fi
+    # add default bridges br-vlan, br-ext if needed, ovs-vsctl
+    # is just being installed before this stage
+    add_default_bridges
 
-        if is_service_enabled t-job; then
-           stop_process t-job
-        fi
+elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
+    echo_summary "Initializing Tricircle Service"
 
-        if is_service_enabled q-svc0; then
-           stop_process q-svc0
-        fi
+    if is_service_enabled t-api; then
+
+        create_tricircle_accounts
+
+        run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
+
+    fi
+
+    if is_service_enabled t-job; then
+
+        run_process t-job "tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
+    fi
+fi
+
+if [[ "$1" == "unstack" ]]; then
+
+    if is_service_enabled t-api; then
+       stop_process t-api
+    fi
+
+    if is_service_enabled t-job; then
+       stop_process t-job
+    fi
+
+    if is_service_enabled q-svc0; then
+       stop_process q-svc0
     fi
 fi
