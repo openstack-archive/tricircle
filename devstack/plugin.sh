@@ -214,7 +214,7 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 
     if [[ "$TRICIRCLE_START_SERVICES" == "True" ]]; then
         recreate_database tricircle
-        tricircle-db-manage "$TRICIRCLE_API_CONF"
+        tricircle-db-manage --config-file="$TRICIRCLE_API_CONF" db_sync
 
         if is_service_enabled q-svc ; then
             start_central_neutron_server $CENTRAL_REGION_NAME $TRICIRCLE_NEUTRON_PORT

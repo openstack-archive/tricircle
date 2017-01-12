@@ -23,6 +23,13 @@ from tricircle.db import core
 from tricircle.db import migrate_repo
 
 
+def db_version():
+    engine = core.get_engine()
+    repo_abs_path = find_migrate_repo()
+    init_version = migrate_repo.DB_INIT_VERSION
+    return migration.db_version(engine, repo_abs_path, init_version)
+
+
 def find_migrate_repo(package=None, repo_name='migrate_repo'):
     package = package or db
     path = os.path.abspath(os.path.join(
