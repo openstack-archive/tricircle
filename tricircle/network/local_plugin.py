@@ -84,6 +84,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
         elif network_type == t_constants.NT_SHARED_VLAN:
             network['provider:network_type'] = 'vlan'
 
+        # remove az_hint from network
+        network.pop('availability_zone_hints', None)
+
     @staticmethod
     def _adapt_port_body_for_client(port):
         port.pop('port_security_enabled', None)
