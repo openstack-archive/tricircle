@@ -85,4 +85,4 @@ JT_NETWORK_UPDATE = 'update_network'
 
 # network type
 NT_LOCAL = 'local'
-NT_SHARED_VLAN = 'shared_vlan'
+NT_VLAN = 'vlan'

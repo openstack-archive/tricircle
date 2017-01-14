@@ -527,7 +527,7 @@ shared VxLAN type and are attached to the router(also this router can only be
 legacy mode), so packets between net1 and net2 are routed in the router of the
 local OpenStack cloud and then sent to the target. Extra routes will be cleared
 so no packets will go through the bridge network. This is the current
-implementation of the Tricircle to support shared VLAN network.
+implementation of the Tricircle to support VLAN network.
 
 Recommended Layer-3 Networking Mode
 -----------------------------------

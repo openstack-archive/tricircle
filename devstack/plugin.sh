@@ -171,10 +171,10 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
 
     if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
-        iniset $NEUTRON_CONF.$server_index tricircle type_drivers local,shared_vlan
-        iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types local,shared_vlan
+        iniset $NEUTRON_CONF.$server_index tricircle type_drivers local,vlan
+        iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types local,vlan
         iniset $NEUTRON_CONF.$server_index tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
-        iniset $NEUTRON_CONF.$server_index tricircle bridge_network_type shared_vlan
+        iniset $NEUTRON_CONF.$server_index tricircle bridge_network_type vlan
         iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
     fi
 

@@ -54,7 +54,9 @@ features:
   - |
     Note for Networking
 
-    * Only Local Network and Shared VLAN network supported. Shared
+    * Only Local Network and VLAN network supported.
+      Local Network means the network will only present in one region,
+      it could be VxLAN or VLAN network.
       VLAN is the only L2 network type which supports cross
       Neutron L2 networking and the bridge network for L3 networking.
     * Pagination and sort are not supported at the same time for list

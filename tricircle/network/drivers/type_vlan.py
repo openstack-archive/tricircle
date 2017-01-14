@@ -28,9 +28,9 @@ from tricircle.common.i18n import _LE, _LI
 LOG = log.getLogger(__name__)
 
 
-class SharedVLANTypeDriver(type_vlan.VlanTypeDriver):
+class VLANTypeDriver(type_vlan.VlanTypeDriver):
     def __init__(self):
-        super(SharedVLANTypeDriver, self).__init__()
+        super(VLANTypeDriver, self).__init__()
 
     def _parse_network_vlan_ranges(self):
         try:
@@ -43,18 +43,18 @@ class SharedVLANTypeDriver(type_vlan.VlanTypeDriver):
         LOG.info(_LI('Network VLAN ranges: %s'), self.network_vlan_ranges)
 
     def get_type(self):
-        return constants.NT_SHARED_VLAN
+        return constants.NT_VLAN
 
     def reserve_provider_segment(self, context, segment):
-        res = super(SharedVLANTypeDriver,
+        res = super(VLANTypeDriver,
                     self).reserve_provider_segment(context, segment)
-        res[driver_api.NETWORK_TYPE] = constants.NT_SHARED_VLAN
+        res[driver_api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
     def allocate_tenant_segment(self, context):
-        res = super(SharedVLANTypeDriver,
+        res = super(VLANTypeDriver,
                     self).allocate_tenant_segment(context)
-        res[driver_api.NETWORK_TYPE] = constants.NT_SHARED_VLAN
+        res[driver_api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
     def get_mtu(self, physical):

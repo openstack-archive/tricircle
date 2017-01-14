@@ -143,12 +143,11 @@ Network Type Adaption
 ---------------------
 
 Two network types are supported currently in central plugin, which are local
-and shared vlan type. Before creating network based on information retrieved
+and vlan type. Before creating network based on information retrieved
 from central Neutron server, local plugin needs to adapt network type. For
 local type, local plugin creates the network without specifying the network
-type, so the default tenant network type is used. For shared vlan type, local
-plugin changes the network type parameter from "shared_vlan" to "vlan", but
-keeps the segmentation id and physical network parameter.
+type, so the default tenant network type is used. For vlan type, local plugin
+keeps the network type, segmentation id and physical network parameter.
 
 We plan to support another two network types later. They are shared_vxlan and
 mixed network type. For shared_vxlan type, local plugin changes the network

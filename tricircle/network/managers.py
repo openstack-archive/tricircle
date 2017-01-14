@@ -16,9 +16,7 @@
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron.extensions import external_net
 from neutron.plugins.ml2 import managers
-from neutron_lib.api import validators
 
 from tricircle.common.i18n import _LE
 from tricircle.common.i18n import _LI
@@ -66,20 +64,7 @@ class TricircleTypeManager(managers.TypeManager):
             if network_type not in self.drivers:
                 self.drivers[network_type] = ext
 
-    @staticmethod
-    def _is_external_network(network):
-        external = network.get(external_net.EXTERNAL)
-        external_set = validators.is_attr_set(external)
-        if not external_set or not external:
-            return False
-        else:
-            return True
-
     def create_network_segments(self, context, network, tenant_id):
-        # NOTE(zhiyuan) before we figure out how to deal with external network
-        # segment allocation, skip segment creation for external network
-        if self._is_external_network(network):
-            return
         segments = self._process_provider_create(network)
         session = context.session
         with session.begin(subtransactions=True):
@@ -93,16 +78,3 @@ class TricircleTypeManager(managers.TypeManager):
             else:
                 segment = self._allocate_tenant_net_segment(context)
                 self._add_network_segment(context, network_id, segment)
-
-    def extend_networks_dict_provider(self, context, networks):
-        internal_networks = []
-        for network in networks:
-            # NOTE(zhiyuan) before we figure out how to deal with external
-            # network segment allocation, skip external network since it does
-            # not have segment information
-            if not self._is_external_network(network):
-                internal_networks.append(network)
-        if internal_networks:
-            super(TricircleTypeManager,
-                  self).extend_networks_dict_provider(context,
-                                                      internal_networks)
