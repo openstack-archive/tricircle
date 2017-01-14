@@ -3,10 +3,12 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to tricircle's documentation!
-========================================================
+=====================================
+Welcome to Tricircle's documentation!
+=====================================
 
-Contents:
+Contents
+========
 
 .. toctree::
    :maxdepth: 2
@@ -15,6 +17,7 @@ Contents:
    usage
    installation-guide
    configuration
+   networking-guide
    api_v1
    contributing
 
