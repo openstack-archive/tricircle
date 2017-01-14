@@ -1301,7 +1301,7 @@ class PluginTest(unittest.TestCase,
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_network')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'create_network')
-    def test_network_az(self, mock_create, mock_update, mock_context):
+    def test_network_az_region(self, mock_create, mock_update, mock_context):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -1311,18 +1311,26 @@ class PluginTest(unittest.TestCase,
 
         network = {'network': {
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
-            'availability_zone_hints': ['az_name_1', 'az_name_2']}}
+            'availability_zone_hints': ['az_name_1', 'pod_2']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         mock_update.return_value = network['network']
         fake_plugin.create_network(neutron_context, network)
         mock_update.assert_called_once_with(
             neutron_context, 'net_id',
             {'network': {
-                'availability_zone_hints': '["az_name_1", "az_name_2"]'}})
+                'availability_zone_hints': '["az_name_1", "pod_2"]'}})
 
         err_network = {'network': {
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['az_name_1', 'az_name_3']}}
+        mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
+        self.assertRaises(az_ext.AvailabilityZoneNotFound,
+                          fake_plugin.create_network,
+                          neutron_context, err_network)
+
+        err_network = {'network': {
+            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
+            'availability_zone_hints': ['pod_1', 'pod_3']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
         self.assertRaises(az_ext.AvailabilityZoneNotFound,
                           fake_plugin.create_network,

@@ -153,7 +153,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # return self.conn.consume_in_threads()
 
     @staticmethod
-    def _validate_availability_zones(context, az_list, external):
+    def _validate_availability_zones(context, az_list):
         if not az_list:
             return
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -162,9 +162,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             az_set = set(az_list)
 
             known_az_set = set([pod['az_name'] for pod in pods])
-            if external:
-                known_az_set = (known_az_set |
-                                set([pod['region_name'] for pod in pods]))
+            known_az_set = known_az_set | set(
+                [pod['region_name'] for pod in pods])
 
             diff = az_set - known_az_set
             if diff:
@@ -248,8 +247,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                                net_data)
         if az_ext.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
-                                              net_data[az_ext.AZ_HINTS],
-                                              is_external)
+                                              net_data[az_ext.AZ_HINTS])
         with context.session.begin(subtransactions=True):
             res = super(TricirclePlugin, self).create_network(context, network)
             net_data['id'] = res['id']
