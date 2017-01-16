@@ -310,19 +310,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def delete_network(self, context, network_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                t_ctx, network_id, t_constants.RT_NETWORK)
-            mappings.extend(db_api.get_bottom_mappings_by_top_id(
-                t_ctx, network_id, t_constants.RT_SD_NETWORK))
-
-            processed_pod_set = set()
-            for mapping in mappings:
-                region_name = mapping[0]['region_name']
-                if region_name in processed_pod_set:
-                    continue
-                processed_pod_set.add(region_name)
-                bottom_network_id = mapping[1]
-                self._get_client(region_name).delete_networks(
+            for pod, bottom_network_id in (
+                    self.helper.get_real_shadow_resource_iterator(
+                        t_ctx, t_constants.RT_NETWORK, network_id)):
+                self._get_client(pod['region_name']).delete_networks(
                     t_ctx, bottom_network_id)
                 # we do not specify resource_type when deleting routing entries
                 # so if both "network" and "shadow_network" type entries exist
@@ -334,7 +325,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                         filters=[{'key': 'top_id', 'comparator': 'eq',
                                   'value': network_id},
                                  {'key': 'pod_id', 'comparator': 'eq',
-                                  'value': mapping[0]['pod_id']}])
+                                  'value': pod['pod_id']}])
         except Exception:
             raise
         with t_ctx.session.begin():
@@ -458,22 +449,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def delete_subnet(self, context, subnet_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         try:
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                t_ctx, subnet_id, t_constants.RT_SUBNET)
-            mappings.extend(db_api.get_bottom_mappings_by_top_id(
-                t_ctx, subnet_id, t_constants.RT_SD_SUBNET))
-
-            processed_pod_set = set()
-            for mapping in mappings:
-                region_name = mapping[0]['region_name']
-                if region_name in processed_pod_set:
-                    continue
-                processed_pod_set.add(region_name)
-                bottom_subnet_id = mapping[1]
+            for pod, bottom_subnet_id in (
+                    self.helper.get_real_shadow_resource_iterator(
+                        t_ctx, t_constants.RT_SUBNET, subnet_id)):
+                region_name = pod['region_name']
                 self._get_client(region_name).delete_subnets(
                     t_ctx, bottom_subnet_id)
                 interface_name = t_constants.interface_port_name % (
-                    mapping[0]['region_name'], subnet_id)
+                    region_name, subnet_id)
                 self._delete_pre_created_port(t_ctx, context, interface_name)
                 # we do not specify resource_type when deleting routing entries
                 # so if both "subnet" and "shadow_subnet" type entries exist in
@@ -485,7 +468,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                         filters=[{'key': 'top_id', 'comparator': 'eq',
                                   'value': subnet_id},
                                  {'key': 'pod_id', 'comparator': 'eq',
-                                  'value': mapping[0]['pod_id']}])
+                                  'value': pod['pod_id']}])
         except Exception:
             raise
         dhcp_port_name = t_constants.dhcp_port_name % subnet_id
@@ -730,13 +713,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # we use a "delete_server_port" job to delete the local ports.
         if port.get('device_owner') not in NON_VM_PORT_TYPES:
             try:
-                mappings = db_api.get_bottom_mappings_by_top_id(
-                    t_ctx, port_id, t_constants.RT_PORT)
-                if mappings:
-                    pod_id = mappings[0][0]['pod_id']
-                    bottom_port_id = mappings[0][1]
+                for pod, bottom_port_id in (
+                        self.helper.get_real_shadow_resource_iterator(
+                            t_ctx, t_constants.RT_PORT, port_id)):
                     self.xjob_handler.delete_server_port(t_ctx, bottom_port_id,
-                                                         pod_id)
+                                                         pod['pod_id'])
             except Exception:
                 raise
             with t_ctx.session.begin():

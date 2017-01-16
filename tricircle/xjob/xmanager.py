@@ -423,20 +423,16 @@ class XManager(PeriodicTasks):
                 # ip association purpose
                 t_int_net_id = t_int_port['network_id']
                 t_int_subnet_id = t_int_port['fixed_ips'][0]['subnet_id']
-                # TODO(zhiyuan) adapt shadow agent way to create shadow port
-                port_body = {
-                    'port': {
-                        'tenant_id': project_id,
-                        'admin_state_up': True,
-                        'name': constants.shadow_port_name % t_int_port['id'],
-                        'network_id': t_int_net_id,
-                        'fixed_ips': [{'ip_address': t_int_port[
-                            'fixed_ips'][0]['ip_address']}]
-                    }
-                }
-                self.helper.prepare_bottom_element(
-                    ctx, project_id, b_ext_pod, t_int_port,
-                    constants.RT_SD_PORT, port_body)
+
+                b_int_port = b_client.get_ports(ctx, b_int_port_id)
+                host = b_int_port['binding:host_id']
+                agent_type = self.helper.get_agent_type_by_vif(
+                    b_int_port['binding:vif_type'])
+                agent = db_api.get_agent_by_host_type(ctx, host, agent_type)
+                self.helper.prepare_shadow_port(
+                    ctx, project_id, b_ext_pod, t_int_net_id,
+                    b_int_port, agent)
+
                 # create routing entries for shadow network and subnet so we
                 # can easily find them during central network and subnet
                 # deletion, create_resource_mapping will catch DBDuplicateEntry
@@ -539,7 +535,8 @@ class XManager(PeriodicTasks):
                              q_constants.DEVICE_OWNER_DVR_INTERFACE,
                              q_constants.DEVICE_OWNER_ROUTER_SNAT,
                              q_constants.DEVICE_OWNER_ROUTER_GW,
-                             q_constants.DEVICE_OWNER_DHCP]
+                             q_constants.DEVICE_OWNER_DHCP,
+                             constants.DEVICE_OWNER_SHADOW]
         ew_attached_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
                                   q_constants.DEVICE_OWNER_DVR_INTERFACE,
                                   q_constants.DEVICE_OWNER_ROUTER_GW]
@@ -992,31 +989,14 @@ class XManager(PeriodicTasks):
                     continue
                 agent_info_map[key] = agent
 
-            create_body = {
-                'port': {
-                    'tenant_id': project_id,
-                    'admin_state_up': True,
-                    'name': constants.shadow_port_name % port_id,
-                    'network_id': t_net_id,
-                    'fixed_ips': [{
-                        'ip_address': port_body[
-                            'fixed_ips'][0]['ip_address']}],
-                    'device_owner': constants.DEVICE_OWNER_SHADOW,
-                    'binding:host_id': host,
-                    'binding:profile': {
-                        constants.PROFILE_AGENT_TYPE: agent_type,
-                        constants.PROFILE_TUNNEL_IP: agent['tunnel_ip']}
-                }
-            }
+            sw_port_id = self.helper.prepare_shadow_port(
+                ctx, project_id, target_pod, t_net_id, port_body, agent)
             # value for key constants.PROFILE_FORCE_UP does not matter
             update_body = {
                 'port': {
                     'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}
                 }
             }
-            _, sw_port_id = self.helper.prepare_bottom_element(
-                ctx, project_id, target_pod, {'id': port_id},
-                constants.RT_SD_PORT, create_body)
             self._get_client(target_pod['region_name']).update_ports(
                 ctx, sw_port_id, update_body)
 

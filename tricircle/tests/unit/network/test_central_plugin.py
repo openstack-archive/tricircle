@@ -3082,7 +3082,9 @@ class PluginTest(unittest.TestCase,
             'fixed_ips': [
                 {'subnet_id': db_api.get_bottom_id_by_top_id_region_name(
                     t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET),
-                 'ip_address': '10.0.0.4'}]
+                 'ip_address': '10.0.0.4'}],
+            'binding:host_id': 'host_1',
+            'binding:vif_type': 'ovs'
         }
         TOP_PORTS.append(t_port)
         BOTTOM1_PORTS.append(b_port)
