@@ -16,8 +16,8 @@ to say, local type network doesn't support cross-pod l2 networking.
 With multi-pod installation of the Tricircle, you can try out cross-pod l2
 networking and cross-pod l3 networking features.
 
-As the first step to support cross-pod l2 networking, we have added shared VLAN
-network type to the Tricircle. When a shared VLAN type network created via the
+As the first step to support cross-pod l2 networking, we have added VLAN
+network type to the Tricircle. When a VLAN type network created via the
 central Neutron server is used to boot virtual machines in different pods, local
 Neutron server in each pod will create a VLAN type network with the same VLAN
 ID and physical network as the central network, so each pod should be configured
@@ -49,7 +49,7 @@ attaches a subnet to a router via the central Neutron server and the job is
 finished asynchronously.
 
 If one of the network connected to the router is not local type, meaning that
-cross-pod l2 networking is supported in this network(like shared VLAN type), and
+cross-pod l2 networking is supported in this network(like VLAN type), and
 the l2 network can be stretched into current pod, packets sent to the virtual
 machine in this network will not pass through the "bridge" network. Instead,
 packets first go to router, then are directly forwarded to the target virtual
@@ -58,7 +58,7 @@ network's availability zone hint. If the l2 network is not able to be stretched
 into the current pod, the packets will still pass through the "bridge network".
 For example, let's say we have two pods, pod1 and pod2, and two availability
 zones, az1 and az2. Pod1 belongs to az1 and pod2 belongs to az2. If the
-availability zone hint of one shared VLAN type network is set to az1, this
+availability zone hint of one VLAN type network is set to az1, this
 network can not be stretched to pod2. So packets sent from pod2 to virtual
 machines in this network still need to pass through the "bridge network".
 
@@ -298,7 +298,7 @@ How to play
 
     curl -X POST http://127.0.0.1:20001/v2.0/networks -H "Content-Type: application/json" \
       -H "X-Auth-Token: $token" \
-      -d '{"network": {"name": "ext-net", "admin_state_up": true, "router:external": true,  "provider:network_type": "shared_vlan", "provider:physical_network": "extern", "availability_zone_hints": ["RegionTwo"]}}'
+      -d '{"network": {"name": "ext-net", "admin_state_up": true, "router:external": true,  "provider:network_type": "vlan", "provider:physical_network": "extern", "availability_zone_hints": ["RegionTwo"]}}'
     neutron --os-region-name=CentralRegion subnet-create --name ext-subnet --disable-dhcp ext-net 163.3.124.0/24
 
   Pay attention that when creating external network, we need to pass

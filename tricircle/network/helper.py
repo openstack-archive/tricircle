@@ -42,7 +42,7 @@ class NetworkHelper(object):
 
     @staticmethod
     def _transfer_network_type(network_type):
-        network_type_map = {t_constants.NT_SHARED_VLAN: TYPE_VLAN}
+        network_type_map = {t_constants.NT_VLAN: TYPE_VLAN}
         return network_type_map.get(network_type, network_type)
 
     def _get_client(self, region_name=None):
@@ -209,7 +209,7 @@ class NetworkHelper(object):
             }
         }
         network_type = network.get('provider:network_type')
-        if network_type == t_constants.NT_SHARED_VLAN:
+        if network_type == t_constants.NT_VLAN:
             body['network']['provider:network_type'] = 'vlan'
             body['network']['provider:physical_network'] = network[
                 'provider:physical_network']

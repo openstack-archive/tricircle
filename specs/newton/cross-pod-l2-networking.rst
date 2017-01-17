@@ -114,12 +114,12 @@ Proposed Change
 ===============
 
 Cross pod L2 networking can be divided into three categories,
-``Shared VLAN``, ``Shared VxLAN`` and ``Mixed VLAN/VxLAN``.
+``VLAN``, ``Shared VxLAN`` and ``Mixed VLAN/VxLAN``.
 
-* Shared VLAN
+* VLAN
 
   Network in each bottom OpenStack is VLAN type and has the same VLAN ID.
-  If we want shared VLAN L2 networking to work in multi-site scenario, i.e.,
+  If we want VLAN L2 networking to work in multi-site scenario, i.e.,
   Multiple OpenStack instances in multiple sites, physical gateway needs to
   be manually configured to make one VLAN networking be extended to other
   sites.
@@ -180,7 +180,7 @@ L2 cross pod networking, and it should be compatible with the
   the Tricircle plugin need to load type driver according to the configuration.
   The Tricircle can reuse the type driver of ML2 with update.
 
-* Type driver to allocate VLAN segment id for shared VLAN L2 networking.
+* Type driver to allocate VLAN segment id for VLAN L2 networking.
 
 * Type driver to allocate VxLAN segment id for shared VxLAN L2 networking.
 
@@ -203,7 +203,7 @@ the bottom OpenStack instances.
 Nova API-GW needs to get the network type from Neutron API server in the
 Tricircle, and deal with the networking automation based on the network type:
 
-* Shared VLAN
+* VLAN
   Nova API-GW creates network in bottom OpenStack instance in which the VM will
   run with the VLAN segment id, network name and type that are retrieved from
   the Neutron API server in the Tricircle.
@@ -309,9 +309,9 @@ If a user wants to create VM2 in AZ2 or ``POD2`` in AZ1, and connect it to
 network ``Net1`` in the Tricircle, it would be failed. Because the ``Net1`` is
 local_network type network and it is limited to present in ``POD1`` in AZ1 only.
 
-**Shared VLAN Implementation**
+**VLAN Implementation**
 
-For Shared VLAN, L2GW is not required. This is the most simplest cross pod
+For VLAN, L2GW is not required. This is the most simplest cross pod
 L2 networking for limited scenario. For example, with a small number of
 networks, all VLANs are extended through physical gateway to support cross
 site VLAN networking, or all pods under same core switch with same visible
@@ -319,8 +319,8 @@ VLAN ranges that supported by the core switch are connected by the core
 switch.
 
 when a user creates network called ``Net1``, the Tricircle plugin checks the
-configuration. If ``tenant_network_type`` equals ``shared_vlan``, the
-Tricircle will invoke Shared VLAN type driver. Shared VLAN driver will
+configuration. If ``tenant_network_type`` equals ``vlan``, the
+Tricircle will invoke VLAN type driver. VLAN driver will
 create ``segment``, and assign ``network_type`` with VLAN, update
 ``segment`` and ``network_type`` and ``physical_network`` with DB
 
@@ -466,12 +466,12 @@ be updated too.
 L3 bridge network N-S (North-South):
 
 * For each tenant, one cross pod N-S bridge network should be created for router
-  N-S inter-connection. Just replace the current shared VLAN N-S bridge network
+  N-S inter-connection. Just replace the current VLAN N-S bridge network
   to corresponding Shared VxLAN or Mixed VLAN/VxLAN.
 
 L3 bridge network E-W (East-West):
 
-* When attaching router interface happened, for Shared VLAN, it will keep
+* When attaching router interface happened, for VLAN, it will keep
   current process to establish E-W bridge network. For Shared VxLAN and Mixed
   VLAN/VxLAN, if a L2 network is able to expand to the current pod, then just
   expand the L2 network to the pod, all E-W traffic will go out from local L2

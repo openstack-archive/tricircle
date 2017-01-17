@@ -60,7 +60,7 @@ from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.central_plugin as plugin
 from tricircle.network.drivers import type_local
-from tricircle.network.drivers import type_shared_vlan
+from tricircle.network.drivers import type_vlan
 from tricircle.network import helper
 from tricircle.network import managers
 from tricircle.tests.unit.network import test_security_groups
@@ -972,8 +972,8 @@ class FakeTypeManager(managers.TricircleTypeManager):
     def _register_types(self):
         local_driver = type_local.LocalTypeDriver()
         self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
-        vlan_driver = type_shared_vlan.SharedVLANTypeDriver()
-        self.drivers[constants.NT_SHARED_VLAN] = FakeExtension(vlan_driver)
+        vlan_driver = type_vlan.VLANTypeDriver()
+        self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
 
     def extend_network_dict_provider(self, cxt, net):
         target_net = None
@@ -1115,14 +1115,14 @@ class PluginTest(unittest.TestCase,
         phynet = 'bridge'
         vlan_min = 2000
         vlan_max = 2001
-        cfg.CONF.set_override('type_drivers', ['local', 'shared_vlan'],
+        cfg.CONF.set_override('type_drivers', ['local', 'vlan'],
                               group='tricircle')
-        cfg.CONF.set_override('tenant_network_types', ['local', 'shared_vlan'],
+        cfg.CONF.set_override('tenant_network_types', ['local', 'vlan'],
                               group='tricircle')
         cfg.CONF.set_override('network_vlan_ranges',
                               ['%s:%d:%d' % (phynet, vlan_min, vlan_max)],
                               group='tricircle')
-        cfg.CONF.set_override('bridge_network_type', 'shared_vlan',
+        cfg.CONF.set_override('bridge_network_type', 'vlan',
                               group='tricircle')
         cfg.CONF.set_override('default_region_for_external_network',
                               'pod_1', group='tricircle')

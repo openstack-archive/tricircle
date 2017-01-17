@@ -81,8 +81,6 @@ class TricirclePlugin(plugin.Ml2Plugin):
             for key in ['provider:network_type', 'provider:physical_network',
                         'provider:segmentation_id']:
                 network.pop(key, None)
-        elif network_type == t_constants.NT_SHARED_VLAN:
-            network['provider:network_type'] = 'vlan'
 
         # remove az_hint from network
         network.pop('availability_zone_hints', None)

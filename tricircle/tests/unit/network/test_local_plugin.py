@@ -230,7 +230,7 @@ class PluginTest(unittest.TestCase):
         t_net = {'id': network_id,
                  'tenant_id': self.tenant_id,
                  'name': 'net1',
-                 'provider:network_type': constants.NT_SHARED_VLAN,
+                 'provider:network_type': constants.NT_VLAN,
                  'subnets': [subnet_id]}
         t_subnet = {'id': subnet_id,
                     'tenant_id': self.tenant_id,

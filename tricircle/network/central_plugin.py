@@ -191,6 +191,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             [cfg.CONF.tricircle.default_region_for_external_network]
         return True
 
+    @staticmethod
+    def _fill_provider_info(from_net, to_net):
+        provider_attrs = ('provider:network_type', 'provider:segmentation_id',
+                          'provider:physical_network')
+        for provider_attr in provider_attrs:
+            if validators.is_attr_set(from_net.get(provider_attr)):
+                to_net[provider_attr] = from_net[provider_attr]
+
     def _create_bottom_external_network(self, context, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         # use the first pod
@@ -204,12 +212,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 external_net.EXTERNAL: True
             }
         }
-        provider_attrs = ('provider:network_type', 'provider:segmentation_id',
-                          'provider:physical_network')
-        for provider_attr in provider_attrs:
-            if validators.is_attr_set(net.get(provider_attr)):
-                body['network'][provider_attr] = net[provider_attr]
-
+        self._fill_provider_info(net, body['network'])
         self._prepare_bottom_element(
             t_ctx, net['tenant_id'], pod, {'id': top_id},
             t_constants.RT_NETWORK, body)
@@ -265,6 +268,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # put inside a session so when bottom operations fails db can
             # rollback
             if is_external:
+                self._fill_provider_info(res, net_data)
                 self._create_bottom_external_network(
                     context, net_data, res['id'])
         return res
