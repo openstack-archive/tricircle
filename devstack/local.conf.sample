@@ -26,5 +26,4 @@ HOST_IP=127.0.0.1
 TRICIRCLE_START_SERVICES=True
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
-disable_service tempest
 disable_service horizon

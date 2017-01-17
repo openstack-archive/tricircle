@@ -38,5 +38,4 @@ OVS_BRIDGE_MAPPINGS=bridge:br-vlan
 TRICIRCLE_START_SERVICES=True
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
-disable_service tempest
 disable_service horizon
