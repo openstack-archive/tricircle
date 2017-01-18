@@ -42,6 +42,7 @@ from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
 from neutron_lib import constants
 from neutron_lib import exceptions
@@ -1201,7 +1202,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             'name': net_name,
             'shared': False,
             'admin_state_up': True,
-            provider.NETWORK_TYPE: cfg.CONF.tricircle.bridge_network_type}}
+            provider_net.NETWORK_TYPE: cfg.CONF.tricircle.bridge_network_type}}
         _, net_id = self._prepare_top_element(
             t_ctx, q_ctx, project_id, pod, net_ele, 'network', net_body)
 
