@@ -34,6 +34,7 @@ from neutron_lib.plugins import directory
 import neutron.api.v2.attributes as neutron_attributes
 import neutron.conf.common as q_config
 
+from neutron.db import _utils
 from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
 from neutron.db import ipam_pluggable_backend
@@ -42,7 +43,10 @@ from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
 
 from neutron.extensions import availability_zone as az_ext
+from neutron.extensions import portbindings
+
 from neutron.ipam import driver
+from neutron.ipam import exceptions as ipam_exc
 from neutron.ipam import requests
 import neutron.ipam.utils as ipam_utils
 from neutron import manager
@@ -55,6 +59,9 @@ from oslo_utils import uuidutils
 from tricircle.common import client
 from tricircle.common import constants
 from tricircle.common import context
+
+from tricircle.common.i18n import _
+
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
@@ -65,7 +72,6 @@ from tricircle.network import helper
 from tricircle.network import managers
 from tricircle.tests.unit.network import test_security_groups
 from tricircle.xjob import xmanager
-
 
 TOP_NETS = []
 TOP_SUBNETS = []
@@ -82,6 +88,8 @@ TOP_FLOATINGIPS = []
 TOP_SGS = []
 TOP_SG_RULES = []
 TOP_NETWORK_RBAC = []
+TOP_SUBNETROUTES = []
+TOP_DNSNAMESERVERS = []
 BOTTOM1_NETS = []
 BOTTOM1_SUBNETS = []
 BOTTOM1_PORTS = []
@@ -116,8 +124,9 @@ RES_MAP = {'networks': TOP_NETS,
            'floatingips': TOP_FLOATINGIPS,
            'securitygroups': TOP_SGS,
            'securitygrouprules': TOP_SG_RULES,
-           'networkrbacs': TOP_NETWORK_RBAC}
-SUBNET_INFOS = {}
+           'networkrbacs': TOP_NETWORK_RBAC,
+           'subnetroutes': TOP_SUBNETROUTES,
+           'dnsnameservers': TOP_DNSNAMESERVERS}
 TEST_TENANT_ID = 'test_tenant_id'
 
 
@@ -189,7 +198,6 @@ class FakePool(driver.Pool):
                            'cidr': subnet_request.subnet_cidr,
                            'gateway': subnet_request.gateway_ip,
                            'pools': subnet_request.allocation_pools}
-            SUBNET_INFOS[subnet_info['id']] = subnet_info
             return FakeIpamSubnet(subnet_info)
         prefix = self._subnetpool.prefixes[0]
         subnet = next(prefix.subnet(subnet_request.prefixlen))
@@ -201,17 +209,30 @@ class FakePool(driver.Pool):
                        'cidr': subnet.cidr,
                        'gateway': gateway,
                        'pools': pools}
-        SUBNET_INFOS[subnet_info['id']] = subnet_info
         return FakeIpamSubnet(subnet_info)
 
     def get_subnet(self, subnet_id):
-        return FakeIpamSubnet(SUBNET_INFOS[subnet_id])
+        for subnet in TOP_SUBNETS:
+            if subnet['id'] == subnet_id:
+                return FakeIpamSubnet(subnet)
+        raise q_lib_exc.SubnetNotFound(subnet_id=id)
 
     def get_allocator(self, subnet_ids):
         return driver.SubnetGroup()
 
     def update_subnet(self, subnet_request):
-        return FakeIpamSubnet()
+        pools = []
+        for subnet in TOP_SUBNETS:
+            if subnet['id'] == subnet_request.subnet_id:
+                for request_pool in subnet_request.allocation_pools:
+                    pool = {'start': str(request_pool._start),
+                            'end': str(request_pool._end)}
+                    pools.append(pool)
+                subnet['allocation_pools'] = pools
+                return FakeIpamSubnet(subnet_request)
+
+        raise ipam_exc.InvalidSubnetRequest(
+            reason=_("updated subnet id no not found"))
 
     def remove_subnet(self, subnet_id):
         pass
@@ -227,6 +248,9 @@ class DotDict(dict):
         if item == 'rbac_entries':
             return []
         return self.get(item)
+
+    def __copy__(self):
+        return DotDict(self)
 
 
 class DotList(list):
@@ -435,6 +459,19 @@ class FakeClient(object):
     def delete_subnets(self, ctx, subnet_id):
         self.delete_resources('subnet', ctx, subnet_id)
 
+    def update_ports(self, ctx, port_id, body):
+        subnet_data = body[neutron_attributes.PORT]
+        if self.region_name == 'pod_1':
+            ports = BOTTOM1_PORTS
+        else:
+            ports = BOTTOM2_PORTS
+
+        for port in ports:
+            if port['id'] == port_id:
+                for key in subnet_data:
+                    port[key] = subnet_data[key]
+                return
+
     def update_subnets(self, ctx, subnet_id, body):
         pass
 
@@ -571,6 +608,9 @@ class FakeClient(object):
                 # group
                 ret_sg = copy.deepcopy(sg)
                 return ret_sg
+
+    def get_security_group(self, context, _id, fields=None, tenant_id=None):
+        pass
 
 
 class FakeNeutronContext(object):
@@ -879,6 +919,23 @@ class FakeSession(object):
                     'routerports', 'router_id',
                     'routers', 'id', 'attached_ports')
 
+        if model_obj.__tablename__ == 'subnetroutes':
+            for subnet in TOP_SUBNETS:
+                if subnet['id'] != model_dict['subnet_id']:
+                    continue
+                host_route = {'nexthop': model_dict['nexthop'],
+                              'destination': model_dict['destination']}
+                subnet['host_routes'].append(host_route)
+                break
+
+        if model_obj.__tablename__ == 'dnsnameservers':
+            for subnet in TOP_SUBNETS:
+                if subnet['id'] != model_dict['subnet_id']:
+                    continue
+                dnsnameservers = model_dict['address']
+                subnet['dns_nameservers'].append(dnsnameservers)
+                break
+
         RES_MAP[model_obj.__tablename__].append(model_dict)
 
     def _cascade_delete(self, model_dict, foreign_key, table, key):
@@ -900,7 +957,7 @@ class FakeSession(object):
             delete_model(res_list, model_obj)
 
 
-class FakeBaseManager(xmanager.XManager):
+class FakeBaseXManager(xmanager.XManager):
     def __init__(self, fake_plugin):
         self.clients = {constants.TOP: client.Client()}
         self.job_handles = {
@@ -913,7 +970,7 @@ class FakeBaseManager(xmanager.XManager):
         return FakeClient(region_name)
 
 
-class FakeXManager(FakeBaseManager):
+class FakeXManager(FakeBaseXManager):
     def __init__(self, fake_plugin):
         super(FakeXManager, self).__init__(fake_plugin)
         self.xjob_handler = FakeBaseRPCAPI(fake_plugin)
@@ -921,7 +978,7 @@ class FakeXManager(FakeBaseManager):
 
 class FakeBaseRPCAPI(object):
     def __init__(self, fake_plugin):
-        self.xmanager = FakeBaseManager(fake_plugin)
+        self.xmanager = FakeBaseXManager(fake_plugin)
 
     def configure_extra_routes(self, ctxt, router_id):
         pass
@@ -942,6 +999,9 @@ class FakeRPCAPI(FakeBaseRPCAPI):
             ctxt, payload={constants.JT_ROUTER_SETUP: combine_id})
 
     def delete_server_port(self, ctxt, port_id, pod_id):
+        pass
+
+    def configure_security_group_rules(self, ctxt, project_id):
         pass
 
 
@@ -1093,6 +1153,10 @@ def fake_get_instance(cls, subnet_pool, context):
 
 def fake_get_plugin(alias=q_constants.CORE):
     return FakePlugin()
+
+
+def fake_filter_non_model_columns(data, model):
+    return data
 
 
 class PluginTest(unittest.TestCase,
@@ -1509,7 +1573,128 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(bottom_entry_map['port']['bottom_id'], b_port_id)
 
     @staticmethod
-    def _prepare_network_test(tenant_id, ctx, region_name, index):
+    def _prepare_sg_test(project_id, ctx, pod_name):
+        t_sg_id = uuidutils.generate_uuid()
+        t_rule_id = uuidutils.generate_uuid()
+        b_sg_id = uuidutils.generate_uuid()
+        b_rule_id = uuidutils.generate_uuid()
+        t_sg = {
+            'id': t_sg_id,
+            'name': 'default',
+            'description': '',
+            'tenant_id': project_id,
+            'security_group_rules': [
+                {'security_group_id': t_sg_id,
+                 'id': t_rule_id,
+                 'tenant_id': project_id,
+                 'remote_group_id': t_sg_id,
+                 'direction': 'ingress',
+                 'remote_ip_prefix': '10.0.0.0/24',
+                 'protocol': None,
+                 'port_range_max': None,
+                 'port_range_min': None,
+                 'ethertype': 'IPv4'}
+            ]
+        }
+        TOP_PORTS.append(DotDict(t_sg))
+
+        b_sg = {
+            'id': b_sg_id,
+            'name': 'default',
+            'description': '',
+            'tenant_id': project_id,
+            'security_group_rules': [
+                {'security_group_id': b_sg_id,
+                 'id': b_rule_id,
+                 'tenant_id': project_id,
+                 'remote_group_id': b_sg_id,
+                 'direction': 'ingress',
+                 'remote_ip_prefix': '10.0.0.0/24',
+                 'protocol': None,
+                 'port_range_max': None,
+                 'port_range_min': None,
+                 'ethertype': 'IPv4'}
+            ]
+        }
+        if pod_name == 'pod_1':
+            BOTTOM1_PORTS.append(DotDict(b_sg))
+        else:
+            BOTTOM2_PORTS.append(DotDict(b_sg))
+
+        pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
+        core.create_resource(ctx, models.ResourceRouting,
+                             {'top_id': t_sg_id,
+                              'bottom_id': b_sg_id,
+                              'pod_id': pod_id,
+                              'project_id': project_id,
+                              'resource_type': constants.RT_SG})
+
+        return t_sg_id, b_sg_id
+
+    @staticmethod
+    def _prepare_port_test(tenant_id, ctx, pod_name, index, t_net_id,
+                           b_net_id, vif_type=portbindings.VIF_TYPE_UNBOUND,
+                           device_onwer='compute:None'):
+        t_port_id = uuidutils.generate_uuid()
+        b_port_id = uuidutils.generate_uuid()
+
+        t_port = {
+            'id': t_port_id,
+            'name': 'top_port_%d' % index,
+            'description': 'old_top_description',
+            'extra_dhcp_opts': [],
+            'device_owner': device_onwer,
+            'security_groups': [],
+            'device_id': '68f46ee4-d66a-4c39-bb34-ac2e5eb85470',
+            'admin_state_up': True,
+            'network_id': t_net_id,
+            'tenant_id': tenant_id,
+            'mac_address': 'fa:16:3e:cd:76:40',
+            'binding:vif_type': vif_type,
+            'project_id': 'tenant_id',
+            'binding:host_id': 'zhiyuan-5',
+            'status': 'ACTIVE'
+        }
+        TOP_PORTS.append(DotDict(t_port))
+
+        b_port = {
+            'id': b_port_id,
+            'name': b_port_id,
+            'description': 'old_bottom_description',
+            'extra_dhcp_opts': [],
+            'device_owner': device_onwer,
+            'security_groups': [],
+            'device_id': '68f46ee4-d66a-4c39-bb34-ac2e5eb85470',
+            'admin_state_up': True,
+            'network_id': b_net_id,
+            'tenant_id': tenant_id,
+            'device_owner': 'compute:None',
+            'extra_dhcp_opts': [],
+            'mac_address': 'fa:16:3e:cd:76:40',
+            'binding:vif_type': vif_type,
+            'project_id': 'tenant_id',
+            'binding:host_id': 'zhiyuan-5',
+            'status': 'ACTIVE'
+        }
+
+        if pod_name == 'pod_1':
+            BOTTOM1_PORTS.append(DotDict(b_port))
+        else:
+            BOTTOM2_PORTS.append(DotDict(b_port))
+
+        pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
+        core.create_resource(ctx, models.ResourceRouting,
+                             {'top_id': t_port_id,
+                              'bottom_id': b_port_id,
+                              'pod_id': pod_id,
+                              'project_id': tenant_id,
+                              'resource_type': constants.RT_PORT})
+
+        return t_port_id, b_port_id
+
+    @staticmethod
+    def _prepare_network_test(tenant_id, ctx, region_name, index,
+                              enable_dhcp=True):
         t_net_id = b_net_id = uuidutils.generate_uuid()
         t_subnet_id = b_subnet_id = uuidutils.generate_uuid()
 
@@ -1530,7 +1715,7 @@ class PluginTest(unittest.TestCase,
             'ip_version': 4,
             'cidr': '10.0.%d.0/24' % index,
             'allocation_pools': [],
-            'enable_dhcp': True,
+            'enable_dhcp': enable_dhcp,
             'gateway_ip': '10.0.%d.1' % index,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
@@ -1538,12 +1723,6 @@ class PluginTest(unittest.TestCase,
         }
         TOP_NETS.append(DotDict(t_net))
         TOP_SUBNETS.append(DotDict(t_subnet))
-        subnet_info = {'id': t_subnet['id'],
-                       'tenant_id': t_subnet['tenant_id'],
-                       'cidr': t_subnet['cidr'],
-                       'gateway': t_subnet['gateway_ip'],
-                       'pools': t_subnet['allocation_pools']}
-        SUBNET_INFOS[subnet_info['id']] = subnet_info
 
         b_net = {
             'id': b_net_id,
@@ -1560,7 +1739,7 @@ class PluginTest(unittest.TestCase,
             'ip_version': 4,
             'cidr': '10.0.%d.0/24' % index,
             'allocation_pools': [],
-            'enable_dhcp': True,
+            'enable_dhcp': enable_dhcp,
             'gateway_ip': '10.0.%d.1' % index,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
@@ -1648,6 +1827,147 @@ class PluginTest(unittest.TestCase,
 
         # check pre-created ports are all deleted
         self.assertEqual(port_num - pre_created_port_num, len(TOP_PORTS))
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port(self, mock_context):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+            project_id, t_ctx, 'pod_1', 1)
+        t_port_id, b_port_id = self._prepare_port_test(
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id)
+        t_sg_id, _ = self._prepare_sg_test(project_id, t_ctx, 'pod_1')
+
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'port': {
+                'description': 'new_description',
+                'extra_dhcp_opts': [
+                    {"opt_value": "123.123.123.45",
+                     "opt_name": "server-ip-address"},
+                    {"opt_value": "123.123.123.123",
+                     "opt_name": "tftp-server"}
+                ],
+                'device_owner': 'compute:new',
+                'device_id': 'new_device_id',
+                'name': 'new_name',
+                'admin_state_up': False,
+                'mac_address': 'fa:16:3e:cd:76:bb',
+                'security_groups': [t_sg_id]
+            }
+
+        }
+        body_copy = copy.deepcopy(update_body)
+        top_port = fake_plugin.update_port(
+            neutron_context, t_port_id, update_body)
+        self.assertEqual(top_port['name'], body_copy['port']['name'])
+        self.assertEqual(top_port['description'],
+                         body_copy['port']['description'])
+        self.assertEqual(top_port['extra_dhcp_opts'],
+                         body_copy['port']['extra_dhcp_opts'])
+        self.assertEqual(top_port['device_owner'],
+                         body_copy['port']['device_owner'])
+        self.assertEqual(top_port['device_id'],
+                         body_copy['port']['device_id'])
+        self.assertEqual(top_port['admin_state_up'],
+                         body_copy['port']['admin_state_up'])
+        self.assertEqual(top_port['mac_address'],
+                         body_copy['port']['mac_address'])
+        self.assertEqual(top_port['security_groups'],
+                         body_copy['port']['security_groups'])
+
+        bottom_port = fake_client.get_ports(t_ctx, b_port_id)
+        # name is set to bottom resource id, which is used by lock_handle to
+        # retrieve bottom/local resources that have been created but not
+        # registered in the resource routing table, so it's not allowed
+        # to be updated
+        self.assertEqual(bottom_port['name'], b_port_id)
+        self.assertEqual(bottom_port['description'],
+                         body_copy['port']['description'])
+        self.assertEqual(bottom_port['extra_dhcp_opts'],
+                         body_copy['port']['extra_dhcp_opts'])
+        self.assertEqual(bottom_port['device_owner'],
+                         body_copy['port']['device_owner'])
+        self.assertEqual(bottom_port['device_id'],
+                         body_copy['port']['device_id'])
+        self.assertEqual(bottom_port['admin_state_up'],
+                         body_copy['port']['admin_state_up'])
+        self.assertEqual(bottom_port['mac_address'],
+                         body_copy['port']['mac_address'])
+        self.assertEqual(bottom_port['security_groups'],
+                         body_copy['port']['security_groups'])
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_bound_port_mac(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        (t_port_id, b_port_id) = self._prepare_port_test(
+            tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id, vif_type='ovs',
+            device_onwer='compute:None')
+
+        fake_plugin = FakePlugin()
+        mock_context.return_value = t_ctx
+        update_body = {
+            'port': {
+                'mac_address': 'fa:16:3e:cd:76:bb'
+            }
+        }
+
+        self.assertRaises(q_lib_exc.PortBound, fake_plugin.update_port,
+                          neutron_context, t_port_id, update_body)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_non_vm_port(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+        t_net_id, t_subnet_id, b_net_id, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+
+        non_vm_port_types = [q_constants.DEVICE_OWNER_ROUTER_INTF,
+                             q_constants.DEVICE_OWNER_ROUTER_GW,
+                             q_constants.DEVICE_OWNER_DHCP]
+        for port_type in non_vm_port_types:
+            (t_port_id, b_port_id) = self._prepare_port_test(
+                tenant_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+                device_onwer=port_type)
+            update_body = {
+                'port': {'binding:host_id': 'zhiyuan-6'}
+            }
+            body_copy = copy.deepcopy(update_body)
+            top_port = fake_plugin.update_port(
+                neutron_context, t_port_id, update_body)
+            self.assertEqual(top_port['binding:host_id'],
+                             body_copy['port']['binding:host_id'])
+            # for router interface, router gw, dhcp port, not directly
+            # update bottom, so bottom not changed
+            bottom_port = fake_client.get_ports(t_ctx, b_port_id)
+            self.assertEqual(bottom_port['binding:host_id'], 'zhiyuan-5')
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
