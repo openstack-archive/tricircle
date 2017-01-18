@@ -30,7 +30,11 @@ from neutron.db import extradhcpopt_db
 # NOTE(zhiyuan) though not used, this import cannot be removed because Router
 # relies on one table defined in l3_agentschedulers_db
 from neutron.db import l3_agentschedulers_db  # noqa
+from neutron.db import l3_attrs_db
 from neutron.db import l3_db
+from neutron.db import l3_dvr_db
+# import l3_hamode_db to load l3_ha option
+from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.extensions import availability_zone as az_ext
@@ -105,7 +109,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                       external_net_db.External_net_db_mixin,
                       portbindings_db.PortBindingMixin,
                       extradhcpopt_db.ExtraDhcpOptMixin,
-                      l3_db.L3_NAT_dbonly_mixin):
+                      l3_db.L3_NAT_dbonly_mixin,
+                      l3_attrs_db.ExtraAttributesMixin):
 
     __native_bulk_support = True
     __native_pagination_support = True
@@ -123,6 +128,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                    "availability_zone",
                                    "provider",
                                    "network_availability_zone",
+                                   "dvr",
                                    "router"]
 
     def __init__(self):
@@ -902,7 +908,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                           self)._fields(p, fields) for p in ret]
 
     def create_router(self, context, router):
-        return super(TricirclePlugin, self).create_router(context, router)
+        with context.session.begin(subtransactions=True):
+            router_db = super(TricirclePlugin, self).create_router(
+                context, router)
+            router_db['extra_attributes'] = None
+            dist = l3_dvr_db.is_distributed_router(router['router'])
+            self.set_extra_attr_value(context, router_db, 'distributed', dist)
+            router_db['distributed'] = router_db[
+                'extra_attributes'].distributed
+            return router_db
 
     def _delete_top_bridge_resource(self, t_ctx, q_ctx, resource_type,
                                     resource_id, resource_name):
