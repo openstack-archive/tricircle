@@ -1387,8 +1387,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         project_id = router['tenant_id']
         add_by_port, _ = self._validate_interface_info(interface_info)
 
-        net_id, b_pods = self._get_net_pods_by_interface_info(
-            t_ctx, context, add_by_port, interface_info)
         t_pod = db_api.get_top_pod(t_ctx)
         assert t_pod
 
@@ -1400,6 +1398,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         return_info = super(TricirclePlugin, self).add_router_interface(
             context, router_id, interface_info)
+        net_id, b_pods = self._get_net_pods_by_interface_info(
+            t_ctx, context, add_by_port, interface_info)
         if not b_pods:
             LOG.debug('Add router interface: no interfaces found, xjob not'
                       'triggered')
