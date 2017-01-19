@@ -40,8 +40,8 @@ from neutron.db import portbindings_db
 from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
-from neutron.extensions import portbindings
 from neutron.extensions import providernet as provider
+from neutron_lib.api.definitions import portbindings
 from neutron_lib.api import validators
 from neutron_lib import constants
 from neutron_lib import exceptions

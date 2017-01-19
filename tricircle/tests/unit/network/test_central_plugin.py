@@ -27,6 +27,7 @@ from sqlalchemy.orm import exc
 from sqlalchemy.sql import elements
 from sqlalchemy.sql import selectable
 
+from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.plugins import directory
@@ -43,7 +44,6 @@ from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
 
 from neutron.extensions import availability_zone as az_ext
-from neutron.extensions import portbindings
 
 from neutron.ipam import driver
 from neutron.ipam import exceptions as ipam_exc
