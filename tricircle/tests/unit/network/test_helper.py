@@ -37,32 +37,42 @@ class HelperTest(unittest.TestCase):
             'ip_version': 4,
             'cidr': '10.0.1.0/24',
             'gateway_ip': '10.0.1.1',
-            'allocation_pools': [{'start': '10.0.1.2', 'end': '10.0.1.254'}],
+            'allocation_pools': [{'start': '10.0.1.10', 'end': '10.0.1.254'}],
             'enable_dhcp': True,
             'tenant_id': project_id
         }
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
-                                                  b_net_id, '10.0.1.2')
+                                                  b_net_id, '10.0.1.10')
         six.assertCountEqual(self,
                              [{'start': '10.0.1.1', 'end': '10.0.1.1'},
-                              {'start': '10.0.1.3', 'end': '10.0.1.254'}],
+                              {'start': '10.0.1.11', 'end': '10.0.1.254'}],
                              body['subnet']['allocation_pools'])
-        self.assertEqual('10.0.1.2', body['subnet']['gateway_ip'])
+        self.assertEqual('10.0.1.10', body['subnet']['gateway_ip'])
 
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
                                                   b_net_id, '10.0.1.254')
         six.assertCountEqual(self,
-                             [{'start': '10.0.1.1', 'end': '10.0.1.253'}],
+                             [{'start': '10.0.1.1', 'end': '10.0.1.1'},
+                              {'start': '10.0.1.10', 'end': '10.0.1.253'}],
                              body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.254', body['subnet']['gateway_ip'])
+
+        body = self.helper.get_create_subnet_body(project_id, t_subnet,
+                                                  b_net_id, '10.0.1.8')
+        six.assertCountEqual(self,
+                             [{'start': '10.0.1.1', 'end': '10.0.1.1'},
+                              {'start': '10.0.1.10', 'end': '10.0.1.254'}],
+                             body['subnet']['allocation_pools'])
+        self.assertEqual('10.0.1.8', body['subnet']['gateway_ip'])
 
         t_subnet['allocation_pools'] = [
             {'start': '10.0.1.2', 'end': '10.0.1.10'},
             {'start': '10.0.1.20', 'end': '10.0.1.254'}]
         body = self.helper.get_create_subnet_body(project_id, t_subnet,
                                                   b_net_id, '10.0.1.5')
-        six.assertCountEqual(self, [{'start': '10.0.1.1', 'end': '10.0.1.4'},
-                             {'start': '10.0.1.6', 'end': '10.0.1.10'},
-                             {'start': '10.0.1.20', 'end': '10.0.1.254'}],
+        six.assertCountEqual(self,
+                             [{'start': '10.0.1.1', 'end': '10.0.1.4'},
+                              {'start': '10.0.1.6', 'end': '10.0.1.10'},
+                              {'start': '10.0.1.20', 'end': '10.0.1.254'}],
                              body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.5', body['subnet']['gateway_ip'])
