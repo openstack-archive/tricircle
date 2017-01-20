@@ -27,7 +27,7 @@ eth2 for external vlan network. If you want to verify the data plane
 connectivity, please make sure the bridges "br-vlan" and "br-ext" are
 connected to regarding interface. Using following command to connect
 the bridge to physical ethernet interface, as shown below, "br-vlan" is
-wired to eth1, and "br-etx" to eth2::
+wired to eth1, and "br-ext" to eth2::
 
     sudo ovs-vsctl add-br br-vlan
     sudo ovs-vsctl add-port br-vlan eth1
