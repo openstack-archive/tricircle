@@ -147,7 +147,7 @@ class XManagerTest(unittest.TestCase):
         core.get_engine().execute('pragma foreign_keys=on')
         for opt in xservice.common_opts:
             if opt.name in ('worker_handle_timeout', 'job_run_expire',
-                            'worker_sleep_time'):
+                            'worker_sleep_time', 'redo_time_span'):
                 cfg.CONF.register_opt(opt)
         self.context = context.Context()
         self.xmanager = FakeXManager()
@@ -317,8 +317,9 @@ class XManagerTest(unittest.TestCase):
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
         ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
         self._prepare_dnat_test()
-        self.xmanager.configure_extra_routes(self.context,
-                                             payload={'router': top_router_id})
+        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
+        self.xmanager.configure_extra_routes(
+            self.context, payload={constants.JT_ROUTER: top_router_id})
         calls = []
         ns_routes = []
         for i in range(2):
@@ -342,8 +343,9 @@ class XManagerTest(unittest.TestCase):
         top_router_id = 'router_id'
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
         ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
-        self.xmanager.configure_extra_routes(self.context,
-                                             payload={'router': top_router_id})
+        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
+        self.xmanager.configure_extra_routes(
+            self.context, payload={constants.JT_ROUTER: top_router_id})
         calls = []
         ns_routes = []
         for i in range(2):
@@ -366,8 +368,9 @@ class XManagerTest(unittest.TestCase):
     def test_configure_extra_routes(self, mock_update):
         top_router_id = 'router_id'
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
-        self.xmanager.configure_extra_routes(self.context,
-                                             payload={'router': top_router_id})
+        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
+        self.xmanager.configure_extra_routes(
+            self.context, payload={constants.JT_ROUTER: top_router_id})
         calls = []
         for i in range(2):
             routes = []
@@ -435,8 +438,9 @@ class XManagerTest(unittest.TestCase):
                 core.create_resource(self.context, models.ResourceRouting,
                                      route)
 
+        db_api.new_job(self.context, constants.JT_SEG_RULE_SETUP, project_id)
         self.xmanager.configure_security_group_rules(
-            self.context, payload={'seg_rule_setup': project_id})
+            self.context, payload={constants.JT_SEG_RULE_SETUP: project_id})
 
         calls = [mock.call(self.context, sg_rule_id_1)]
         mock_delete.assert_has_calls(calls)
@@ -467,31 +471,32 @@ class XManagerTest(unittest.TestCase):
         mock_create.assert_has_calls(calls)
 
     def test_job_handle(self):
-        @xmanager._job_handle('fake_resource')
+        job_type = 'fake_resource'
+
+        @xmanager._job_handle(job_type)
         def fake_handle(self, ctx, payload):
             pass
 
         fake_id = 'fake_id'
-        payload = {'fake_resource': fake_id}
+        payload = {job_type: fake_id}
+        db_api.new_job(self.context, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
-        jobs = core.query_resource(self.context, models.AsyncJob, [], [])
-        expected_status = [constants.JS_New, constants.JS_Success]
-        job_status = [job['status'] for job in jobs]
-        six.assertCountEqual(self, expected_status, job_status)
+        logs = core.query_resource(self.context, models.AsyncJobLog, [], [])
 
-        self.assertEqual(fake_id, jobs[0]['resource_id'])
-        self.assertEqual(fake_id, jobs[1]['resource_id'])
-        self.assertEqual('fake_resource', jobs[0]['type'])
-        self.assertEqual('fake_resource', jobs[1]['type'])
+        self.assertEqual(fake_id, logs[0]['resource_id'])
+        self.assertEqual(job_type, logs[0]['type'])
 
     def test_job_handle_exception(self):
-        @xmanager._job_handle('fake_resource')
+        job_type = 'fake_resource'
+
+        @xmanager._job_handle(job_type)
         def fake_handle(self, ctx, payload):
             raise Exception()
 
         fake_id = 'fake_id'
-        payload = {'fake_resource': fake_id}
+        payload = {job_type: fake_id}
+        db_api.new_job(self.context, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
         jobs = core.query_resource(self.context, models.AsyncJob, [], [])
@@ -501,19 +506,22 @@ class XManagerTest(unittest.TestCase):
 
         self.assertEqual(fake_id, jobs[0]['resource_id'])
         self.assertEqual(fake_id, jobs[1]['resource_id'])
-        self.assertEqual('fake_resource', jobs[0]['type'])
-        self.assertEqual('fake_resource', jobs[1]['type'])
+        self.assertEqual(job_type, jobs[0]['type'])
+        self.assertEqual(job_type, jobs[1]['type'])
 
     def test_job_run_expire(self):
-        @xmanager._job_handle('fake_resource')
+        job_type = 'fake_resource'
+
+        @xmanager._job_handle(job_type)
         def fake_handle(self, ctx, payload):
             pass
 
         fake_id = uuidutils.generate_uuid()
-        payload = {'fake_resource': fake_id}
+        payload = {job_type: fake_id}
+        db_api.new_job(self.context, job_type, fake_id)
         expired_job = {
             'id': uuidutils.generate_uuid(),
-            'type': 'fake_resource',
+            'type': job_type,
             'timestamp': datetime.datetime.now() - datetime.timedelta(0, 200),
             'status': constants.JS_Running,
             'resource_id': fake_id,
@@ -522,19 +530,17 @@ class XManagerTest(unittest.TestCase):
         core.create_resource(self.context, models.AsyncJob, expired_job)
         fake_handle(None, self.context, payload=payload)
 
-        jobs = core.query_resource(self.context, models.AsyncJob, [], [])
-        expected_status = ['New', 'Fail', 'Success']
-        job_status = [job['status'] for job in jobs]
-        six.assertCountEqual(self, expected_status, job_status)
+        logs = core.query_resource(self.context, models.AsyncJobLog, [], [])
 
-        for i in xrange(3):
-            self.assertEqual(fake_id, jobs[i]['resource_id'])
-            self.assertEqual('fake_resource', jobs[i]['type'])
+        self.assertEqual(fake_id, logs[0]['resource_id'])
+        self.assertEqual(job_type, logs[0]['type'])
 
     @patch.object(db_api, 'get_running_job')
     @patch.object(db_api, 'register_job')
     def test_worker_handle_timeout(self, mock_register, mock_get):
-        @xmanager._job_handle('fake_resource')
+        job_type = 'fake_resource'
+
+        @xmanager._job_handle(job_type)
         def fake_handle(self, ctx, payload):
             pass
 
@@ -543,13 +549,16 @@ class XManagerTest(unittest.TestCase):
         mock_get.return_value = None
 
         fake_id = uuidutils.generate_uuid()
-        payload = {'fake_resource': fake_id}
+        payload = {job_type: fake_id}
+        db_api.new_job(self.context, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
         # nothing to assert, what we test is that fake_handle can exit when
         # timeout
 
-    def test_get_failed_jobs(self):
+    @patch('oslo_utils.timeutils.utcnow')
+    def test_get_failed_or_new_jobs(self, mock_now):
+        mock_now.return_value = datetime.datetime(2000, 1, 2, 12, 0, 0)
         job_dict_list = [
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 0, 0),
              'resource_id': 'uuid1', 'type': 'res1',
@@ -565,10 +574,16 @@ class XManagerTest(unittest.TestCase):
              'status': constants.JS_Fail},  # job_uuid7
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 25, 0),
              'resource_id': 'uuid3', 'type': 'res3',
-             'status': constants.JS_Fail},  # job_uuid9
+             'status': constants.JS_Success},  # job_uuid9
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 30, 0),
-             'resource_id': 'uuid3', 'type': 'res3',
-             'status': constants.JS_Success}]
+             'resource_id': 'uuid4', 'type': 'res4',
+             'status': constants.JS_New},  # job_uuid11
+            {'timestamp': datetime.datetime(1999, 12, 31, 12, 0, 0),
+             'resource_id': 'uuid5', 'type': 'res5',
+             'status': constants.JS_Fail},  # job_uuid13
+            {'timestamp': datetime.datetime(1999, 12, 31, 11, 59, 59),
+             'resource_id': 'uuid6', 'type': 'res6',
+             'status': constants.JS_Fail}]  # job_uuid15
         for i, job_dict in enumerate(job_dict_list, 1):
             job_dict['id'] = 'job_uuid%d' % (2 * i - 1)
             job_dict['extra_id'] = 'extra_uuid%d' % (2 * i - 1)
@@ -579,10 +594,16 @@ class XManagerTest(unittest.TestCase):
             core.create_resource(self.context, models.AsyncJob, job_dict)
 
         # for res3 + uuid3, the latest job's status is "Success", not returned
-        expected_ids = ['job_uuid3', 'job_uuid5']
-        returned_jobs = db_api.get_latest_failed_jobs(self.context)
-        actual_ids = [job['id'] for job in returned_jobs]
-        six.assertCountEqual(self, expected_ids, actual_ids)
+        # for res6 + uuid6, the latest job is out of the redo time span
+        expected_failed_jobs = [
+            {'resource_id': 'uuid1', 'type': 'res1'},
+            {'resource_id': 'uuid2', 'type': 'res2'},
+            {'resource_id': 'uuid5', 'type': 'res5'}]
+        expected_new_jobs = [{'resource_id': 'uuid4', 'type': 'res4'}]
+        (failed_jobs,
+         new_jobs) = db_api.get_latest_failed_or_new_jobs(self.context)
+        six.assertCountEqual(self, expected_failed_jobs, failed_jobs)
+        six.assertCountEqual(self, expected_new_jobs, new_jobs)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

@@ -54,6 +54,11 @@ common_opts = [
                       " seconds")),
     cfg.FloatOpt('worker_sleep_time', default=0.1,
                  help=_("Seconds a worker sleeps after one run in a loop")),
+    cfg.IntOpt('redo_time_span', default=172800,
+               help=_("Time span in seconds, we calculate the latest job "
+                      "timestamp by subtracting this time span from the "
+                      "current timestamp, jobs created between these two "
+                      "timestamps will be redone")),
     cfg.BoolOpt('enable_api_gateway',
                 default=False,
                 help=_('Whether the Nova API gateway is enabled'))
