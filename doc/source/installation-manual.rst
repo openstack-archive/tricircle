@@ -17,7 +17,7 @@ the Tricircle administrator service needs to be registered in this region along
 with central Neutron service while other core services are not mandatory.
 
 Installation with Central Neutron Server
-========================================
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - 1 Install the Tricircle package::
 
@@ -183,7 +183,7 @@ Installation with Central Neutron Server
   - start central Neutron server
 
 Installation with Local Neutron Server
-======================================
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - 1 Install the Tricircle package::
 
@@ -202,12 +202,28 @@ Installation with Local Neutron Server
 
   - configure local Neutron server
 
-    edit neutron.conf
+    edit neutron.conf.
+
+    .. note::
+
+      Pay attention to the service_plugins configuration item, make sure
+      the plugin which is configured can support associating a floating ip to
+      a port whose network is not directly attached to the router.
+      TricircleL3Plugin is inherited from Neutron original L3RouterPlugin,
+      and overrides the original "get_router_for_floatingip" implementation
+      to allow associating a floating ip to a port whose network is not
+      directly attached to the router. If you want to configure local Neutron
+      to use original L3RouterPlugin, then you need to patch the function
+      "get_router_for_floatingip" as what has been done in TricircleL3Plugin.
+
+      If only cross Neutron L2 networking is needed in the deployment, it's
+      not necessary to configure the service plugins.
 
   .. csv-table::
      :header: "Option", "Description", "Example"
 
      [DEFAULT] core_plugin, "core plugin local Neutron server uses", tricircle.network.local_plugin.TricirclePlugin
+     [DEFAULT] service_plugins, "service plugins local Neutron server uses", tricircle.network.local_l3_plugin.TricircleL3Plugin
      [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
      [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
