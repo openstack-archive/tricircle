@@ -26,7 +26,7 @@ ADMIN_PASSWORD=password
 
 HOST_IP=10.250.201.24
 
-Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000)
+Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
 OVS_BRIDGE_MAPPINGS=bridge:br-vlan
 
 # Specify Central Region name

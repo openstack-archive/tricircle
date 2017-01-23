@@ -104,13 +104,17 @@ RegionOne,
     (network_vlan_ranges=<physical network name>:<min vlan>:<max vlan>),
     you can change physical network name, but remember to adapt your change
     to the commands showed in this guide; also, change min VLAN and max vlan
-    to adapt the VLAN range your physical network supports::
+    to adapt the VLAN range your physical network supports. You need to
+    additionally specify the physical network "extern" to ensure the
+    central neutron can create "extern" physical network which located in
+    other pods::
 
-      Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000)
+      Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
 
   - the format of OVS_BRIDGE_MAPPINGS is <physical network name>:<ovs bridge name>,
     you can change these names, but remember to adapt your change to the
-    commands showed in this guide::
+    commands showed in this guide. You do not need specify the bridge mapping
+    for "extern", because this physical network is located in other pods::
 
       OVS_BRIDGE_MAPPINGS=bridge:br-vlan
 

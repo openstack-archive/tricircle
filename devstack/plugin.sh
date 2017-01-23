@@ -84,10 +84,7 @@ function init_local_neutron_variables {
 
         local vlan_option="bridge:$TRICIRCLE_DEFAULT_VLAN_RANGE"
         local ext_option="extern:$TRICIRCLE_DEFAULT_EXT_RANGE"
-        local vlan_ranges=(network_vlan_ranges=$vlan_option)
-        if [ "$TRICIRCLE_START_SERVICES" == "False" ]; then
-            vlan_ranges=(network_vlan_ranges=$vlan_option,$ext_option)
-        fi
+        local vlan_ranges=(network_vlan_ranges=$vlan_option,$ext_option)
         Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=$vlan_ranges
 
         local vlan_mapping="bridge:$TRICIRCLE_DEFAULT_VLAN_BRIDGE"
