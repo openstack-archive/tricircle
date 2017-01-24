@@ -186,3 +186,40 @@ Neutron's neutron.conf
      - (String) Central Neutron server url, for example, http://$service_host:9696
    * - ``real_core_plugin`` = ``None``
      - (String) The core plugin the Tricircle local plugin will invoke, for example, neutron.plugins.ml2.plugin.Ml2Plugin
+
+
+**Tricircle Local Neutron L3 Plugin**
+
+In multiple OpenStack clouds, if the external network is located in the
+first OpenStack cloud, but the port which will be associated with one
+floating ip is located in the second OpenStack cloud, then the network for
+this port may not be able to be added to the router in the first OpenStack.
+In Tricircle, to address this scenario, a bridge network will be used
+to connect the routers in these two OpenStack clouds if the network is not
+a cross Neutron L2 network. To make it happen, the Tricircle Local Neutron L3
+Plugin or other L3 service plugin should be able to associate a floating ip to
+a port whose network is not directly attached to the router. TricircleL3Plugin
+is inherited from Neutron original L3RouterPlugin, and overrides the original
+"get_router_for_floatingip" implementation to allow associating a floating ip
+to a port whose network is not directly attached to the router. If you want
+to configure local Neutron to use original L3RouterPlugin, then you need to
+patch the function "get_router_for_floatingip" as what has been done in
+TricircleL3Plugin.
+
+If only cross Neutron L2 networking is needed in the deployment, it's not
+necessary to configure the service plugins.
+
+The following item should be configured in local Neutron's neutron.conf
+
+.. _Local Neutron:
+
+.. list-table:: Description of Local Neutron configuration options
+   :header-rows: 1
+   :class: config-ref-table
+
+   * - Configuration option = Default value
+     - Description and Example
+   * - **[DEFAULT]**
+     -
+   * - ``service_plugins`` = ``None``
+     - (String) service plugins local Neutron server uses, can be set to tricircle.network.local_l3_plugin.TricircleL3Plugin
