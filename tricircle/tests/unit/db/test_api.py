@@ -336,11 +336,19 @@ class APITest(unittest.TestCase):
         self._create_pod(2, 'test_az_uuid_2')
         self._create_resource_mappings()
         top_id = 'top_uuid'
-        api.delete_mappings_by_top_id(self.context, top_id)
 
+        api.delete_mappings_by_top_id(self.context, top_id,
+                                      pod_id='test_pod_uuid_0')
         mappings = api.get_bottom_mappings_by_top_id(
             self.context, top_id, 'network')
-        self.assertEqual(len(mappings), 0)
+        # entry in pod_uuid_0 is deleted, entry in pod_uuid_1 is left
+        self.assertEqual(1, len(mappings))
+        self.assertEqual('test_pod_uuid_1', mappings[0][0]['pod_id'])
+
+        api.delete_mappings_by_top_id(self.context, top_id)
+        mappings = api.get_bottom_mappings_by_top_id(
+            self.context, top_id, 'network')
+        self.assertEqual(0, len(mappings))
 
     def test_update_pod(self):
         self._create_pod(0, 'test_az_uuid_0')

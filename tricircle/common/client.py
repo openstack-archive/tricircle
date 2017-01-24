@@ -20,7 +20,6 @@ import six
 from six.moves import xrange
 import uuid
 
-from keystoneclient.auth.identity import v3 as auth_identity
 from keystoneclient.auth import token_endpoint
 from keystoneclient import session
 from keystoneclient.v3 import client as keystone_client
@@ -212,14 +211,7 @@ class Client(object):
 
     @staticmethod
     def _get_keystone_session():
-        auth = auth_identity.Password(
-            auth_url=cfg.CONF.client.identity_url,
-            username=cfg.CONF.client.admin_username,
-            password=cfg.CONF.client.admin_password,
-            project_name=cfg.CONF.client.admin_tenant,
-            user_domain_name=cfg.CONF.client.admin_user_domain_name,
-            project_domain_name=cfg.CONF.client.admin_tenant_domain_name)
-        return session.Session(auth=auth)
+        return resource_handle.ResourceHandle.get_keystone_session()
 
     @staticmethod
     def get_admin_token():

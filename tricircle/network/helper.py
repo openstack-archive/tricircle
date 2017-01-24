@@ -17,6 +17,7 @@ import copy
 import netaddr
 import six
 
+from neutron_lib.api.definitions import provider_net
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
 from oslo_serialization import jsonutils
@@ -35,6 +36,7 @@ import tricircle.network.exceptions as t_network_exc
 AZ_HINTS = 'availability_zone_hints'
 EXTERNAL = 'router:external'  # neutron.extensions.external_net.EXTERNAL
 TYPE_VLAN = 'vlan'  # neutron.plugins.common.constants.TYPE_VLAN
+TYPE_VXLAN = 'vxlan'  # neutron.plugins.common.constants.TYPE_VXLAN
 VIF_TYPE_OVS = 'ovs'  # neutron.extensions.portbindings.VIF_TYPE_OVS
 
 OVS_AGENT_DATA_TEMPLATE = {
@@ -79,8 +81,21 @@ class NetworkHelper(object):
 
     @staticmethod
     def _transfer_network_type(network_type):
-        network_type_map = {t_constants.NT_VLAN: TYPE_VLAN}
+        network_type_map = {t_constants.NT_VLAN: TYPE_VLAN,
+                            t_constants.NT_VxLAN: TYPE_VXLAN}
         return network_type_map.get(network_type, network_type)
+
+    @staticmethod
+    def _get_provider_info(t_net):
+        ret = {
+            provider_net.NETWORK_TYPE: NetworkHelper._transfer_network_type(
+                t_net[provider_net.NETWORK_TYPE]),
+            provider_net.SEGMENTATION_ID: t_net[provider_net.SEGMENTATION_ID]
+        }
+        if t_net[provider_net.NETWORK_TYPE] == t_constants.NT_VLAN:
+            ret[provider_net.PHYSICAL_NETWORK] = t_net[
+                provider_net.PHYSICAL_NETWORK]
+        return ret
 
     def _get_client(self, region_name=None):
         if not region_name:
@@ -164,7 +179,7 @@ class NetworkHelper(object):
                 t_ctx, q_ctx, project_id, pod, ele, _type, body)
 
     def get_bridge_interface(self, t_ctx, q_ctx, project_id, pod,
-                             t_net_id, b_router_id):
+                             t_net_id, b_router_id, t_subnet=None):
         """Get or create top bridge interface
 
         :param t_ctx: tricircle context
@@ -173,6 +188,7 @@ class NetworkHelper(object):
         :param pod: dict of top pod
         :param t_net_id: top bridge network id
         :param b_router_id: bottom router id
+        :param t_subnet: optional top bridge subnet dict
         :return: bridge interface id
         """
         port_name = t_constants.bridge_port_name % (project_id,
@@ -192,6 +208,10 @@ class NetworkHelper(object):
             port_body['port'].update(
                 {'mac_address': constants.ATTR_NOT_SPECIFIED,
                  'fixed_ips': constants.ATTR_NOT_SPECIFIED})
+        if t_subnet:
+            port_body['port'].update(
+                {'fixed_ips': [{'subnet_id': t_subnet['id'],
+                                'ip_address': t_subnet['gateway_ip']}]})
         _, port_id = self.prepare_top_element(
             t_ctx, q_ctx, project_id, pod, port_ele, 'port', port_body)
         return port_id
@@ -515,11 +535,8 @@ class NetworkHelper(object):
         net_body = {'network': {
             'tenant_id': project_id,
             'name': t_net['id'],
-            'provider:network_type': self._transfer_network_type(
-                t_net['provider:network_type']),
-            'provider:physical_network': t_net['provider:physical_network'],
-            'provider:segmentation_id': t_net['provider:segmentation_id'],
             'admin_state_up': True}}
+        net_body['network'].update(self._get_provider_info(t_net))
         if is_external:
             net_body['network'][EXTERNAL] = True
         _, b_net_id = self.prepare_bottom_element(
@@ -713,6 +730,32 @@ class NetworkHelper(object):
     @staticmethod
     def get_agent_type_by_vif(vif_type):
         return VIF_AGENT_TYPE_MAP.get(vif_type)
+
+    @staticmethod
+    def is_need_top_sync_port(port, bridge_cidr):
+        """Judge if the port needs to be synced with top port
+
+        While synced with top port, shadow agent/port process is triggered
+
+        :param port: port dict
+        :param bridge_cidr: bridge subnet CIDR
+        :return: True/False
+        """
+        device_owner = port.get('device_owner', '')
+        if device_owner.startswith('compute:'):
+            # sync with top port for instance port
+            return True
+        if device_owner not in (constants.DEVICE_OWNER_ROUTER_GW,
+                                constants.DEVICE_OWNER_ROUTER_INTF):
+            # no need to sync with top port if the port is NOT instance port
+            # or router interface or router gateway. in DVR case, there are
+            # another two router port types, router_interface_distributed and
+            # router_centralized_snat, these two don't need to be synced wih
+            # top port neither
+            return False
+        ip = port['fixed_ips'][0]['ip_address']
+        # only sync with top port for bridge router port
+        return netaddr.IPAddress(ip) in netaddr.IPNetwork(bridge_cidr)
 
     @staticmethod
     def construct_agent_data(agent_type, host, tunnel_ip):

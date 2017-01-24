@@ -67,6 +67,7 @@ def get_context_from_neutron_context(context):
     ctx.tenant_name = context.tenant_name
     ctx.user_name = context.user_name
     ctx.resource_uuid = context.resource_uuid
+    ctx.is_admin = context.is_admin
     return ctx
 
 

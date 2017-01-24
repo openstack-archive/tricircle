@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from keystoneclient.auth.identity import v3 as auth_identity
+from keystoneclient import session
 
 from neutronclient.common import exceptions as q_exceptions
 from neutronclient.neutron import client as q_client
@@ -59,6 +61,21 @@ class ResourceHandle(object):
     def update_endpoint_url(self, url):
         self.endpoint_url = url
 
+    @staticmethod
+    def get_keystone_session():
+        auth = auth_identity.Password(
+            auth_url=cfg.CONF.client.identity_url,
+            username=cfg.CONF.client.admin_username,
+            password=cfg.CONF.client.admin_password,
+            project_name=cfg.CONF.client.admin_tenant,
+            user_domain_name=cfg.CONF.client.admin_user_domain_name,
+            project_domain_name=cfg.CONF.client.admin_tenant_domain_name)
+        return session.Session(auth=auth)
+
+    @staticmethod
+    def get_admin_token():
+        return ResourceHandle.get_keystone_session().get_token()
+
 
 class NeutronResourceHandle(ResourceHandle):
     service_type = cons.ST_NEUTRON
@@ -72,8 +89,11 @@ class NeutronResourceHandle(ResourceHandle):
         'floatingip': LIST | CREATE | UPDATE | DELETE}
 
     def _get_client(self, cxt):
+        token = cxt.auth_token
+        if not token and cxt.is_admin:
+            token = self.get_admin_token()
         return q_client.Client('2.0',
-                               token=cxt.auth_token,
+                               token=token,
                                auth_url=self.auth_url,
                                endpoint_url=self.endpoint_url,
                                timeout=cfg.CONF.client.neutron_timeout)

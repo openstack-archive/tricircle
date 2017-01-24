@@ -68,6 +68,7 @@ from tricircle.db import models
 import tricircle.network.central_plugin as plugin
 from tricircle.network.drivers import type_local
 from tricircle.network.drivers import type_vlan
+from tricircle.network.drivers import type_vxlan
 from tricircle.network import helper
 from tricircle.network import managers
 from tricircle.tests.unit.network import test_security_groups
@@ -82,6 +83,7 @@ TOP_SUBNETPOOLS = []
 TOP_SUBNETPOOLPREFIXES = []
 TOP_IPALLOCATIONS = []
 TOP_VLANALLOCATIONS = []
+TOP_VXLANALLOCATIONS = []
 TOP_SEGMENTS = []
 TOP_EXTNETS = []
 TOP_FLOATINGIPS = []
@@ -104,9 +106,9 @@ BOTTOM2_SGS = []
 BOTTOM2_FIPS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_ROUTERS, TOP_ROUTERPORT,
             TOP_SUBNETPOOLS, TOP_SUBNETPOOLPREFIXES, TOP_IPALLOCATIONS,
-            TOP_VLANALLOCATIONS, TOP_SEGMENTS, TOP_EXTNETS, TOP_FLOATINGIPS,
-            TOP_SGS, TOP_SG_RULES, TOP_NETWORK_RBAC, TOP_SUBNETROUTES,
-            TOP_DNSNAMESERVERS,
+            TOP_VLANALLOCATIONS, TOP_VXLANALLOCATIONS, TOP_SEGMENTS,
+            TOP_EXTNETS, TOP_FLOATINGIPS, TOP_SGS, TOP_SG_RULES,
+            TOP_NETWORK_RBAC, TOP_SUBNETROUTES, TOP_DNSNAMESERVERS,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_ROUTERS,
             BOTTOM1_SGS, BOTTOM1_FIPS,
             BOTTOM2_NETS, BOTTOM2_SUBNETS, BOTTOM2_PORTS, BOTTOM2_ROUTERS,
@@ -120,6 +122,7 @@ RES_MAP = {'networks': TOP_NETS,
            'subnetpools': TOP_SUBNETPOOLS,
            'subnetpoolprefixes': TOP_SUBNETPOOLPREFIXES,
            'ml2_vlan_allocations': TOP_VLANALLOCATIONS,
+           'ml2_vxlan_allocations': TOP_VXLANALLOCATIONS,
            'networksegments': TOP_SEGMENTS,
            'externalnetworks': TOP_EXTNETS,
            'floatingips': TOP_FLOATINGIPS,
@@ -513,8 +516,29 @@ class FakeClient(object):
             del TOP_IPALLOCATIONS[index]
 
     def add_gateway_routers(self, ctx, *args, **kwargs):
-        # only for mock purpose
-        pass
+        router_id, body = args
+        try:
+            t_name = constants.bridge_port_name % (TEST_TENANT_ID, router_id)
+            t_client = FakeClient()
+            t_ports = t_client.list_ports(
+                ctx, [{'key': 'name', 'comparator': 'eq', 'value': t_name}])
+            b_id = t_ports[0]['id'] if t_ports else uuidutils.generate_uuid()
+            host_id = 'host1' if self.region_name == 'pod_1' else 'host_2'
+            self.create_ports(ctx, {'port': {
+                'admin_state_up': True,
+                'id': b_id,
+                'name': '',
+                'network_id': body['network_id'],
+                'fixed_ips': body['external_fixed_ips'],
+                'mac_address': '',
+                'device_id': router_id,
+                'device_owner': 'network:router_gateway',
+                'binding:vif_type': helper.VIF_TYPE_OVS,
+                'binding:host_id': host_id
+            }})
+        except q_exceptions.IpAddressInUseClient:
+            # just skip if the gateway port is already there
+            pass
 
     def add_interface_routers(self, ctx, *args, **kwargs):
         self._get_connection()
@@ -1071,6 +1095,8 @@ class FakeTypeManager(managers.TricircleTypeManager):
         self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
         vlan_driver = type_vlan.VLANTypeDriver()
         self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
+        vxlan_driver = type_vxlan.VxLANTypeDriver()
+        self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
 
     def extend_network_dict_provider(self, cxt, net):
         target_net = None
@@ -1214,8 +1240,8 @@ class PluginTest(unittest.TestCase,
         xmanager.IN_TEST = True
 
         phynet = 'bridge'
-        vlan_min = 2000
-        vlan_max = 2001
+        vlan_min, vlan_max = 2000, 2001
+        vxlan_min, vxlan_max = 20001, 20002
         cfg.CONF.set_override('type_drivers', ['local', 'vlan'],
                               group='tricircle')
         cfg.CONF.set_override('tenant_network_types', ['local', 'vlan'],
@@ -1231,6 +1257,9 @@ class PluginTest(unittest.TestCase,
             TOP_VLANALLOCATIONS.append(
                 DotDict({'physical_network': phynet,
                          'vlan_id': vlan, 'allocated': False}))
+        for vxlan in (vxlan_min, vxlan_max):
+            TOP_VXLANALLOCATIONS.append(
+                DotDict({'vxlan_vni': vxlan, 'allocated': False}))
 
         def fake_get_plugin(alias=q_constants.CORE):
             return FakePlugin()
@@ -1955,10 +1984,12 @@ class PluginTest(unittest.TestCase,
 
     def _prepare_router_test(self, tenant_id, ctx, region_name, index,
                              router_az_hints=None, net_az_hints=None,
-                             create_new_router=False):
+                             create_new_router=False,
+                             network_type=constants.NT_LOCAL):
         (t_net_id, t_subnet_id, b_net_id,
          b_subnet_id) = self._prepare_network_subnet(
-            tenant_id, ctx, region_name, index, az_hints=net_az_hints)
+            tenant_id, ctx, region_name, index, az_hints=net_az_hints,
+            network_type=network_type)
         t_router_id = uuidutils.generate_uuid()
         t_router = {
             'id': t_router_id,
@@ -2309,7 +2340,8 @@ class PluginTest(unittest.TestCase,
                 'region': 'pod_1',
                 'host': 'fake_host',
                 'type': 'Open vSwitch agent',
-                'tunnel_ip': '192.168.1.101'
+                'tunnel_ip': '192.168.1.101',
+                'device': 'compute: None'
             }}
         }
         fake_plugin.update_port(
@@ -2701,8 +2733,8 @@ class PluginTest(unittest.TestCase,
         # test that we can success when bottom pod comes back
         fake_plugin.add_router_interface(
             q_ctx, t_router_id, {'subnet_id': t_subnet_id})
-        # bottom dhcp port and bottom interface
-        self.assertEqual(2, len(BOTTOM1_PORTS))
+        # bottom dhcp port, bottom interface and bridge gateway port
+        self.assertEqual(3, len(BOTTOM1_PORTS))
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -3483,6 +3515,7 @@ class PluginTest(unittest.TestCase,
         update_body = {'port': {
             'binding:profile': {
                 constants.PROFILE_REGION: 'pod_1',
+                constants.PROFILE_DEVICE: 'compute:None',
                 constants.PROFILE_HOST: 'host1',
                 constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
                 constants.PROFILE_TUNNEL_IP: '192.168.1.101'}}}
@@ -3495,6 +3528,7 @@ class PluginTest(unittest.TestCase,
         update_body = {'port': {
             'binding:profile': {
                 constants.PROFILE_REGION: 'pod_2',
+                constants.PROFILE_DEVICE: 'compute:None',
                 constants.PROFILE_HOST: 'host2',
                 constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
                 constants.PROFILE_TUNNEL_IP: '192.168.1.102'}}}
@@ -3509,6 +3543,83 @@ class PluginTest(unittest.TestCase,
                 'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}}})
         # asynchronous job in pod_1 is registered
         mock_setup.assert_called_once_with(t_ctx, 'pod_id_1', t_net_id)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes', new=mock.Mock)
+    @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_add_interface_trigger_l2pop(self, mock_context, mock_setup):
+        cfg.CONF.set_override('bridge_network_type', 'vxlan',
+                              group='tricircle')
+        cfg.CONF.set_override('tenant_network_types', ['local', 'vxlan'],
+                              group='tricircle')
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        tenant_id = TEST_TENANT_ID
+
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1, network_type=constants.NT_VxLAN)
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        (t_net_id, t_subnet_id, t_router_id,
+         b_another_net_id, b_another_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_2', 2, network_type=constants.NT_VxLAN)
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        b_router_id1 = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_router_id, 'pod_1', constants.RT_ROUTER)
+        b_router_id2 = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_router_id, 'pod_2', constants.RT_ROUTER)
+        t_bridge_port_name1 = constants.bridge_port_name % (TEST_TENANT_ID,
+                                                            b_router_id1)
+        t_bridge_port_name2 = constants.bridge_port_name % (TEST_TENANT_ID,
+                                                            b_router_id2)
+        t_bridge_port_id1 = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_bridge_port_name1, constants.RT_PORT)[0][1]
+        t_bridge_port_id2 = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_bridge_port_name2, constants.RT_PORT)[0][1]
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_1',
+                constants.PROFILE_DEVICE: 'network:router_gateway',
+                constants.PROFILE_HOST: 'host1',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.101'}}}
+        fake_plugin.update_port(q_ctx, t_bridge_port_id1, update_body)
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_2',
+                constants.PROFILE_DEVICE: 'network:router_gateway',
+                constants.PROFILE_HOST: 'host2',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.102'}}}
+        fake_plugin.update_port(q_ctx, t_bridge_port_id2, update_body)
+
+        client = FakeClient('pod_2')
+        shadow_ports = client.list_ports(
+            t_ctx, [{'key': 'name', 'comparator': 'eq',
+                     'value': constants.shadow_port_name % t_bridge_port_id1}])
+        # shadow port for bridge port is created
+        self.assertEqual(len(shadow_ports), 1)
+        # shadow port for bridge port is updated to active
+        self.assertIn(constants.PROFILE_FORCE_UP,
+                      shadow_ports[0]['binding:profile'])
+        # asynchronous jobs are registered
+        calls = [mock.call(t_ctx, 'pod_id_2', shadow_ports[0]['network_id']),
+                 mock.call(t_ctx, 'pod_id_1', shadow_ports[0]['network_id'])]
+        mock_setup.assert_has_calls(calls)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

@@ -943,7 +943,8 @@ class XManager(PeriodicTasks):
             LOG.debug('Ports %s in pod %s %s',
                       b_ports, target_pod_id, run_label)
             for b_port in b_ports:
-                if not b_port['device_owner'].startswith('compute:'):
+                if not self.helper.is_need_top_sync_port(
+                        b_port, cfg.CONF.client.bridge_cidr):
                     continue
                 if b_port['device_owner'] == constants.DEVICE_OWNER_SHADOW:
                     continue
