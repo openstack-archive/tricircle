@@ -207,7 +207,8 @@ class Client(object):
                                 getattr(self, '%s_resources' % operation),
                                 resource))
 
-    def _get_keystone_session(self):
+    @staticmethod
+    def _get_keystone_session():
         auth = auth_identity.Password(
             auth_url=cfg.CONF.client.identity_url,
             username=cfg.CONF.client.admin_username,
@@ -217,8 +218,13 @@ class Client(object):
             project_domain_name=cfg.CONF.client.admin_tenant_domain_name)
         return session.Session(auth=auth)
 
-    def _get_admin_token(self):
-        return self._get_keystone_session().get_token()
+    @staticmethod
+    def get_admin_token():
+        return Client._get_admin_token()
+
+    @staticmethod
+    def _get_admin_token():
+        return Client._get_keystone_session().get_token()
 
     def _get_admin_project_id(self):
         return self._get_keystone_session().get_project_id()
