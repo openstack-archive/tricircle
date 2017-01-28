@@ -49,6 +49,7 @@ detailed in the LICENSE file.
 * Installation guide: http://docs.openstack.org/developer/tricircle/installation-guide.html
 * Tricircle Admin API documentation: http://docs.openstack.org/developer/tricircle/api_v1.html
 * Configuration guide: http://docs.openstack.org/developer/tricircle/configuration.html
+* Networking guide: http://docs.openstack.org/developer/tricircle/networking-guide.html
 * Source: http://git.openstack.org/cgit/openstack/tricircle
 * Bugs: http://bugs.launchpad.net/tricircle
 * Blueprints: https://blueprints.launchpad.net/tricircle
