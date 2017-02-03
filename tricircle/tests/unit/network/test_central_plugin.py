@@ -34,6 +34,7 @@ from neutron_lib.plugins import directory
 
 import neutron.api.v2.attributes as neutron_attributes
 import neutron.conf.common as q_config
+import neutron.context as q_context
 
 from neutron.db import _utils
 from neutron.db import db_base_plugin_common
@@ -252,6 +253,9 @@ class DotDict(dict):
 
     def __copy__(self):
         return DotDict(self)
+
+    def bump_revision(self):
+        pass
 
 
 class DotList(list):
@@ -627,13 +631,12 @@ class FakeClient(object):
         pass
 
 
-class FakeNeutronContext(object):
+class FakeNeutronContext(q_context.Context):
     def __init__(self):
         self._session = None
         self.is_admin = True
         self.is_advsvc = False
         self.tenant_id = TEST_TENANT_ID
-        self.project_id = TEST_TENANT_ID
 
     @property
     def session(self):
