@@ -90,3 +90,22 @@ have to speficy --provider-network-type vlan in network creation
 command for vlan network type. Currently only vlan network
 type could work as the bridge network. VxLAN network to support L2 networking
 across Neutron will be introduced later.
+
+You can create L2 network for different purposes, and the supported network
+types for different purposes are summarized as follows.
+
+    .. _supported_network_types:
+
+    .. list-table::
+       :header-rows: 1
+
+       * - Networking purpose
+         - Supported
+       * - Local L2 network for instances
+         - VLAN, VxLAN
+       * - Cross Neutron L2 network for instances
+         - VLAN
+       * - Bridge network for routers
+         - VLAN
+       * - External network
+         - VLAN
