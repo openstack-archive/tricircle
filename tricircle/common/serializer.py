@@ -14,7 +14,7 @@
 # limitations under the License.
 import six
 
-from oslo_messaging import Serializer
+from oslo_messaging import serializer
 
 ATTR_NOT_SPECIFIED = object()
 
@@ -31,7 +31,7 @@ _SINGLETON_MAPPING = Mapping({
 })
 
 
-class TricircleSerializer(Serializer):
+class TricircleSerializer(serializer.Serializer):
     def __init__(self, base=None):
         super(TricircleSerializer, self).__init__()
         self._base = base

@@ -32,10 +32,10 @@ from tricircle.common import rpc
 from tricircle.common import version
 
 
-from tricircle.common.serializer import TricircleSerializer as Serializer
+from tricircle.common import serializer as t_serializer
 
 from tricircle.common import topics
-from tricircle.xjob.xmanager import XManager
+from tricircle.xjob import xmanager as t_xmanager
 
 
 _TIMER_INTERVAL = 30
@@ -231,7 +231,7 @@ def create_service():
 
     LOG.debug(_('create xjob server'))
 
-    xmanager = XManager()
+    xmanager = t_xmanager.XManager()
     xservice = XService(
         host=CONF.host,
         binary="xjob",
@@ -240,7 +240,7 @@ def create_service():
         periodic_enable=True,
         report_interval=_TIMER_INTERVAL,
         periodic_interval_max=_TIMER_INTERVAL_MAX,
-        serializer=Serializer()
+        serializer=t_serializer.TricircleSerializer()
     )
 
     xservice.start()

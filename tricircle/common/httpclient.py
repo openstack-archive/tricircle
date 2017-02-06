@@ -15,8 +15,7 @@
 
 from six.moves.urllib import parse as urlparse
 
-from requests import Request
-from requests import Session
+import requests
 
 from oslo_log import log as logging
 
@@ -141,10 +140,10 @@ def get_pod_service_ctx(context, t_url, region_name, s_type=cons.ST_NEUTRON):
 
 
 def forward_req(context, action, b_headers, b_url, b_body):
-    s = Session()
-    req = Request(action, b_url,
-                  data=b_body,
-                  headers=b_headers)
+    s = requests.Session()
+    req = requests.Request(action, b_url,
+                           data=b_body,
+                           headers=b_headers)
     prepped = req.prepare()
 
     # do something with prepped.body
