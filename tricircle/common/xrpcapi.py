@@ -111,6 +111,7 @@ class XJobAPI(object):
 
     def update_subnet(self, ctxt, subnet_id, pod_id):
         combine_id = '%s#%s' % (pod_id, subnet_id)
+        db_api.new_job(ctxt, constants.JT_SUBNET_UPDATE, combine_id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, 'update_subnet',
             payload={constants.JT_SUBNET_UPDATE: combine_id})
