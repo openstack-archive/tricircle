@@ -841,7 +841,7 @@ You can verify that in RegionTwo.
     | b8a6b83a-cc8f-4335-894c-ef71e7504ee1 | 10.0.2.3         | 163.3.125.4         | 6b0fe2e0-a236-40db-bcbf-2f31f7124d83 |
     +--------------------------------------+------------------+---------------------+--------------------------------------+
 
-Instance1 can ping intance2 through the IP address in the net3, and vice versa.
+Instance1 can ping instance2 through the IP address in the net3, and vice versa.
 
 Note: Not all images will bring up the second nic, so you can ssh into
 instance1 or instance2, use ifconfig -a to check whether all NICs are created,
