@@ -53,5 +53,5 @@ detailed in the LICENSE file.
 * Source: http://git.openstack.org/cgit/openstack/tricircle
 * Bugs: http://bugs.launchpad.net/tricircle
 * Blueprints: https://blueprints.launchpad.net/tricircle
-* Release notes: https://github.com/openstack/tricircle/tree/master/releasenotes/notes
+* Release notes: http://docs.openstack.org/releasenotes/tricircle
 * Contributing: http://docs.openstack.org/developer/tricircle/contributing.html
