@@ -22,13 +22,14 @@ import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
 from neutron.common import utils
+from neutron.extensions import availability_zone as az_ext
 import neutron.extensions.securitygroup as ext_sg
 from neutron.plugins.ml2 import plugin
 
-from tricircle.common import client  # noqa
+from tricircle.common import client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
-from tricircle.common.i18n import _
+from tricircle.common.i18n import _, _LE
 
 from tricircle.common import resource_handle
 import tricircle.common.utils as t_utils
@@ -208,6 +209,12 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                                     {'network': net_body})
         return b_network
 
+    def _is_network_located_in_region(self, t_network, region_name):
+        az_hints = t_network.get(az_ext.AZ_HINTS)
+        if not az_hints:
+            return True
+        return region_name in az_hints
+
     def get_network(self, context, _id, fields=None):
         try:
             b_network = self.core_plugin.get_network(context, _id)
@@ -252,6 +259,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         if self._skip_non_api_query(t_ctx):
             return b_networks
+        t_ctx.auth_token = client.Client.get_admin_token()
         raw_client = self.neutron_handle._get_client(t_ctx)
         params = self._construct_params(filters, sorts, limit, marker,
                                         page_reverse)
@@ -264,6 +272,18 @@ class TricirclePlugin(plugin.Ml2Plugin):
             missing_networks = [network for network in t_networks if (
                 network['id'] in missing_id_set)]
             for network in missing_networks:
+                region_name = cfg.CONF.nova.region_name
+                located = self._is_network_located_in_region(network,
+                                                             region_name)
+                if not located:
+                    LOG.error(_LE('network: %(net_id)s not located in current '
+                                  'region: %(region_name)s, '
+                                  'az_hints: %(az_hints)s'),
+                              {'net_id': network['id'],
+                               'region_name': region_name,
+                               'az_hints': network[az_ext.AZ_HINTS]})
+                    continue
+
                 self._adapt_network_body(network)
                 b_network = self.core_plugin.create_network(
                     context, {'network': network})

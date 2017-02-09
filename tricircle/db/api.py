@@ -16,6 +16,7 @@
 import datetime
 import functools
 import sqlalchemy as sql
+from sqlalchemy import or_
 import time
 
 from oslo_config import cfg
@@ -283,27 +284,26 @@ def get_pod_by_name(context, region_name):
     return None
 
 
-def find_pod_by_az(context, az_name):
-    # if az_name is None or empty, returning None value directly.
-    if az_name is None or az_name == '':
+def find_pods_by_az_or_region(context, az_or_region):
+    # if az_or_region is None or empty, returning None value directly.
+    if not az_or_region:
         return None
+    query = context.session.query(models.Pod)
+    query = query.filter(or_(models.Pod.region_name == az_or_region,
+                             models.Pod.az_name == az_or_region))
 
-    # if the az_name is not empty, first match it with the region_name in the
-    # pod table, if no pod is found, then match it with az_name
-    filters = [{'key': 'region_name',
-                'comparator': 'eq', 'value': az_name}]
-    pods = list_pods(context, filters=filters)
-    if pods:
-        return pods[0]
+    return [obj.to_dict() for obj in query]
 
-    # if no pod with the same region_name is found, then match
-    # it with az_name
-    filters = [{'key': 'az_name',
-                'comparator': 'eq', 'value': az_name}]
-    pods = list_pods(context, filters=filters)
+
+def find_pod_by_az_or_region(context, az_or_region):
+    pods = find_pods_by_az_or_region(context, az_or_region)
+
+    # if pods is None, returning None value directly.
+    if pods is None:
+        return None
     # if no pod is matched, then we will raise an exception
     if len(pods) < 1:
-        raise exceptions.PodNotFound(az_name)
+        raise exceptions.PodNotFound(az_or_region)
     # if the pods list only contain one pod, then this pod will be
     # returned back
     if len(pods) == 1:

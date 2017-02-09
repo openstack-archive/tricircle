@@ -1440,6 +1440,66 @@ class PluginTest(unittest.TestCase,
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
+    def test_convert_az2region_for_nets(self, mock_context):
+        tenant_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        fake_plugin = FakePlugin()
+        neutron_context = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+
+        az_hints = []
+        region_names = []
+        t_net_id, _, _, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        net_filter = {'id': [t_net_id]}
+        top_net = fake_plugin.get_networks(neutron_context, net_filter)
+        six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
+                             region_names)
+
+        az_hints = '["az_name_1", "az_name_2"]'
+        region_names = ['pod_1', 'pod_2']
+        t_net_id, _, _, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        net_filter = {'id': [t_net_id]}
+        top_net = fake_plugin.get_networks(neutron_context, net_filter)
+        six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
+                             region_names)
+
+        az_hints = '["pod_1", "pod_2"]'
+        region_names = ['pod_1', 'pod_2']
+        t_net_id, _, _, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        net_filter = {'id': [t_net_id]}
+        top_net = fake_plugin.get_networks(neutron_context, net_filter)
+        six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
+                             region_names)
+
+        az_hints = '["pod_1", "az_name_2"]'
+        region_names = ['pod_1', 'pod_2']
+        t_net_id, _, _, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        net_filter = {'id': [t_net_id]}
+        top_net = fake_plugin.get_networks(neutron_context, net_filter)
+        six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
+                             region_names)
+
+        pod4 = {'pod_id': 'pod_id_4',
+                'region_name': 'pod_4',
+                'az_name': 'az_name_1'}
+        db_api.create_pod(self.context, pod4)
+        az_hints = '["pod_1", "az_name_1"]'
+        region_names = ['pod_1', 'pod_4']
+        t_net_id, _, _, _ = self._prepare_network_test(
+            tenant_id, t_ctx, 'pod_1', 1, az_hints=az_hints)
+        net_filter = {'id': [t_net_id]}
+        top_net = fake_plugin.get_networks(neutron_context, net_filter)
+        six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
+                             region_names)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
     def test_update_network(self, mock_context):
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
@@ -1716,7 +1776,7 @@ class PluginTest(unittest.TestCase,
 
     @staticmethod
     def _prepare_network_test(tenant_id, ctx, region_name, index,
-                              enable_dhcp=True):
+                              enable_dhcp=True, az_hints=None):
         t_net_id = b_net_id = uuidutils.generate_uuid()
         t_subnet_id = b_subnet_id = uuidutils.generate_uuid()
 
@@ -1728,7 +1788,8 @@ class PluginTest(unittest.TestCase,
             'tenant_id': tenant_id,
             'description': 'description',
             'admin_state_up': False,
-            'shared': False
+            'shared': False,
+            'availability_zone_hints': az_hints
         }
         t_subnet = {
             'id': t_subnet_id,

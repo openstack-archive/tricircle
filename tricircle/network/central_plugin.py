@@ -211,7 +211,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         t_ctx = t_context.get_context_from_neutron_context(context)
         # use the first pod
         az_name = net[az_ext.AZ_HINTS][0]
-        pod = db_api.find_pod_by_az(t_ctx, az_name)
+        pod = db_api.find_pod_by_az_or_region(t_ctx, az_name)
         body = {
             'network': {
                 'name': top_id,
@@ -361,11 +361,32 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.type_manager.extend_network_dict_provider(context, net)
             return net
 
+    def _convert_az2region_for_nets(self, context, nets):
+        for net in nets:
+            self._convert_az2region_for_net(context, net)
+
+    def _convert_az2region_for_net(self, context, net):
+        az_hints = net.get(az_ext.AZ_HINTS)
+        if context.is_admin and az_hints:
+            net[az_ext.AZ_HINTS] = []
+            t_ctx = t_context.get_context_from_neutron_context(context)
+            for az_hint in az_hints:
+                pods = db_api.find_pods_by_az_or_region(t_ctx, az_hint)
+                if not pods:
+                    continue
+                for pod in pods:
+                    region_name = pod['region_name']
+                    if region_name not in net[az_ext.AZ_HINTS]:
+                        net[az_ext.AZ_HINTS].append(region_name)
+
     def get_network(self, context, network_id, fields=None):
         net = super(TricirclePlugin, self).get_network(context, network_id,
                                                        fields)
         if not fields or 'id' in fields:
             self.type_manager.extend_network_dict_provider(context, net)
+
+        self._convert_az2region_for_net(context, net)
+
         return net
 
     def get_networks(self, context, filters=None, fields=None,
@@ -375,6 +396,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                         limit, marker, page_reverse)
         if not fields or 'id' in fields:
             self.type_manager.extend_networks_dict_provider(context, nets)
+
+        self._convert_az2region_for_nets(context, nets)
         return nets
 
     def create_subnet(self, context, subnet):

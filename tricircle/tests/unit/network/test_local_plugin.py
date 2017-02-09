@@ -25,6 +25,7 @@ from oslo_utils import uuidutils
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 
+from tricircle.common import client
 from tricircle.common import constants
 import tricircle.common.context as t_context
 import tricircle.network.local_plugin as plugin
@@ -222,7 +223,7 @@ class PluginTest(unittest.TestCase):
         self.plugin = FakePlugin()
         self.context = FakeContext()
 
-    def _prepare_resource(self):
+    def _prepare_resource(self, az_hints=None):
         network_id = uuidutils.generate_uuid()
         subnet_id = uuidutils.generate_uuid()
         port_id = uuidutils.generate_uuid()
@@ -231,7 +232,8 @@ class PluginTest(unittest.TestCase):
                  'tenant_id': self.tenant_id,
                  'name': 'net1',
                  'provider:network_type': constants.NT_VLAN,
-                 'subnets': [subnet_id]}
+                 'subnets': [subnet_id],
+                 'availability_zone_hints': az_hints}
         t_subnet = {'id': subnet_id,
                     'tenant_id': self.tenant_id,
                     'name': 'subnet1',
@@ -276,6 +278,7 @@ class PluginTest(unittest.TestCase):
     def _validate(self, net, subnet, port):
         b_net = self.plugin.get_network(self.context, net['id'])
         net.pop('provider:network_type')
+        net.pop('availability_zone_hints')
         b_net_type = b_net.pop('provider:network_type')
         b_subnet = get_resource('subnet', False, subnet['id'])
         b_port = get_resource('port', False, port['id'])
@@ -312,14 +315,28 @@ class PluginTest(unittest.TestCase):
         self._validate(t_net, t_subnet, t_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
-    def test_get_networks(self):
+    @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
+    def test_get_networks_invalid_region(self):
         t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
         t_net2, t_subnet2, t_port2, _ = self._prepare_resource()
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
         self.plugin.get_networks(self.context,
                                  {'id': [t_net1['id'], t_net2['id'],
                                          'fake_net_id']})
         self._validate(t_net1, t_subnet1, t_port1)
         self._validate(t_net2, t_subnet2, t_port2)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
+    def test_get_invaild_networks(self):
+        az_hints = ['Pod2', 'Pod3']
+        t_net1, t_subnet1, t_port1, _ = self._prepare_resource(az_hints)
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        net_filter = {
+            'id': [t_net1.get('id')]
+        }
+        nets = self.plugin.get_networks(self.context, net_filter)
+        six.assertCountEqual(self, nets, [])
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port(self):
