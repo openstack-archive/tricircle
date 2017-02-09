@@ -1909,8 +1909,9 @@ class PluginTest(unittest.TestCase,
         bottom_allocation_pools = [{'start': '10.0.1.2', 'end': '10.0.1.2'},
                                    {'start': '10.0.1.10', 'end': '10.0.1.24'},
                                    {'start': '10.0.1.26', 'end': '10.0.1.254'}]
-        self.assertEqual(bottom_subnet['allocation_pools'],
-                         bottom_allocation_pools)
+        six.assertCountEqual(self,
+                             bottom_subnet['allocation_pools'],
+                             bottom_allocation_pools)
         six.assertCountEqual(self,
                              bottom_subnet['host_routes'],
                              body_copy['subnet']['host_routes'])

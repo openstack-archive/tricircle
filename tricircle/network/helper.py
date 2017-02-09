@@ -227,46 +227,81 @@ class NetworkHelper(object):
         return body
 
     @staticmethod
-    def get_bottom_subnet_pools(t_subnet, gateway_ip):
-        """Get bottom subnet allocation pools
+    def _find_ip_range(pool, gateway_ip):
+        ret_pools = []
+        ip_range = netaddr.IPRange(pool['start'], pool['end'])
+        ip_num = len(ip_range)
+        for i, ip in enumerate(ip_range):
+            if gateway_ip == ip:
+                if i > 0:
+                    ret_pools.append({'start': ip_range[0].format(),
+                                      'end': ip_range[i - 1].format()})
+                if i < ip_num - 1:
+                    ret_pools.append(
+                        {'start': ip_range[i + 1].format(),
+                         'end': ip_range[ip_num - 1].format()})
+                return ret_pools
 
-        :param t_subnet: top subnet
-        :param gateway_ip: bottom subnet gateway ip
-        :return: bottom subnet allocation pools
-        """
-        pools = t_subnet['allocation_pools']
-        t_gateway_ip = t_subnet['gateway_ip']
+    @staticmethod
+    def _split_pools_by_bottom_gateway_ip(pools, gateway_ip):
         new_pools = []
         g_ip = netaddr.IPAddress(gateway_ip)
         ip_found = False
-        ip_merged = False
         for pool in pools:
             if ip_found:
                 new_pools.append({'start': pool['start'],
                                   'end': pool['end']})
                 continue
-            ip_range = netaddr.IPRange(pool['start'], pool['end'])
-            if not ip_merged:
-                ip_range, ip_merged = NetworkHelper._merge_ip_range(
-                    ip_range, t_gateway_ip)
-
-            ip_num = len(ip_range)
-            for i, ip in enumerate(ip_range):
-                if g_ip == ip:
-                    ip_found = True
-                    if i > 0:
-                        new_pools.append({'start': ip_range[0].format(),
-                                          'end': ip_range[i - 1].format()})
-                    if i < ip_num - 1:
-                        new_pools.append(
-                            {'start': ip_range[i + 1].format(),
-                             'end': ip_range[ip_num - 1].format()})
-                    break
+            ret_pools = NetworkHelper._find_ip_range(pool, g_ip)
+            if ret_pools:
+                ip_found = True
+                new_pools.extend(ret_pools)
         if not ip_found:
             new_pools.extend(pools)
-        if not ip_merged:
-            new_pools.insert(0, {'start': t_gateway_ip, 'end': t_gateway_ip})
         return new_pools
+
+    @staticmethod
+    def _merge_pools_by_top_gateway_ip(pools, gateway_ip):
+        new_ranges = []
+        merged_set = netaddr.IPSet()
+        for pool in pools:
+            ip_range = netaddr.IPRange(pool['start'], pool['end'])
+            ip_range, ip_merged = NetworkHelper._merge_ip_range(
+                ip_range, gateway_ip)
+            if not ip_merged:
+                new_ranges.append(ip_range)
+            else:
+                # if range1 + gateway_ip is contiguous, range2 + gateway_ip is
+                # contiguous, then range1 + range2 + gateway_ip is contiguous,
+                # so we add them in the same ip set
+                merged_set.add(ip_range)
+        new_pools = []
+        for new_range in new_ranges:
+            new_pools.append({'start': new_range[0].format(),
+                              'end': new_range[len(new_range) - 1].format()})
+        if merged_set:
+            merged_range = merged_set.iprange()
+            new_pools.append(
+                {'start': merged_range[0].format(),
+                 'end': merged_range[len(merged_range) - 1].format()})
+        else:
+            new_pools.append({'start': gateway_ip, 'end': gateway_ip})
+        return new_pools
+
+    @staticmethod
+    def get_bottom_subnet_pools(t_subnet, b_gateway_ip):
+        """Get bottom subnet allocation pools
+
+        :param t_subnet: top subnet
+        :param b_gateway_ip: bottom subnet gateway ip
+        :return: bottom subnet allocation pools
+        """
+        pools = t_subnet['allocation_pools']
+        t_gateway_ip = t_subnet['gateway_ip']
+        new_pools = NetworkHelper._split_pools_by_bottom_gateway_ip(
+            pools, b_gateway_ip)
+        return NetworkHelper._merge_pools_by_top_gateway_ip(new_pools,
+                                                            t_gateway_ip)
 
     @staticmethod
     def get_create_subnet_body(project_id, t_subnet, b_net_id, gateway_ip):

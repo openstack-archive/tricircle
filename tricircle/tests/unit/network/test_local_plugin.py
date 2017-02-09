@@ -302,7 +302,7 @@ class PluginTest(unittest.TestCase):
         b_port.pop('name')
         self.assertDictEqual(net, b_net)
         self.assertDictEqual(subnet, b_subnet)
-        self.assertListEqual(pool_range, b_pool_range)
+        self.assertSetEqual(set(pool_range), set(b_pool_range))
         self.assertEqual('vlan', b_net_type)
         self.assertDictEqual(port, b_port)
 
