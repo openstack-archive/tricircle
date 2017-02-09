@@ -75,7 +75,7 @@ external network. In this guide, the external network is also VLAN type, so the
 local.conf sample is based on VLAN type external network setup. For the resource
 requirements to setup each node, please refer to
 `All-In-One Single Machine <http://docs.openstack.org/developer/devstack/guides/single-machine.html>`_
-for installing DevStack in physical machine and
+for installing DevStack in bare metal server and
 `All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_
 for installing DevStack in virtual machine.
 
@@ -88,7 +88,7 @@ RegionOne,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
-  on how to install DevStack into single VM or physical machine.
+  on how to install DevStack into single VM or bare metal server.
 
 - 2 In DevStack folder, create a file local.conf, and copy the content of
   `local.conf node1 sample <https://github.com/openstack/tricircle/blob/master/devstack/local.conf.node_1.sample>`_
@@ -141,7 +141,7 @@ In pod2 in node2 for OpenStack RegionTwo,
 
 - 1 Install DevStack. Please refer to
   `DevStack document <http://docs.openstack.org/developer/devstack/>`_
-  on how to install DevStack into single VM or physical machine.
+  on how to install DevStack into single VM or bare metal server.
 
 - 2 In DevStack folder, create a file local.conf, and copy the content of
   `local.conf node2 sample <https://github.com/openstack/tricircle/blob/master/devstack/local.conf.node_2.sample>`_

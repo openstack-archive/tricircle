@@ -5,13 +5,13 @@ Single pod installation with DevStack
 Now the Tricircle can be played with all-in-one single pod DevStack. For
 the resource requirement to setup single pod DevStack, please refer
 to `All-In-One Single Machine <http://docs.openstack.org/developer/devstack/guides/single-machine.html>`_ for
-installing DevStack in physical machine
+installing DevStack in bare metal server
 or `All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_ for
 installing DevStack in virtual machine.
 
 - 1 Install DevStack. Please refer to `DevStack document
   <http://docs.openstack.org/developer/devstack/>`_
-  on how to install DevStack into single VM or physcial machine
+  on how to install DevStack into single VM or bare metal server.
 
 - 2 In DevStack folder, create a file local.conf, and copy the content of
   https://github.com/openstack/tricircle/blob/master/devstack/local.conf.sample
