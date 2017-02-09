@@ -219,3 +219,17 @@ class ServerMappingsNotFound(NotFound):
 
 class VolumeMappingsNotFound(NotFound):
     message = _('Volume %(volume_id)s could not be found')
+
+
+class RoutingCreateFail(TricircleException):
+    message = _("Fail to create %s routing entry %(_type)s")
+
+    def __init__(self, _type):
+        super(RoutingCreateFail, self).__init__(_type=_type)
+
+
+class RoutingBindFail(TricircleException):
+    message = _("Fail to bind top and bottom %(_type)s")
+
+    def __init__(self, _type):
+        super(RoutingBindFail, self).__init__(_type=_type)
