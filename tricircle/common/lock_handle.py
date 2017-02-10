@@ -19,6 +19,7 @@ from six.moves import xrange
 
 import oslo_db.exception as db_exc
 
+from tricircle.common import exceptions
 from tricircle.db import core
 from tricircle.db import models
 
@@ -127,9 +128,9 @@ def get_or_create_element(t_ctx, q_ctx,
                                      route['id'], route)
                 break
     if not route:
-        raise Exception('Fail to create %s routing entry' % _type)
+        raise exceptions.RoutingCreateFail(_type)
     if not route['bottom_id']:
-        raise Exception('Fail to bind top and bottom %s' % _type)
+        raise exceptions.RoutingBindFail(_type)
     # NOTE(zhiyuan) Status being ALL_DONE means that the routing entry is
     # complete when we retrieve the resource, so we return False to indicate
     # that we can directly use this resource safely. Status being RES_DONE and
