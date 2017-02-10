@@ -76,3 +76,15 @@ class HelperTest(unittest.TestCase):
                               {'start': '10.0.1.20', 'end': '10.0.1.254'}],
                              body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.5', body['subnet']['gateway_ip'])
+
+        t_subnet['gateway_ip'] = '10.0.1.11'
+        t_subnet['allocation_pools'] = [
+            {'start': '10.0.1.2', 'end': '10.0.1.10'},
+            {'start': '10.0.1.12', 'end': '10.0.1.254'}]
+        body = self.helper.get_create_subnet_body(project_id, t_subnet,
+                                                  b_net_id, '10.0.1.5')
+        six.assertCountEqual(self,
+                             [{'start': '10.0.1.2', 'end': '10.0.1.4'},
+                              {'start': '10.0.1.6', 'end': '10.0.1.254'}],
+                             body['subnet']['allocation_pools'])
+        self.assertEqual('10.0.1.5', body['subnet']['gateway_ip'])
