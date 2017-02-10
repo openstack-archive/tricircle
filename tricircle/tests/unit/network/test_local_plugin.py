@@ -316,9 +316,10 @@ class PluginTest(unittest.TestCase):
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
-    def test_get_networks_invalid_region(self):
+    def test_get_networks(self):
+        az_hints = ['Pod1', 'Pod2']
         t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
-        t_net2, t_subnet2, t_port2, _ = self._prepare_resource()
+        t_net2, t_subnet2, t_port2, _ = self._prepare_resource(az_hints)
         cfg.CONF.set_override('region_name', 'Pod1', 'nova')
         self.plugin.get_networks(self.context,
                                  {'id': [t_net1['id'], t_net2['id'],
