@@ -223,7 +223,7 @@ class PluginTest(unittest.TestCase):
         self.plugin = FakePlugin()
         self.context = FakeContext()
 
-    def _prepare_resource(self, az_hints=None):
+    def _prepare_resource(self, az_hints=None, enable_dhcp=True):
         network_id = uuidutils.generate_uuid()
         subnet_id = uuidutils.generate_uuid()
         port_id = uuidutils.generate_uuid()
@@ -243,7 +243,7 @@ class PluginTest(unittest.TestCase):
                     'ip_version': 4,
                     'allocation_pools': [{'start': '10.0.1.2',
                                           'end': '10.0.1.254'}],
-                    'enable_dhcp': True}
+                    'enable_dhcp': enable_dhcp}
         t_port = {'id': port_id,
                   'tenant_id': self.tenant_id,
                   'admin_state_up': True,
@@ -429,6 +429,20 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_once_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1'}}})
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    def test_update_subnet(self, mock_context):
+        _, t_subnet, t_port, _ = self._prepare_resource(enable_dhcp=False)
+        mock_context.return_value = self.context
+        subnet = {
+            'subnet': {'enable_dhcp': 'True'}
+        }
+        subnet_id = t_subnet['id']
+        port_id = t_port['id']
+        self.plugin.get_subnet(self.context, subnet_id)
+        self.plugin.update_subnet(self.context, subnet_id, subnet)
+        b_port = get_resource('port', False, port_id)
+        self.assertEqual(b_port['device_owner'], 'network:dhcp')
 
     def tearDown(self):
         for res in RES_LIST:
