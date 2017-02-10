@@ -103,7 +103,7 @@ Installation with Central Neutron Server
     cd tricircle
     python cmd/api.py --config-file etc/api.conf
 
-- 7 Configurate the Tricircle Xjob daemon::
+- 7 Configure the Tricircle Xjob daemon::
 
     cd tricircle/etc
     cp xjob.conf.sample xjob.conf
