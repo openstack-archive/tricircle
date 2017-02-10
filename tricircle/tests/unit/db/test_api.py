@@ -17,6 +17,7 @@ from six.moves import xrange
 import unittest
 
 from tricircle.common import context
+from tricircle.common import exceptions
 
 from tricircle.db import api
 from tricircle.db import core
@@ -28,6 +29,15 @@ class APITest(unittest.TestCase):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         self.context = context.Context()
+
+    def _create_pod(self, index, test_az_uuid):
+        pod_body = {'pod_id': 'test_pod_uuid_%d' % index,
+                    'region_name': 'test_pod_%d' % index,
+                    'pod_az_name': 'test_pod_az_name_%d' % index,
+                    'dc_name': 'test_dc_name_%d' % index,
+                    'az_name': test_az_uuid,
+                    }
+        api.create_pod(self.context, pod_body)
 
     def test_get_bottom_mappings_by_top_id(self):
         for i in xrange(3):
@@ -179,6 +189,33 @@ class APITest(unittest.TestCase):
         next_pod = api.get_next_bottom_pod(
             self.context, current_pod_id='test_pod_uuid_4')
         self.assertIsNone(next_pod)
+
+    def test_find_pod_by_az_or_region(self):
+        self._create_pod(0, 'test_az_uuid1')
+        self._create_pod(1, 'test_az_uuid1')
+        self._create_pod(2, 'test_az_uuid2')
+
+        az_region = None
+        pod = api.find_pod_by_az_or_region(self.context, az_region)
+        self.assertIsNone(pod)
+
+        az_region = 'test_pod_3'
+        self.assertRaises(exceptions.PodNotFound,
+                          api.find_pod_by_az_or_region,
+                          self.context, az_region)
+
+        az_region = 'test_pod_0'
+        pod = api.find_pod_by_az_or_region(self.context, az_region)
+        self.assertEqual(pod['region_name'], az_region)
+
+        az_region = 'test_az_uuid2'
+        pod = api.find_pod_by_az_or_region(self.context, az_region)
+        self.assertEqual(pod['az_name'], az_region)
+
+        az_region = 'test_az_uuid1'
+        self.assertRaises(exceptions.InvalidInput,
+                          api.find_pod_by_az_or_region,
+                          self.context, az_region)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

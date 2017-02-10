@@ -311,7 +311,8 @@ def find_pod_by_az_or_region(context, az_or_region):
     # if the pods list contains more than one pod, then we will raise an
     # exception
     if len(pods) > 1:
-        raise Exception('Multiple pods with the same az_name are found')
+        raise exceptions.InvalidInput(
+            reason='Multiple pods with the same az_name are found')
 
 
 def new_job(context, _type, resource_id):
