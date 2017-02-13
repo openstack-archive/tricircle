@@ -94,14 +94,14 @@ Installation with Central Neutron Server
 
     mysql -uroot -p -e "create database tricircle character set utf8;"
     cd tricircle
-    python cmd/manage.py etc/api.conf
+    tricircle-db-manage --config-file etc/api.conf db_sync
 
 - 6 Start the Tricircle administrator API::
 
     sudo mkdir /var/cache/tricircle
     sudo chown $(whoami) /var/cache/tricircle/
     cd tricircle
-    python cmd/api.py --config-file etc/api.conf
+    tricircle-api --config-file etc/api.conf
 
 - 7 Configure the Tricircle Xjob daemon::
 
@@ -133,7 +133,7 @@ Installation with Central Neutron Server
 - 8 Start the Tricircle Xjob daemon::
 
     cd tricircle
-    python cmd/xjob.py --config-file etc/xjob.conf
+    tricircle-xjob --config-file etc/xjob.conf
 
 - 9 Setup central Neutron server
 
