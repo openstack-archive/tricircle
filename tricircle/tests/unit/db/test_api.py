@@ -226,5 +226,18 @@ class APITest(unittest.TestCase):
         self.assertEqual(pod['region_name'], 'test_pod_0')
         self.assertEqual(pod['az_name'], '')
 
+    def test_get_pod_by_region(self):
+        self._create_pod(0, 'test_az_uuid1')
+        self._create_pod(1, 'test_az_uuid1')
+        self._create_pod(2, 'test_az_uuid2')
+
+        region_name = 'test_pod_3'
+        pod = api.get_pod_by_name(self.context, region_name)
+        self.assertIsNone(pod)
+
+        region_name = 'test_pod_0'
+        pod = api.get_pod_by_name(self.context, region_name)
+        self.assertEqual(pod['region_name'], region_name)
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
