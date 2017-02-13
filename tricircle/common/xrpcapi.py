@@ -69,9 +69,6 @@ class XJobAPI(object):
         version_cap = 1.0
         return version_cap
 
-    def test_rpc(self, ctxt, payload):
-        return self.client.call(ctxt, 'test_rpc', payload=payload)
-
     def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
         combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
         db_api.new_job(ctxt, constants.JT_ROUTER_SETUP, combine_id)
