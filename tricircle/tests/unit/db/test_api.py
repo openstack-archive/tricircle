@@ -217,5 +217,14 @@ class APITest(unittest.TestCase):
                           api.find_pod_by_az_or_region,
                           self.context, az_region)
 
+    def test_get_top_pod(self):
+        self._create_pod(0, '')
+        self._create_pod(1, 'test_az_uuid1')
+        self._create_pod(2, 'test_az_uuid2')
+
+        pod = api.get_top_pod(self.context)
+        self.assertEqual(pod['region_name'], 'test_pod_0')
+        self.assertEqual(pod['az_name'], '')
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
