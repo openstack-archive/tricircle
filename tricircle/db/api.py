@@ -179,6 +179,25 @@ def delete_pre_created_resource_mapping(context, name):
                                  entries[0]['id'])
 
 
+def get_pod_by_top_id(context, _id):
+    """Get pod resource from pod table by top id of resource
+
+    :param context: context object
+    :param _id: the top id of resource
+    :returns: pod resource
+    """
+    route_filters = [{'key': 'top_id', 'comparator': 'eq', 'value': _id}]
+    with context.session.begin():
+        routes = core.query_resource(
+            context, models.ResourceRouting, route_filters, [])
+        if not routes or len(routes) != 1:
+            return None
+        route = routes[0]
+        if not route['bottom_id']:
+            return None
+        return core.get_resource(context, models.Pod, route['pod_id'])
+
+
 def get_bottom_id_by_top_id_region_name(context, top_id,
                                         region_name, resource_type):
     """Get resource bottom id by top id and bottom pod name

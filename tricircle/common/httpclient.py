@@ -22,7 +22,6 @@ from oslo_log import log as logging
 from tricircle.common import client
 from tricircle.common import constants as cons
 from tricircle.common.i18n import _LE
-from tricircle.common import utils
 from tricircle.db import api as db_api
 
 
@@ -162,7 +161,7 @@ def get_res_routing_ref(context, _id, t_url, s_type):
     :param s_type: service type
     :returns: service context
     """
-    pod = utils.get_pod_by_top_id(context, _id)
+    pod = db_api.get_pod_by_top_id(context, _id)
 
     if not pod:
         return None
