@@ -43,17 +43,17 @@ class APITest(unittest.TestCase):
         route1 = {
             'top_id': 'top_uuid',
             'pod_id': 'test_pod_uuid_0',
-            'resource_type': 'port'}
+            'resource_type': 'network'}
         route2 = {
             'top_id': 'top_uuid',
             'pod_id': 'test_pod_uuid_1',
-            'bottom_id': 'bottom_uuid_1',
-            'resource_type': 'port'}
+            'bottom_id': 'top_uuid',
+            'resource_type': 'network'}
         route3 = {
-            'top_id': 'top_uuid',
+            'top_id': 'top_uuid2',
             'pod_id': 'test_pod_uuid_2',
             'bottom_id': 'bottom_uuid_2',
-            'resource_type': 'neutron'}
+            'resource_type': 'port'}
 
         routes = [route1, route2, route3]
         with self.context.session.begin():
@@ -68,25 +68,23 @@ class APITest(unittest.TestCase):
         self._create_resource_mappings()
         region_name = 'test_pod_0'
         bottom_id = api.get_bottom_id_by_top_id_region_name(
-            self.context, 'top_uuid', region_name, 'port')
+            self.context, 'top_uuid', region_name, 'network')
         self.assertIsNone(bottom_id)
 
         region_name = 'test_pod_1'
         bottom_id = api.get_bottom_id_by_top_id_region_name(
-            self.context, 'top_uuid', region_name, 'port')
-        self.assertEqual(bottom_id, 'bottom_uuid_1')
+            self.context, 'top_uuid', region_name, 'network')
+        self.assertEqual(bottom_id, 'top_uuid')
 
     def test_get_bottom_mappings_by_top_id(self):
-        for i in xrange(3):
-            pod = {'pod_id': 'test_pod_uuid_%d' % i,
-                   'region_name': 'test_pod_%d' % i,
-                   'az_name': 'test_az_uuid_%d' % i}
-            api.create_pod(self.context, pod)
+        self._create_pod(0, 'test_az_uuid_0')
+        self._create_pod(1, 'test_az_uuid_1')
+        self._create_pod(2, 'test_az_uuid_2')
         self._create_resource_mappings()
         mappings = api.get_bottom_mappings_by_top_id(self.context,
-                                                     'top_uuid', 'port')
+                                                     'top_uuid', 'network')
         self.assertEqual('test_pod_uuid_1', mappings[0][0]['pod_id'])
-        self.assertEqual('bottom_uuid_1', mappings[0][1])
+        self.assertEqual('top_uuid', mappings[0][1])
 
     def test_get_bottom_mappings_by_tenant_pod(self):
         for i in xrange(3):
@@ -257,6 +255,32 @@ class APITest(unittest.TestCase):
         region_name = 'test_pod_0'
         pod = api.get_pod_by_name(self.context, region_name)
         self.assertEqual(pod['region_name'], region_name)
+
+    def test_delete_mappings_by_bottom_id(self):
+        self._create_pod(0, 'test_az_uuid_0')
+        self._create_pod(1, 'test_az_uuid_1')
+        self._create_pod(2, 'test_az_uuid_2')
+        self._create_resource_mappings()
+        bottom_id = 'bottom_uuid_1'
+        api.delete_mappings_by_bottom_id(self.context, bottom_id)
+
+        filters = [{'key': 'bottom_id', 'comparator': 'eq',
+                    'value': bottom_id}]
+        routing = core.query_resource(
+            self.context, models.ResourceRouting, filters, [])
+        self.assertEqual(len(routing), 0)
+
+    def test_delete_mappings_by_top_id(self):
+        self._create_pod(0, 'test_az_uuid_0')
+        self._create_pod(1, 'test_az_uuid_1')
+        self._create_pod(2, 'test_az_uuid_2')
+        self._create_resource_mappings()
+        top_id = 'top_uuid'
+        api.delete_mappings_by_top_id(self.context, top_id)
+
+        mappings = api.get_bottom_mappings_by_top_id(
+            self.context, top_id, 'network')
+        self.assertEqual(len(mappings), 0)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
