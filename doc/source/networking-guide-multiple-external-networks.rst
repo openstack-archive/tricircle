@@ -463,7 +463,7 @@ You can also check that in RegionOne.
 
 Create network topology in RegionTwo.
 
-Create external network ext-net1, which will be located in RegionTwo.
+Create external network ext-net2, which will be located in RegionTwo.
 
 .. code-block:: console
 
@@ -486,7 +486,7 @@ Create external network ext-net1, which will be located in RegionTwo.
     | tenant_id                 | 532890c765604609a8d2ef6fc8e5f6ef     |
     +---------------------------+--------------------------------------+
 
-Create subnet in ext-net1.
+Create subnet in ext-net2.
 
 .. code-block:: console
 
