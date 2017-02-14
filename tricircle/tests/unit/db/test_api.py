@@ -39,12 +39,7 @@ class APITest(unittest.TestCase):
                     }
         api.create_pod(self.context, pod_body)
 
-    def test_get_bottom_mappings_by_top_id(self):
-        for i in xrange(3):
-            pod = {'pod_id': 'test_pod_uuid_%d' % i,
-                   'region_name': 'test_pod_%d' % i,
-                   'az_name': 'test_az_uuid_%d' % i}
-            api.create_pod(self.context, pod)
+    def _create_resource_mappings(self):
         route1 = {
             'top_id': 'top_uuid',
             'pod_id': 'test_pod_uuid_0',
@@ -59,11 +54,35 @@ class APITest(unittest.TestCase):
             'pod_id': 'test_pod_uuid_2',
             'bottom_id': 'bottom_uuid_2',
             'resource_type': 'neutron'}
+
         routes = [route1, route2, route3]
         with self.context.session.begin():
             for route in routes:
                 core.create_resource(
                     self.context, models.ResourceRouting, route)
+
+    def test_get_bottom_id_by_top_id_region_name(self):
+        self._create_pod(0, 'test_az_uuid_0')
+        self._create_pod(1, 'test_az_uuid_1')
+        self._create_pod(2, 'test_az_uuid_2')
+        self._create_resource_mappings()
+        region_name = 'test_pod_0'
+        bottom_id = api.get_bottom_id_by_top_id_region_name(
+            self.context, 'top_uuid', region_name, 'port')
+        self.assertIsNone(bottom_id)
+
+        region_name = 'test_pod_1'
+        bottom_id = api.get_bottom_id_by_top_id_region_name(
+            self.context, 'top_uuid', region_name, 'port')
+        self.assertEqual(bottom_id, 'bottom_uuid_1')
+
+    def test_get_bottom_mappings_by_top_id(self):
+        for i in xrange(3):
+            pod = {'pod_id': 'test_pod_uuid_%d' % i,
+                   'region_name': 'test_pod_%d' % i,
+                   'az_name': 'test_az_uuid_%d' % i}
+            api.create_pod(self.context, pod)
+        self._create_resource_mappings()
         mappings = api.get_bottom_mappings_by_top_id(self.context,
                                                      'top_uuid', 'port')
         self.assertEqual('test_pod_uuid_1', mappings[0][0]['pod_id'])
