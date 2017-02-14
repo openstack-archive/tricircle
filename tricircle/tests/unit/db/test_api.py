@@ -282,5 +282,19 @@ class APITest(unittest.TestCase):
             self.context, top_id, 'network')
         self.assertEqual(len(mappings), 0)
 
+    def test_update_pod(self):
+        self._create_pod(0, 'test_az_uuid_0')
+        pod_body = {
+            'region_name': 'test_pod_1',
+            'pod_az_name': 'test_pod_az_name_1',
+            'dc_name': 'test_dc_name_1',
+            'az_name': 'test_az_uuid_1'}
+
+        updated_pod = api.update_pod(self.context, 'test_pod_uuid_0', pod_body)
+        self.assertEqual(updated_pod['region_name'], 'test_pod_1')
+        self.assertEqual(updated_pod['pod_az_name'], 'test_pod_az_name_1')
+        self.assertEqual(updated_pod['dc_name'], 'test_dc_name_1')
+        self.assertEqual(updated_pod['az_name'], 'test_az_uuid_1')
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
