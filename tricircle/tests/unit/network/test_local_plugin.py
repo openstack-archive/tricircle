@@ -354,6 +354,14 @@ class PluginTest(unittest.TestCase):
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port_ip_specified(self):
         t_net, t_subnet, t_port, t_sg = self._prepare_resource()
+
+        port_body = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': [{'subnet_id': t_subnet['id']}]}
+        }
+        self.assertRaises(q_exceptions.InvalidIpForNetwork,
+                          self.plugin.create_port, self.context, port_body)
+
         port_body = {
             'port': {'network_id': t_net['id'],
                      'fixed_ips': [{'ip_address': '10.0.1.4'}]}
