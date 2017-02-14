@@ -50,6 +50,7 @@ features:
     * Show security group details
     * List security group rules
     * Create security group rule
+    * Delete security group rule
 
   - |
     Note for Networking
