@@ -21,6 +21,8 @@ import mock
 from mock import patch
 from oslo_config import cfg
 
+import keystoneclient.v3.client as k_client
+
 from tricircle.common import client
 from tricircle.common import context
 from tricircle.common import exceptions
@@ -34,10 +36,35 @@ FAKE_RESOURCE = 'fake_res'
 FAKE_SITE_ID = 'fake_pod_id'
 FAKE_SITE_NAME = 'fake_region_name'
 FAKE_SERVICE_ID = 'fake_service_id'
+FAKE_SERVICE_NAME = 'fake_service_name'
 FAKE_TYPE = 'fake_type'
 FAKE_URL = 'http://127.0.0.1:12345'
 FAKE_URL_INVALID = 'http://127.0.0.1:23456'
 FAKE_RESOURCES = [{'name': 'res1'}, {'name': 'res2'}]
+
+
+class _List(object):
+    def __init__(self, eles):
+        self.eles = eles
+
+    def list(self):
+        return self.eles
+
+
+class _Dict(object):
+    def __init__(self, ele):
+        self.ele = ele
+
+    def to_dict(self):
+        return self.ele
+
+
+class FakeKeystoneClient(object):
+    def __init__(self, **kwargs):
+        _services = kwargs['services']
+        _endpoints = kwargs['endpoints']
+        self.services = _List([_Dict(_service) for _service in _services])
+        self.endpoints = _List([_Dict(_endpoint) for _endpoint in _endpoints])
 
 
 class FakeException(Exception):
@@ -210,6 +237,17 @@ class ClientTest(unittest.TestCase):
                           self.client.create_resources,
                           FAKE_RESOURCE, self.context, [])
 
+    def test_list_endpoint_not_found(self):
+        cfg.CONF.set_override(name='auto_refresh_endpoint', override=False,
+                              group='client')
+        # delete the configuration so endpoint cannot be found
+        api.delete_cached_endpoints(self.context, FAKE_SERVICE_ID)
+
+        # list returns empty list when endpoint not found
+        resources = self.client.list_resources(
+            FAKE_RESOURCE, self.context, [])
+        self.assertEqual(resources, [])
+
     def test_list_endpoint_not_found_retry(self):
         cfg.CONF.set_override(name='auto_refresh_endpoint', override=True,
                               group='client')
@@ -218,10 +256,16 @@ class ClientTest(unittest.TestCase):
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
+
+        self.client._get_endpoint_from_keystone.return_value = {}
+        resources = self.client.list_resources(
+            FAKE_RESOURCE, self.context, [])
+        # retry but endpoint still not found
+        self.assertEqual(resources, [])
+
         self.client._get_endpoint_from_keystone.return_value = {
             FAKE_SITE_NAME: {FAKE_TYPE: FAKE_URL}
         }
-
         resources = self.client.list_resources(
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
@@ -251,13 +295,39 @@ class ClientTest(unittest.TestCase):
 
         self.client._get_admin_token = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
+        self.client._get_endpoint_from_keystone.return_value = {}
+        # retry but still endpoint not updated
+        self.assertRaises(exceptions.EndpointNotAvailable,
+                          self.client.list_resources,
+                          FAKE_RESOURCE, self.context, [])
+
         self.client._get_endpoint_from_keystone.return_value = {
             FAKE_SITE_NAME: {FAKE_TYPE: FAKE_URL}
         }
-
         resources = self.client.list_resources(
             FAKE_RESOURCE, self.context, [])
         self.assertEqual(resources, [{'name': 'res1'}, {'name': 'res2'}])
+
+    @patch.object(k_client, 'Client')
+    def test_get_endpoint_from_keystone(self, mock_client):
+        services = [{'id': FAKE_SERVICE_ID,
+                     'name': FAKE_SERVICE_NAME},
+                    {'id': 'another_fake_service_id',
+                     'name': 'another_fake_service_name'}]
+        endpoints = [{'interface': 'public',
+                      'region': FAKE_SITE_NAME,
+                      'service_id': FAKE_SERVICE_ID,
+                      'url': FAKE_URL},
+                     {'interface': 'admin',
+                      'region': FAKE_SITE_NAME,
+                      'service_id': FAKE_SERVICE_ID,
+                      'url': FAKE_URL_INVALID}]
+        mock_client.return_value = FakeKeystoneClient(services=services,
+                                                      endpoints=endpoints)
+        endpoint_map = self.client._get_endpoint_from_keystone(self.context)
+        # only public endpoint is saved
+        self.assertEqual(endpoint_map,
+                         {FAKE_SITE_NAME: {FAKE_SERVICE_NAME: FAKE_URL}})
 
     @patch.object(uuid, 'uuid4')
     @patch.object(api, 'create_cached_endpoints')
