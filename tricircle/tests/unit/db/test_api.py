@@ -256,6 +256,19 @@ class APITest(unittest.TestCase):
         pod = api.get_pod_by_name(self.context, region_name)
         self.assertEqual(pod['region_name'], region_name)
 
+    def test_get_pod(self):
+        self._create_pod(0, 'test_az_uuid1')
+        self._create_pod(1, 'test_az_uuid1')
+        self._create_pod(2, 'test_az_uuid2')
+
+        pod_id = 'test_pod_uuid_0'
+        pod = api.get_pod(self.context, pod_id)
+        self.assertEqual(pod['pod_id'], pod_id)
+
+        pod_id = 'test_pod_uuid_3'
+        self.assertRaises(
+            exceptions.ResourceNotFound, api.get_pod, self.context, pod_id)
+
     def test_delete_mappings_by_bottom_id(self):
         self._create_pod(0, 'test_az_uuid_0')
         self._create_pod(1, 'test_az_uuid_1')
