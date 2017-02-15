@@ -60,6 +60,8 @@ function init_local_neutron_conf {
     iniset $NEUTRON_CONF DEFAULT core_plugin tricircle.network.local_plugin.TricirclePlugin
     iniset $NEUTRON_CONF DEFAULT service_plugins tricircle.network.local_l3_plugin.TricircleL3Plugin
 
+    iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST:5000/v3
+    iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST:35357/v3
     iniset $NEUTRON_CONF client admin_username admin
     iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
     iniset $NEUTRON_CONF client admin_tenant demo
@@ -89,10 +91,8 @@ function init_local_neutron_variables {
 
         local vlan_mapping="bridge:$TRICIRCLE_DEFAULT_VLAN_BRIDGE"
         local ext_mapping="extern:$TRICIRCLE_DEFAULT_EXT_BRIDGE"
-        OVS_BRIDGE_MAPPINGS=$vlan_mapping
-        if [ "$TRICIRCLE_START_SERVICES" == "False" ]; then
-            OVS_BRIDGE_MAPPINGS=$vlan_mapping,$ext_mapping
-        fi
+        OVS_BRIDGE_MAPPINGS=$vlan_mapping,$ext_mapping
+
     fi
 }
 
