@@ -183,6 +183,53 @@ class APITest(unittest.TestCase):
         self.assertEqual(routings['top_uuid_3']['top_id'], 'top_uuid_3')
         self.assertEqual(routings['top_uuid_3']['bottom_id'], 'top_uuid_3')
 
+    def test_get_pod_by_top_id(self):
+        self._create_pod(1, 'test_az_uuid1')
+        self._create_pod(2, 'test_az_uuid2')
+        routes = [
+            {
+                'top_id': 'top_uuid_1',
+                'bottom_id': 'bottom_uuid_1',
+                'pod_id': 'test_pod_uuid_1',
+                'project_id': 'test_project_uuid_1',
+                'resource_type': 'port'
+            },
+            {
+                'top_id': 'top_uuid_2',
+                'bottom_id': 'bottom_uuid_2-1',
+                'pod_id': 'test_pod_uuid_1',
+                'project_id': 'test_project_uuid_1',
+                'resource_type': 'network'
+            },
+            {
+                'top_id': 'top_uuid_2',
+                'bottom_id': 'bottom_uuid_2-2',
+                'pod_id': 'test_pod_uuid_2',
+                'project_id': 'test_project_uuid_1',
+                'resource_type': 'network'
+            },
+            {
+                'top_id': 'top_uuid_3',
+                'bottom_id': '',
+                'pod_id': 'test_pod_uuid_1',
+                'project_id': 'test_project_uuid_1',
+                'resource_type': 'port'
+            }
+        ]
+
+        with self.context.session.begin():
+            for route in routes:
+                core.create_resource(
+                    self.context, models.ResourceRouting, route)
+        pod = api.get_pod_by_top_id(self.context, 'top_uuid_1')
+        self.assertEqual(pod['pod_id'], 'test_pod_uuid_1')
+        pod = api.get_pod_by_top_id(self.context, 'top_uuid_2')
+        # more than one routing entries found, method returns None
+        self.assertIsNone(pod)
+        pod = api.get_pod_by_top_id(self.context, 'top_uuid_3')
+        # bottom_id is empty, method returns None
+        self.assertIsNone(pod)
+
     def test_get_next_bottom_pod(self):
         next_pod = api.get_next_bottom_pod(self.context)
         self.assertIsNone(next_pod)

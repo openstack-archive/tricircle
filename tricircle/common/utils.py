@@ -22,7 +22,6 @@ from oslo_utils import uuidutils
 from tricircle.common import constants as cons
 import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
-import tricircle.db.api as db_api
 
 
 def get_import_path(cls):
@@ -166,19 +165,3 @@ def format_nova_error(code, message, error_type=None):
 
 def format_cinder_error(code, message, error_type=None):
     return format_error(code, message, error_type)
-
-
-def get_pod_by_top_id(context, _id):
-    """Get pod resource from pod table .
-
-    :param _id: the top id of resource
-    :returns: pod resource
-    """
-    mappings = db_api.get_bottom_mappings_by_top_id(
-        context, _id,
-        cons.RT_VOLUME)
-
-    if not mappings or len(mappings) != 1:
-        return None
-
-    return mappings[0][0]
