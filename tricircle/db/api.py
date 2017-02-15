@@ -64,11 +64,6 @@ def update_pod(context, pod_id, update_dict):
         return core.update_resource(context, models.Pod, pod_id, update_dict)
 
 
-def get_pod_by_pod_id(context, pod_id):
-    with context.session.begin():
-        return core.get_resource(context, models.Pod, pod_id)
-
-
 def create_cached_endpoints(context, config_dict):
     with context.session.begin():
         return core.create_resource(context, models.CachedEndpoint,
