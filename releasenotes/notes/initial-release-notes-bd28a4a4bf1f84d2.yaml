@@ -1,6 +1,6 @@
 ---
 prelude: >
-    The Tricircle is a dedicated project for networking automation across
+    The Tricircle is to provide networking automation across
     Neutron in OpenStack multi-region deployment.
 features:
   - |
@@ -62,9 +62,20 @@ features:
       Neutron L2 networking and the bridge network for L3 networking.
     * Pagination and sort are not supported at the same time for list
       operation.
-    * For security group rule, remote group not supported yet. Use IP
+    * For security group rule, remote group is not supported yet. Use IP
       prefix to create security group rule.
-    * Need to specify the region name as the availability zone hint for
+    * One availability zone can include more than one region through
+      Tricircle pod management.
+    * Availability zone or region name for availability zone hint can be
+      specified during network creation, that means this network will be
+      presented in the specified list of availability zone or region. If no
+      availability zone hint is specified and the network is not Local
+      Network, then the network can be spread into all regions. For Local
+      Network without availability zone hint specified in creation, then
+      the network will only be presented in the first region where the
+      resource(VM, baremetal or container) is booted and plugged into this
+      network.
+    * Need to specify one region name as the availability zone hint for
       external network creation, that means the external network will
       be located in the specified region.
 issues:
