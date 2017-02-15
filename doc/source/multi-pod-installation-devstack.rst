@@ -204,6 +204,19 @@ In pod2 in node2 for OpenStack RegionTwo,
 
 - 6 After DevStack successfully starts, the setup is finished.
 
+.. note:: In the newest version of codes, we may fail to boot an instance in
+   node2. The reason is that Apache configuration file of Nova placement API
+   doesn't grant access right to the placement API bin folder. You can use
+   "screen -r" to check placement API is working well or not. If placement API
+   is in stuck status, manually update "/etc/apache2/sites-enabled/placement-api.conf"
+   placement API configuration file in node2 to add the following section::
+
+       <Directory /usr/local/bin>
+           Require all granted
+       </Directory>
+
+   After update, restart Apache service first, and then placement API.
+
 How to play
 ^^^^^^^^^^^
 
