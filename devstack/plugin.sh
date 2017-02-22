@@ -19,9 +19,9 @@ function create_tricircle_accounts {
         local tricircle_api=$(get_or_create_service "tricircle" \
             "tricircle" "Cross Neutron Networking Automation Service")
 
-        local tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST/tricircle"
+        local tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST/tricircle/v1.0"
         if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "False" ]]; then
-            tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/"
+            tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0/"
         fi
 
         get_or_create_endpoint $tricircle_api \
@@ -269,6 +269,17 @@ function start_central_neutron_server {
     run_process q-svc$server_index "$NEUTRON_BIN_DIR/neutron-server --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE"
 }
 
+# install_tricircleclient() - Collect source and prepare
+function install_tricircleclient {
+    if use_library_from_git "python-tricircleclient"; then
+        git_clone_by_name "python-tricircleclient"
+        setup_dev_lib "python-tricircleclient"
+    else
+        pip_install_gr tricircleclient
+    fi
+}
+
+
 # if the plugin is enabled to run, that means the Tricircle is enabled
 # by default, so no need to judge the variable Q_ENABLE_TRICIRCLE
 
@@ -283,6 +294,7 @@ elif [[ "$1" == "stack" && "$2" == "install" ]]; then
 elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 
     echo_summary "Configuring Tricircle"
+    install_tricircleclient
     export NEUTRON_CREATE_INITIAL_NETWORKS=False
     sudo install -d -o $STACK_USER -m 755 $TRICIRCLE_CONF_DIR
 
