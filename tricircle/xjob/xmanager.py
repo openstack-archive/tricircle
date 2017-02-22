@@ -311,30 +311,33 @@ class XManager(PeriodicTasks):
         _, b_router_id = self.helper.prepare_bottom_element(
             ctx, project_id, b_pod, t_router, constants.RT_ROUTER, router_body)
 
-        # create top bridge port
         q_ctx = None  # no need to pass neutron context when using client
-        t_bridge_port_id = self.helper.get_bridge_interface(
-            ctx, q_ctx, project_id, t_pod, t_bridge_net['id'], b_router_id)
+        is_local_router = self.helper.is_local_router(ctx, t_router)
+        if not is_local_router:
+            # create top bridge port
+            t_bridge_port_id = self.helper.get_bridge_interface(
+                ctx, q_ctx, project_id, t_pod, t_bridge_net['id'], b_router_id)
 
-        # create bottom bridge port
-        # if target bottom pod is hosting real external network, we create
-        # another bottom router and attach the bridge network as internal
-        # network, but this work is done by central plugin when user sets
-        # router gateway.
-        t_bridge_port = t_client.get_ports(ctx, t_bridge_port_id)
-        (is_new, b_bridge_port_id, b_bridge_subnet_id,
-         b_bridge_net_id) = self.helper.get_bottom_bridge_elements(
-            ctx, project_id, b_pod, t_bridge_net, True, t_bridge_subnet, None)
+            # create bottom bridge port
+            # if target bottom pod is hosting real external network, we create
+            # another bottom router and attach the bridge network as internal
+            # network, but this work is done by central plugin when user sets
+            # router gateway.
+            t_bridge_port = t_client.get_ports(ctx, t_bridge_port_id)
+            (is_new, b_bridge_port_id, b_bridge_subnet_id,
+             b_bridge_net_id) = self.helper.get_bottom_bridge_elements(
+                ctx, project_id, b_pod, t_bridge_net,
+                True, t_bridge_subnet, None)
 
-        # we attach the bridge port as router gateway
-        # add_gateway is update operation, which can run multiple times
-        gateway_ip = t_bridge_port['fixed_ips'][0]['ip_address']
-        b_client.action_routers(
-            ctx, 'add_gateway', b_router_id,
-            {'network_id': b_bridge_net_id,
-             'enable_snat': False,
-             'external_fixed_ips': [{'subnet_id': b_bridge_subnet_id,
-                                     'ip_address': gateway_ip}]})
+            # we attach the bridge port as router gateway
+            # add_gateway is update operation, which can run multiple times
+            gateway_ip = t_bridge_port['fixed_ips'][0]['ip_address']
+            b_client.action_routers(
+                ctx, 'add_gateway', b_router_id,
+                {'network_id': b_bridge_net_id,
+                 'enable_snat': False,
+                 'external_fixed_ips': [{'subnet_id': b_bridge_subnet_id,
+                                         'ip_address': gateway_ip}]})
 
         # attach internal port to bottom router
         t_ports = self._get_router_interfaces(t_client, ctx, t_router['id'],
@@ -521,13 +524,17 @@ class XManager(PeriodicTasks):
         project_id = t_router['tenant_id']
 
         b_pod = db_api.get_pod(ctx, b_pod_id)
-
-        t_bridge_net_name = constants.bridge_net_name % project_id
-        t_bridge_subnet_name = constants.bridge_subnet_name % project_id
-        t_bridge_net = self._get_resource_by_name(t_client, ctx, 'network',
-                                                  t_bridge_net_name)
-        t_bridge_subnet = self._get_resource_by_name(
-            t_client, ctx, 'subnet', t_bridge_subnet_name)
+        is_local_router = self.helper.is_local_router(ctx, t_router)
+        if is_local_router:
+            t_bridge_net = None
+            t_bridge_subnet = None
+        else:
+            t_bridge_net_name = constants.bridge_net_name % project_id
+            t_bridge_subnet_name = constants.bridge_subnet_name % project_id
+            t_bridge_net = self._get_resource_by_name(t_client, ctx, 'network',
+                                                      t_bridge_net_name)
+            t_bridge_subnet = self._get_resource_by_name(
+                t_client, ctx, 'subnet', t_bridge_subnet_name)
 
         ext_nets = t_client.list_networks(ctx,
                                           filters=[{'key': 'router:external',
@@ -542,11 +549,12 @@ class XManager(PeriodicTasks):
             is_ext_net_pod = True
         else:
             is_ext_net_pod = False
-        self._setup_router_one_pod(ctx, t_pod, b_pod, t_client, t_net,
-                                   t_router, t_bridge_net,
-                                   t_bridge_subnet, is_ext_net_pod)
 
-        self.xjob_handler.configure_extra_routes(ctx, t_router_id)
+        self._setup_router_one_pod(
+            ctx, t_pod, b_pod, t_client, t_net, t_router, t_bridge_net,
+            t_bridge_subnet, is_ext_net_pod)
+        if not is_local_router:
+            self.xjob_handler.configure_extra_routes(ctx, t_router_id)
 
     @_job_handle(constants.JT_ROUTER)
     def configure_extra_routes(self, ctx, payload):

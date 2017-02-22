@@ -23,6 +23,10 @@ import oslo_log.helpers as log_helpers
 from oslo_log import log
 
 from neutron.api.v2 import attributes
+from neutron.callbacks import events
+from neutron.callbacks import registry
+from neutron.callbacks import resources
+from neutron.db.availability_zone import router as router_az
 from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
@@ -30,7 +34,6 @@ from neutron.db import extradhcpopt_db
 # NOTE(zhiyuan) though not used, this import cannot be removed because Router
 # relies on one table defined in l3_agentschedulers_db
 from neutron.db import l3_agentschedulers_db  # noqa
-from neutron.db import l3_attrs_db
 from neutron.db import l3_db
 from neutron.db import l3_dvr_db
 # import l3_hamode_db to load l3_ha option
@@ -112,7 +115,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                       portbindings_db.PortBindingMixin,
                       extradhcpopt_db.ExtraDhcpOptMixin,
                       l3_db.L3_NAT_dbonly_mixin,
-                      l3_attrs_db.ExtraAttributesMixin):
+                      router_az.RouterAvailabilityZoneMixin):
 
     __native_bulk_support = True
     __native_pagination_support = True
@@ -131,7 +134,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                    "provider",
                                    "network_availability_zone",
                                    "dvr",
-                                   "router"]
+                                   "router",
+                                   "router_availability_zone"]
+
+    def __new__(cls, *args, **kwargs):
+        n = super(TricirclePlugin, cls).__new__(cls, *args, **kwargs)
+        registry.subscribe(n._set_distributed_flag,
+                           resources.ROUTER, events.PRECOMMIT_CREATE)
+        return n
 
     def __init__(self):
         super(TricirclePlugin, self).__init__()
@@ -160,12 +170,23 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
         # return self.conn.consume_in_threads()
 
+    def _set_distributed_flag(self, resource, event, trigger, context,
+                              router, router_db, **kwargs):
+        """Event handler to set distributed flag on creation."""
+        dist = l3_dvr_db.is_distributed_router(router)
+        router['distributed'] = dist
+        self.set_extra_attr_value(context, router_db, 'distributed', dist)
+
+    def validate_availability_zones(self, context, resource_type,
+                                    availability_zones):
+        self._validate_availability_zones(context, availability_zones)
+
     @staticmethod
     def _validate_availability_zones(context, az_list):
         if not az_list:
             return
         t_ctx = t_context.get_context_from_neutron_context(context)
-        with context.session.begin():
+        with context.session.begin(subtransactions=True):
             pods = core.query_resource(t_ctx, models.Pod, [], [])
             az_set = set(az_list)
 
@@ -368,16 +389,18 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _convert_az2region_for_net(self, context, net):
         az_hints = net.get(az_ext.AZ_HINTS)
         if context.is_admin and az_hints:
-            net[az_ext.AZ_HINTS] = []
             t_ctx = t_context.get_context_from_neutron_context(context)
-            for az_hint in az_hints:
-                pods = db_api.find_pods_by_az_or_region(t_ctx, az_hint)
-                if not pods:
-                    continue
-                for pod in pods:
-                    region_name = pod['region_name']
-                    if region_name not in net[az_ext.AZ_HINTS]:
-                        net[az_ext.AZ_HINTS].append(region_name)
+            net[az_ext.AZ_HINTS] = self._convert_az2region(t_ctx, az_hints)
+
+    def _convert_az2region(self, t_ctx, az_hints):
+        region_names = set()
+        for az_hint in az_hints:
+            pods = db_api.find_pods_by_az_or_region(t_ctx, az_hint)
+            if not pods:
+                continue
+            for pod in pods:
+                region_names.add(pod['region_name'])
+        return list(region_names)
 
     def get_network(self, context, network_id, fields=None):
         net = super(TricirclePlugin, self).get_network(context, network_id,
@@ -1068,12 +1091,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         with context.session.begin(subtransactions=True):
             router_db = super(TricirclePlugin, self).create_router(
                 context, router)
-            router_db['extra_attributes'] = None
-            dist = l3_dvr_db.is_distributed_router(router['router'])
-            self.set_extra_attr_value(context, router_db, 'distributed', dist)
-            router_db['distributed'] = router_db[
-                'extra_attributes'].distributed
-            return router_db
+
+        return router_db
 
     def _delete_top_bridge_resource(self, t_ctx, q_ctx, resource_type,
                                     resource_id, resource_name):
@@ -1132,25 +1151,32 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         t_ctx = t_context.get_context_from_neutron_context(context)
         mappings = db_api.get_bottom_mappings_by_top_id(t_ctx, _id,
                                                         t_constants.RT_ROUTER)
+        is_local_router = self.helper.is_local_router(t_ctx, router)
         for pod, b_router_id in mappings:
             b_client = self._get_client(pod['region_name'])
-            bridge_port_name = t_constants.bridge_port_name % (project_id,
-                                                               b_router_id)
-            bridge_ports = super(TricirclePlugin, self).get_ports(
-                context, {'name': [bridge_port_name]})
-            if bridge_ports:
-                t_ns_port_id = bridge_ports[0]['id']
-                b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
-                self._delete_top_bridge_port(t_ctx, context, t_ns_port_id,
-                                             bridge_port_name)
+            if not is_local_router:
+                bridge_port_name = t_constants.bridge_port_name % (project_id,
+                                                                   b_router_id)
+                bridge_ports = super(TricirclePlugin, self).get_ports(
+                    context, {'name': [bridge_port_name]})
+                if bridge_ports:
+                    t_ns_port_id = bridge_ports[0]['id']
+                    b_client.action_routers(t_ctx, 'remove_gateway',
+                                            b_router_id)
+                    self._delete_top_bridge_port(t_ctx, context, t_ns_port_id,
+                                                 bridge_port_name)
             b_client.delete_routers(t_ctx, b_router_id)
             db_api.delete_mappings_by_bottom_id(t_ctx, b_router_id)
+
+        if is_local_router:
+            super(TricirclePlugin, self).delete_router(context, _id)
+            return
 
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, _id, t_constants.RT_NS_ROUTER)
         for pod, b_ns_router_id in mappings:
             b_client = self._get_client(pod['region_name'])
-            bridge_subnet_name = t_constants.bridge_subnet_name % project_id
+            bridge_subnet_name = (t_constants.bridge_subnet_name % project_id)
             bridge_subnets = super(TricirclePlugin,
                                    self).get_subnets(
                 context, {'name': [bridge_subnet_name]})
@@ -1267,14 +1293,20 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return self.helper.get_bottom_bridge_elements(
             t_ctx, project_id, pod, t_net, is_external, t_subnet, t_port)
 
-    def _get_net_pods_by_interface_info(self, t_ctx, q_ctx, add_by_port,
-                                        interface_info):
+    def _get_net_id_by_interface_info(self, q_ctx, add_by_port,
+                                      interface_info):
         if add_by_port:
             port = self.get_port(q_ctx, interface_info['port_id'])
             net_id = port['network_id']
         else:
             subnet = self.get_subnet(q_ctx, interface_info['subnet_id'])
             net_id = subnet['network_id']
+        return net_id
+
+    def _get_net_pods_by_interface_info(self, t_ctx, q_ctx, add_by_port,
+                                        interface_info):
+        net_id = self._get_net_id_by_interface_info(q_ctx, add_by_port,
+                                                    interface_info)
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, net_id, t_constants.RT_NETWORK)
         return net_id, [mapping[0] for mapping in mappings]
@@ -1305,6 +1337,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # network ID from resource routing table.
         if not network.get(az_ext.AZ_HINTS):
             raise t_exceptions.ExternalNetPodNotSpecify()
+
+        t_router = self._get_router(context, router_id)
+        self.validate_router_net_location_match(t_ctx, t_router, network)
+        is_local_router = self.helper.is_local_router(t_ctx, t_router)
+
         region_name = network[az_ext.AZ_HINTS][0]
         pod = db_api.get_pod_by_name(t_ctx, region_name)
         b_net_id = db_api.get_bottom_id_by_top_id_region_name(
@@ -1312,16 +1349,25 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         # create corresponding bottom router in the pod where external network
         # is located.
-        t_router = self._get_router(context, router_id)
+        if is_local_router:
+            # if router is a local router, we will use RT_ROUTER to attach
+            # external network, else use RT_NS_ROUTER
+            router_type = t_constants.RT_ROUTER
+            is_distributed = t_router.get('distributed', False)
+            body = {'router': {'name': t_router['id'],
+                               'distributed': is_distributed}}
 
-        # TODO(zhiyuan) decide router is distributed or not from pod table
-        # currently "distributed" is set to False, should add a metadata field
-        # to pod table, and decide distributed or not from the metadata later
-        body = {'router': {'name': t_constants.ns_router_name % router_id,
-                           'distributed': False}}
+        else:
+            # TODO(zhiyuan) decide router is distributed or not from pod table
+            # currently "distributed" is set to False, should add a metadata
+            # field to pod table, and decide distributed or not from the
+            # metadata later
+            router_type = t_constants.RT_NS_ROUTER
+            body = {'router': {'name': t_constants.ns_router_name % router_id,
+                               'distributed': False}}
+
         _, b_router_id = self._prepare_bottom_element(
-            t_ctx, t_router['tenant_id'], pod, t_router,
-            t_constants.RT_NS_ROUTER, body)
+            t_ctx, t_router['tenant_id'], pod, t_router, router_type, body)
 
         # both router and external network in bottom pod are ready, attach
         # external network to router in bottom pod.
@@ -1341,6 +1387,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                   'ip_address': ip['ip_address']})
             b_info['external_fixed_ips'] = fixed_ips
         b_client.action_routers(t_ctx, 'add_gateway', b_router_id, b_info)
+
+        if is_local_router:
+            return
 
         # when internal network(providing fixed ip) and external network
         # (providing floating ip) are in different bottom pods, we utilize a
@@ -1391,8 +1440,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             raise t_exceptions.ExternalNetPodNotSpecify()
 
         region_name = t_network[az_ext.AZ_HINTS][0]
+        is_local_router = self.helper.is_local_router(t_ctx, t_router)
+
         b_router_id = db_api.get_bottom_id_by_top_id_region_name(
-            t_ctx, router_id, region_name, t_constants.RT_NS_ROUTER)
+            t_ctx, router_id, region_name,
+            t_constants.RT_ROUTER if is_local_router
+            else t_constants.RT_NS_ROUTER)
+
         b_client = self._get_client(region_name)
         b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
 
@@ -1430,10 +1484,36 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self._remove_router_gateway(context, router_id)
             ret = super(TricirclePlugin, self).update_router(
                 context, router_id, router)
-
         t_ctx = t_context.get_context_from_neutron_context(context)
-        self.xjob_handler.configure_extra_routes(t_ctx, router_id)
+        is_local_router = self.helper.is_local_router(t_ctx, router)
+        if not is_local_router:
+            self.xjob_handler.configure_extra_routes(t_ctx, router_id)
         return ret
+
+    def validate_router_net_location_match(self, t_ctx, router, net):
+        router_az_hints = self.helper.get_router_az_hints(router)
+        if not router_az_hints:
+            return
+        router_region_names = self._convert_az2region(t_ctx, router_az_hints)
+        router_region_set = set(router_region_names)
+
+        net_az_hints = net.get(az_ext.AZ_HINTS)
+        if not net_az_hints:
+            raise t_exceptions.RouterNetworkLocationMismatch(
+                router_az_hints=router_region_names,
+                net_az_hints=['All Region'])
+
+        # net_az_hints already convert to region name when user is admin
+        if t_ctx.is_admin:
+            net_region_names = net_az_hints
+        else:
+            net_region_names = self._convert_az2region(t_ctx, net_az_hints)
+        net_region_set = set(net_region_names)
+        diff = net_region_set - router_region_set
+        if diff:
+            raise t_exceptions.RouterNetworkLocationMismatch(
+                router_az_hints=router_region_names,
+                net_az_hints=net_region_names)
 
     def add_router_interface(self, context, router_id, interface_info):
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -1441,19 +1521,26 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         router = self._get_router(context, router_id)
         project_id = router['tenant_id']
         add_by_port, _ = self._validate_interface_info(interface_info)
+        net_id = self._get_net_id_by_interface_info(
+            context, add_by_port, interface_info)
+        net = self.get_network(context, net_id)
+        self.validate_router_net_location_match(t_ctx, router, net)
+        is_local_router = self.helper.is_local_router(t_ctx, router)
 
         t_pod = db_api.get_top_pod(t_ctx)
         assert t_pod
 
-        # bridge network for E-W and N-S networking
-        pool_id = self._get_bridge_subnet_pool_id(
-            t_ctx, context, None, t_pod)
-        self._get_bridge_network_subnet(
-            t_ctx, context, project_id, t_pod, pool_id)
+        if not is_local_router:
+            # for single external network, need bridge network for
+            # E-W and N-S networking
+            pool_id = self._get_bridge_subnet_pool_id(
+                t_ctx, context, None, t_pod)
+            self._get_bridge_network_subnet(
+                t_ctx, context, project_id, t_pod, pool_id)
 
         return_info = super(TricirclePlugin, self).add_router_interface(
             context, router_id, interface_info)
-        net_id, b_pods = self._get_net_pods_by_interface_info(
+        _, b_pods = self._get_net_pods_by_interface_info(
             t_ctx, context, add_by_port, interface_info)
         if not b_pods:
             LOG.debug('Add router interface: no interfaces found, xjob not'

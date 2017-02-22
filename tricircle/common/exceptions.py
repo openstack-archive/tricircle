@@ -19,9 +19,12 @@ Tricircle base exception handling.
 
 import six
 
+from neutron_lib import exceptions
 from oslo_log import log as logging
+
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
+
 
 LOG = logging.getLogger(__name__)
 
@@ -233,3 +236,12 @@ class RoutingBindFail(TricircleException):
 
     def __init__(self, _type):
         super(RoutingBindFail, self).__init__(_type=_type)
+
+
+class RouterNetworkLocationMismatch(exceptions.InvalidInput):
+    message = _("router located in %(router_az_hint)s, but network located "
+                "in %(net_az_hints)s, location mismatch.")
+
+    def __init__(self, router_az_hints, net_az_hints):
+        super(RouterNetworkLocationMismatch, self).__init__(
+            router_az_hint=router_az_hints, net_az_hints=net_az_hints)
