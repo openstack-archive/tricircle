@@ -101,7 +101,7 @@ enough to use call method to invoke it. Here is the proposed flow::
       |              |                    |                  |                |           |    |              |
       |              |                    |                  |                |           |    |              |
       |              |                    |                  |                |           +---->              |
-      |              |                    |                  |                |                |              |                                                                         |              |
+      |              |                    |                  |                |                |              |
       |              |                    |                  |                |                |              |
       +              +                    +                  +                +                +              +
 
@@ -110,7 +110,7 @@ work. **Job Queue** is an eventlet queue [4]_ used to coordinate **Handle
 Worker** who produces job entries and **Loop Worker** who consumes job entries.
 While accessing an empty queue, **Loop Worker** will be blocked until some job
 entries are put into the queue. **Loop Worker** retrieves job entries from the
-job queue then start to run it. Similar to the original flow, since multiple
+job queue then starts to run it. Similar to the original flow, since multiple
 workers may get the same type of job for the same resource at the same time,
 workers need to obtain the lock before it can run the job. One problem occurs
 whenever XJob daemon stops before it finishes all the jobs in the job queue;
@@ -120,7 +120,7 @@ jobs which have been registered for a certain time but haven't been started.
 So both failed jobs and "orphan" new jobs can be picked up and redone.
 
 You can see that **Handle Worker** doesn't do many works, it just consumes RPC
-messages, register jobs then put job items in the job queue. So one extreme
+messages, registers jobs then puts job items in the job queue. So one extreme
 solution here, will be to register new jobs in the API server side and start
 worker threads to retrieve jobs from the database and run them. In this way, we
 can remove all the RPC processes and use database to coordinate. The drawback
