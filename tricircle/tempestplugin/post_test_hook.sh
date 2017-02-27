@@ -22,20 +22,35 @@ export TRICIRCLE_TEMPEST_PLUGIN_DIR=$TRICIRCLE_DIR/tricircle/tempestplugin
 export TEMPEST_DIR=$DEST/tempest
 export TEMPEST_CONF=$TEMPEST_DIR/etc/tempest.conf
 
+# execute test only in the primary node(i.e, RegionOne)
+if [ "$OS_REGION_NAME" -ne "RegionOne" ]; then
+    return 0
+fi
+
+PRIMARY_NODE_IP=$(cat /etc/nodepool/primary_node_private)
+
 # use admin role to create Tricircle top Pod and Pod1
 source $DEVSTACK_DIR/openrc admin admin
+unset OS_REGION_NAME
 
-token=$(openstack token issue | awk 'NR==5 {print $4}')
-echo $token
+mytoken=$(openstack --os-region-name=RegionOne token issue | awk 'NR==5 {print $4}')
+echo $mytoken
 
-curl -X POST http://127.0.0.1/tricircle/v1.0/pods \
+curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
     -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne"}}'
+    -H "X-Auth-Token: $mytoken" -d '{"pod": {"region_name":  "CentralRegion"}}'
 
-curl -X POST http://127.0.0.1/tricircle/v1.0/pods \
+curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
     -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" \
-    -d '{"pod": {"region_name":  "Pod1", "az_name": "az1"}}'
+    -H "X-Auth-Token: $mytoken" \
+    -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
+
+if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then
+    curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
+        -H "Content-Type: application/json" \
+        -H "X-Auth-Token: $mytoken" \
+        -d '{"pod": {"region_name":  "RegionTwo", "az_name": "az2"}}'
+fi
 
 # the usage of "nova flavor-create":
 # nova flavor-create [--ephemeral <ephemeral>] [--swap <swap>]
@@ -44,7 +59,7 @@ curl -X POST http://127.0.0.1/tricircle/v1.0/pods \
 # the following command is to create a flavor with name='test',
 # id=1, ram=1024MB, disk=10GB, vcpu=1
 # nova flavor-create test 1 1024 10 1
-image_id=$(openstack image list | awk 'NR==4 {print $2}')
+image_id=$(openstack --os-region-name=RegionOne image list | awk 'NR==4 {print $2}')
 
 # preparation for the tests
 cd $TEMPEST_DIR
