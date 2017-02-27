@@ -197,6 +197,22 @@ class RoutingController(rest.RestController):
                 return utils.format_api_error(
                     400, _('There is no such resource type'))
 
+        # the pod with new pod_id should exist in pod table
+        if 'pod_id' in update_dict:
+            new_pod_id = update_dict.get('pod_id')
+            try:
+                # find the pod through the pod_id and verify whether it exists
+                db_api.get_pod(context, new_pod_id)
+            except t_exc.ResourceNotFound:
+                return utils.format_api_error(
+                    400, _("The pod %(new_pod_id)s doesn't"
+                           " exist") % {'new_pod_id': new_pod_id})
+            except Exception as e:
+                LOG.exception(_LE('Failed to update resource routing: '
+                                  '%(exception)s '), {'exception': e})
+                return utils.format_api_error(
+                    500, _('Failed to update resource routing'))
+
         try:
             routing_updated = db_api.update_resource_routing(
                 context, _id, update_dict)

@@ -391,5 +391,14 @@ class RoutingControllerTest(unittest.TestCase):
         res = self.controller.put(-123, **body_update1)
         self._validate_error_code(res, 404)
 
+        # failure case, the pod where the new pod_id lays on
+        # should exist in pod table
+
+        # a variable used for later test
+        new_pod_id = uuidutils.generate_uuid()
+        body_update6 = {'routing': {'pod_id': new_pod_id}}
+        res = self.controller.put(id, **body_update6)
+        self._validate_error_code(res, 400)
+
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
