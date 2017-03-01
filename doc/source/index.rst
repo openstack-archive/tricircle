@@ -18,6 +18,7 @@ Contents
    installation-guide
    configuration
    networking-guide
+   vlan-aware-vms-guide
    api_v1
    contributing
 

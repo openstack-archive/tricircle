@@ -22,9 +22,11 @@ import unittest
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
+from neutron.services.trunk import exceptions as t_exc
 from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
+from neutron_lib.plugins import directory
 
 from tricircle.common import client
 from tricircle.common import constants
@@ -37,19 +39,21 @@ TOP_NETS = []
 TOP_SUBNETS = []
 TOP_PORTS = []
 TOP_SGS = []
+TOP_TRUNKS = []
 BOTTOM_NETS = []
 BOTTOM_SUBNETS = []
 BOTTOM_PORTS = []
 BOTTOM_SGS = []
 BOTTOM_AGENTS = []
-RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS,
+RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS, TOP_TRUNKS,
             BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS, BOTTOM_SGS,
             BOTTOM_AGENTS]
 RES_MAP = {'network': {True: TOP_NETS, False: BOTTOM_NETS},
            'subnet': {True: TOP_SUBNETS, False: BOTTOM_SUBNETS},
            'port': {True: TOP_PORTS, False: BOTTOM_PORTS},
            'security_group': {True: TOP_SGS, False: BOTTOM_SGS},
-           'agent': {True: [], False: BOTTOM_AGENTS}}
+           'agent': {True: [], False: BOTTOM_AGENTS},
+           'trunk': {True: TOP_TRUNKS, False: []}}
 
 
 def create_resource(_type, is_top, body):
@@ -160,6 +164,24 @@ class FakeContext(object):
         self.session = FakeSession()
         self.auth_token = 'token'
         self.project_id = ''
+        self.request_id = 'abcdefg'
+
+
+def fake_get_trunk_plugin(trunk):
+    return FakeTrunkPlugin()
+
+
+class FakeTrunkPlugin(object):
+
+    def get_trunk(self, context, trunk_id, fields=None):
+        raise t_exc.TrunkNotFound(trunk_id=trunk_id)
+
+    def get_trunks(self, context, filters=None, fields=None,
+                   sorts=None, limit=None, marker=None, page_reverse=False):
+        return []
+
+    def create_trunk(self, context, trunk):
+        pass
 
 
 class FakeClient(object):
@@ -224,11 +246,19 @@ class FakeNeutronHandle(object):
     def handle_update(self, context, _type, _id, body):
         pass
 
+    def handle_list(self, cxt, resource, filters):
+        if resource == 'trunk':
+            for trunk in TOP_TRUNKS:
+                if trunk['port_id'] == filters[0]['value']:
+                    return [trunk]
+        return []
+
 
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.core_plugin = FakeCorePlugin()
         self.neutron_handle = FakeNeutronHandle()
+        self.on_trunk_create = {}
 
 
 class PluginTest(unittest.TestCase):
@@ -469,6 +499,7 @@ class PluginTest(unittest.TestCase):
         # "agent" extension and body contains tunnel ip
         mock_agent.assert_has_calls([mock.call(self.context, agent_state)])
 
+    @patch.object(FakePlugin, '_ensure_trunk', new=mock.Mock)
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_port(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
@@ -477,6 +508,35 @@ class PluginTest(unittest.TestCase):
         t_port = self.plugin.get_port(self.context, t_vm_port['id'])
         b_port = get_resource('port', False, t_port['id'])
         self.assertDictEqual(t_port, b_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(plugin.TricirclePlugin, '_handle_security_group',
+                  new=mock.Mock)
+    @patch.object(directory, 'get_plugin', new=fake_get_trunk_plugin)
+    @patch.object(FakeTrunkPlugin, 'create_trunk')
+    def test_get_port_trunk(self, mock_create_trunk):
+        _, _, parent_port, _ = self._prepare_resource()
+        _, _, subport, _ = self._prepare_resource()
+        t_trunk_id = uuidutils.generate_uuid()
+        parent_port['trunk_details'] = {'trunk_id': t_trunk_id,
+                                        'sub_ports': [
+                                            {"segmentation_type": "vlan",
+                                             "port_id": subport['id'],
+                                             "segmentation_id": 100}]}
+        t_trunk = {
+            'id': t_trunk_id,
+            'name': 'top_trunk_1',
+            'status': 'DOWN',
+            'description': 'created',
+            'admin_state_up': True,
+            'port_id': parent_port['id'],
+            'sub_ports': []
+        }
+        TOP_TRUNKS.append(t_trunk)
+
+        self.plugin.get_port(self.context, parent_port['id'])
+        mock_create_trunk.assert_called_once_with(self.context,
+                                                  {'trunk': t_trunk})
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_ports(self):
@@ -571,7 +631,7 @@ class PluginTest(unittest.TestCase):
                                           'host': 'fake_host',
                                           'device': 'compute:None'}}})
 
-        cfg.CONF.set_override('l2gw_tunnel_ip', '', 'tricircle')
+        cfg.CONF.set_override('l2gw_tunnel_ip', None, 'tricircle')
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
         self.plugin.update_port(self.context, port_id, update_body)
         # l2gw mode, but l2 gateway tunnel ip is not configured

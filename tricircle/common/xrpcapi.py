@@ -121,3 +121,8 @@ class XJobAPI(object):
             ctxt, project_id,
             constants.job_handles[constants.JT_SHADOW_PORT_SETUP],
             constants.JT_SHADOW_PORT_SETUP, '%s#%s' % (pod_id, net_id))
+
+    def sync_trunk(self, t_ctx, project_id, trunk_id, pod_id):
+        self.invoke_method(
+            t_ctx, project_id, constants.job_handles[constants.JT_TRUNK_SYNC],
+            constants.JT_TRUNK_SYNC, '%s#%s' % (pod_id, trunk_id))

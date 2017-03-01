@@ -1305,6 +1305,12 @@ def fake_filter_non_model_columns(data, model):
     return data
 
 
+class FakeTrunkPlugin(object):
+
+    def get_trunk_subports(self, context, filters):
+        return None
+
+
 class PluginTest(unittest.TestCase,
                  test_security_groups.TricircleSecurityGroupTestMixin):
     def setUp(self):
@@ -1345,6 +1351,8 @@ class PluginTest(unittest.TestCase,
                 DotDict({'vxlan_vni': vxlan, 'allocated': False}))
 
         def fake_get_plugin(alias=q_constants.CORE):
+            if alias == 'trunk':
+                return FakeTrunkPlugin()
             return FakePlugin()
         from neutron_lib.plugins import directory
         directory.get_plugin = fake_get_plugin
@@ -2053,7 +2061,8 @@ class PluginTest(unittest.TestCase,
                            'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
             'mac_address': 'fa:16:3e:d4:%02x:%02x' % (index, ip_suffix),
             'security_groups': [],
-            'tenant_id': project_id
+            'tenant_id': project_id,
+            'project_id': project_id
         }
         t_port.update(extra_attrs)
         # resource ids in top and bottom pod are the same
@@ -2066,7 +2075,8 @@ class PluginTest(unittest.TestCase,
                            'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
             'mac_address': 'fa:16:3e:d4:%02x:%02x' % (index, ip_suffix),
             'security_groups': [],
-            'tenant_id': project_id
+            'tenant_id': project_id,
+            'project_id': project_id
         }
         b_port.update(extra_attrs)
         TOP_PORTS.append(DotDict(t_port))
@@ -2430,7 +2440,6 @@ class PluginTest(unittest.TestCase,
             self.assertEqual(bottom_port['binding:host_id'], 'zhiyuan-5')
 
     @patch.object(FakeRPCAPI, 'setup_shadow_ports')
-    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
