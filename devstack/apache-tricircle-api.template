@@ -1,0 +1,39 @@
+# apache configuration template for tricircle-api
+
+Listen %PUBLICPORT%
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\" %D(us)" tricircle_combined
+
+<Directory %TRICIRCLE_BIN%>
+    Require all granted
+</Directory>
+<VirtualHost *:%PUBLICPORT%>
+    WSGIDaemonProcess tricircle-api processes=%APIWORKERS% threads=1 user=%USER% display-name=%{GROUP} %VIRTUALENV%
+    WSGIProcessGroup tricircle-api
+    WSGIScriptAlias / %PUBLICWSGI%
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+      ErrorLogFormat "%M"
+    </IfVersion>
+    ErrorLog /var/log/%APACHE_NAME%/tricircle-api.log
+    CustomLog /var/log/%APACHE_NAME%/tricircle_access.log tricircle_combined
+    %SSLENGINE%
+    %SSLCERTFILE%
+    %SSLKEYFILE%
+</VirtualHost>
+
+%SSLLISTEN%<VirtualHost *:443>
+%SSLLISTEN%    %SSLENGINE%
+%SSLLISTEN%    %SSLCERTFILE%
+%SSLLISTEN%    %SSLKEYFILE%
+%SSLLISTEN%</VirtualHost>
+
+Alias /tricircle %PUBLICWSGI%
+<Location /tricircle>
+    SetHandler wsgi-script
+    Options +ExecCGI
+
+    WSGIProcessGroup tricircle-api
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+</Location>

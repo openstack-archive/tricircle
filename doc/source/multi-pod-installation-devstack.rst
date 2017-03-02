@@ -265,13 +265,13 @@ How to play
 - 5 Create pod instances for the Tricircle to manage the mapping between
   availability zones and OpenStack instances, "$token" is obtained in step 4 ::
 
-    curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
       -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "CentralRegion"}}'
 
-    curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
       -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
 
-    curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
       -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionTwo", "az_name": "az2"}}'
 
   Pay attention to "region_name" parameter we specify when creating pod. Pod name

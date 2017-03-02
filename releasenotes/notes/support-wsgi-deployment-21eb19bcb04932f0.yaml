@@ -1,0 +1,6 @@
+---
+prelude: >
+    Tricircle Admin API now supports WSGI deployment. The endpoint of
+    Tricircle Admin API could be accessed via the format of
+    http://host/tricircle, and no need to expose special port, thus
+    reduce the risk of port management.

@@ -67,10 +67,10 @@ installing DevStack in virtual machine.
   availability zone and OpenStack instances, the "$token" is obtained in the
   step 7::
 
-      curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+      curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
           -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "CentralRegion"}}'
 
-      curl -X POST http://127.0.0.1:19999/v1.0/pods -H "Content-Type: application/json" \
+      curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
           -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
 
   Pay attention to "region_name" parameter we specify when creating pod. Pod name

@@ -15,14 +15,20 @@ function is_tricircle_enabled {
 
 function create_tricircle_accounts {
     if [[ "$ENABLED_SERVICES" =~ "t-api" ]]; then
-        create_service_user "tricircle"
+        create_service_user "tricircle" "admin"
         local tricircle_api=$(get_or_create_service "tricircle" \
             "tricircle" "Cross Neutron Networking Automation Service")
+
+        local tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST/tricircle"
+        if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "False" ]]; then
+            tricircle_api_url="$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/"
+        fi
+
         get_or_create_endpoint $tricircle_api \
             "$CENTRAL_REGION_NAME" \
-            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
-            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0" \
-            "$SERVICE_PROTOCOL://$TRICIRCLE_API_HOST:$TRICIRCLE_API_PORT/v1.0"
+            "$tricircle_api_url" \
+            "$tricircle_api_url" \
+            "$tricircle_api_url"
     fi
 }
 
@@ -130,6 +136,68 @@ function configure_tricircle_api {
     fi
 }
 
+# configure_tricircle_api_wsgi() - Set WSGI config files
+function configure_tricircle_api_wsgi {
+    local tricircle_api_apache_conf
+    local venv_path=""
+    local tricircle_bin_dir=""
+    local tricircle_ssl_listen="#"
+
+    tricircle_bin_dir=$(get_python_exec_prefix)
+    tricircle_api_apache_conf=$(apache_site_config_for tricircle-api)
+
+    if is_ssl_enabled_service "tricircle-api"; then
+        tricircle_ssl_listen=""
+        tricircle_ssl="SSLEngine On"
+        tricircle_certfile="SSLCertificateFile $TRICIRCLE_SSL_CERT"
+        tricircle_keyfile="SSLCertificateKeyFile $TRICIRCLE_SSL_KEY"
+    fi
+
+    # configure venv bin if VENV is used
+    if [[ ${USE_VENV} = True ]]; then
+        venv_path="python-path=${PROJECT_VENV["tricircle"]}/lib/$(python_version)/site-packages"
+        tricircle_bin_dir=${PROJECT_VENV["tricircle"]}/bin
+    fi
+
+    sudo cp $TRICIRCLE_API_APACHE_TEMPLATE $tricircle_api_apache_conf
+    sudo sed -e "
+        s|%PUBLICPORT%|$TRICIRCLE_API_PORT|g;
+        s|%APACHE_NAME%|$APACHE_NAME|g;
+        s|%PUBLICWSGI%|$tricircle_bin_dir/tricircle-api-wsgi|g;
+        s|%SSLENGINE%|$tricircle_ssl|g;
+        s|%SSLCERTFILE%|$tricircle_certfile|g;
+        s|%SSLKEYFILE%|$tricircle_keyfile|g;
+        s|%SSLLISTEN%|$tricircle_ssl_listen|g;
+        s|%USER%|$STACK_USER|g;
+        s|%VIRTUALENV%|$venv_path|g
+        s|%APIWORKERS%|$API_WORKERS|g
+    " -i $tricircle_api_apache_conf
+}
+
+# start_tricircle_api_wsgi() - Start the API processes ahead of other things
+function start_tricircle_api_wsgi {
+    enable_apache_site tricircle-api
+    restart_apache_server
+    tail_log tricircle-api /var/log/$APACHE_NAME/tricircle-api.log
+
+    echo "Waiting for tricircle-api to start..."
+    if ! wait_for_service $SERVICE_TIMEOUT $TRICIRCLE_API_PROTOCOL://$TRICIRCLE_API_HOST/tricircle; then
+        die $LINENO "tricircle-api did not start"
+    fi
+}
+
+# stop_tricircle_api_wsgi() - Disable the api service and stop it.
+function stop_tricircle_api_wsgi {
+    disable_apache_site tricircle-api
+    restart_apache_server
+}
+
+# cleanup_tricircle_api_wsgi() - Remove residual data files, anything left over from previous
+# runs that a clean run would need to clean up
+function cleanup_tricircle_api_wsgi {
+    sudo rm -f $(apache_site_config_for tricircle-api)
+}
+
 function configure_tricircle_xjob {
     if is_service_enabled t-job ; then
         echo "Configuring Tricircle xjob"
@@ -214,6 +282,10 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         enable_service t-api t-job
         configure_tricircle_api
         configure_tricircle_xjob
+
+        if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "True" ]]; then
+            configure_tricircle_api_wsgi
+        fi
     fi
 
     echo export PYTHONPATH=\$PYTHONPATH:$TRICIRCLE_DIR >> $RC_DIR/.localrc.auto
@@ -243,12 +315,14 @@ elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
 
         create_tricircle_accounts
 
-        run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
-
+        if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "True" ]]; then
+            start_tricircle_api_wsgi
+        else
+            run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
+        fi
     fi
 
     if is_service_enabled t-job; then
-
         run_process t-job "tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
     fi
 fi
@@ -256,7 +330,12 @@ fi
 if [[ "$1" == "unstack" ]]; then
 
     if is_service_enabled t-api; then
-       stop_process t-api
+        if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "True" ]]; then
+            stop_tricircle_api_wsgi
+            clean_tricircle_api_wsgi
+        else
+            stop_process t-api
+        fi
     fi
 
     if is_service_enabled t-job; then
