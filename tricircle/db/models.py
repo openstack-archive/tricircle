@@ -46,7 +46,7 @@ class CachedEndpoint(core.ModelBase, core.DictBase):
 
     service_id = sql.Column('service_id', sql.String(length=64),
                             primary_key=True)
-    pod_id = sql.Column('pod_id', sql.String(length=64),
+    pod_id = sql.Column('pod_id', sql.String(length=36),
                         sql.ForeignKey('pods.pod_id'),
                         nullable=False)
     service_type = sql.Column('service_type', sql.String(length=64),
@@ -72,7 +72,7 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
                     primary_key=True, autoincrement=True)
     top_id = sql.Column('top_id', sql.String(length=127), nullable=False)
     bottom_id = sql.Column('bottom_id', sql.String(length=36))
-    pod_id = sql.Column('pod_id', sql.String(length=64),
+    pod_id = sql.Column('pod_id', sql.String(length=36),
                         sql.ForeignKey('pods.pod_id'),
                         nullable=False)
     project_id = sql.Column('project_id', sql.String(length=36))
