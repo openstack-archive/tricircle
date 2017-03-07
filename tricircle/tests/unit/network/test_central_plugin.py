@@ -29,12 +29,12 @@ from sqlalchemy.sql import selectable
 
 from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
+import neutron_lib.context as q_context
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.plugins import directory
 
 import neutron.api.v2.attributes as neutron_attributes
 import neutron.conf.common as q_config
-import neutron.context as q_context
 
 from neutron.db import _utils
 from neutron.db import db_base_plugin_common
