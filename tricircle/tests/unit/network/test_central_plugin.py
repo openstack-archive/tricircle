@@ -247,8 +247,12 @@ class DotDict(dict):
                 self[key] = value
 
     def __getattr__(self, item):
-        if item == 'rbac_entries':
-            return []
+        dummy_value_map = {
+            'rbac_entries': [],
+            'segment_host_mapping': []
+        }
+        if item in dummy_value_map:
+            return dummy_value_map[item]
         return self.get(item)
 
     def __copy__(self):
@@ -887,6 +891,12 @@ class FakeSession(object):
         return FakeQuery(RES_MAP[model.__tablename__],
                          model.__tablename__)
 
+    def _extend_standard_attr(self, model_dict):
+        if 'standard_attr' in model_dict:
+            for field in ('resource_type', 'description', 'revision_number',
+                          'created_at', 'updated_at'):
+                model_dict[field] = getattr(model_dict['standard_attr'], field)
+
     def add(self, model_obj):
         if model_obj.__tablename__ not in RES_MAP:
             return
@@ -952,6 +962,8 @@ class FakeSession(object):
                 dnsnameservers = model_dict['address']
                 subnet['dns_nameservers'].append(dnsnameservers)
                 break
+
+        self._extend_standard_attr(model_dict)
 
         RES_MAP[model_obj.__tablename__].append(model_dict)
 
