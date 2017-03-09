@@ -15,8 +15,11 @@
 
 import copy
 import netaddr
+import re
 import six
+from six.moves import xrange
 
+from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
@@ -37,7 +40,6 @@ AZ_HINTS = 'availability_zone_hints'
 EXTERNAL = 'router:external'  # neutron.extensions.external_net.EXTERNAL
 TYPE_VLAN = 'vlan'  # neutron.plugins.common.constants.TYPE_VLAN
 TYPE_VXLAN = 'vxlan'  # neutron.plugins.common.constants.TYPE_VXLAN
-VIF_TYPE_OVS = 'ovs'  # neutron.extensions.portbindings.VIF_TYPE_OVS
 
 OVS_AGENT_DATA_TEMPLATE = {
     'agent_type': None,
@@ -64,7 +66,7 @@ OVS_AGENT_DATA_TEMPLATE = {
         'bridge_mappings': {}}}
 
 VIF_AGENT_TYPE_MAP = {
-    VIF_TYPE_OVS: constants.AGENT_TYPE_OVS}
+    portbindings.VIF_TYPE_OVS: constants.AGENT_TYPE_OVS}
 
 AGENT_DATA_TEMPLATE_MAP = {
     constants.AGENT_TYPE_OVS: OVS_AGENT_DATA_TEMPLATE}
@@ -72,6 +74,8 @@ AGENT_DATA_TEMPLATE_MAP = {
 TUNNEL_IP_HANDLE_MAP = {
     constants.AGENT_TYPE_OVS: lambda agent: agent[
         'configurations']['tunneling_ip']}
+
+MAC_PATTERN = re.compile('([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
 
 
 class NetworkHelper(object):
@@ -584,7 +588,7 @@ class NetworkHelper(object):
                      'ip_address': port['fixed_ips'][0]['ip_address']}
                 ],
                 'mac_address': port['mac_address'],
-                'binding:profile': {},
+                portbindings.PROFILE: {},
                 'device_id': 'reserved_dhcp_port',
                 'device_owner': 'network:dhcp',
             }
@@ -609,7 +613,7 @@ class NetworkHelper(object):
                 'admin_state_up': True,
                 'network_id': t_net_id,
                 'name': t_dhcp_name,
-                'binding:profile': {},
+                portbindings.PROFILE: {},
                 'device_id': 'reserved_dhcp_port',
                 'device_owner': 'network:dhcp',
             }
@@ -791,6 +795,88 @@ class NetworkHelper(object):
         agent_tunnel = profile[t_constants.PROFILE_TUNNEL_IP]
         db_api.ensure_agent_exists(t_ctx, pod['pod_id'], agent_host,
                                    agent_type, agent_tunnel)
+
+    @staticmethod
+    def fill_binding_info(port_body):
+        agent_type = port_body[portbindings.PROFILE]
+        # TODO(zhiyuan) support other agent types
+        if agent_type == constants.AGENT_TYPE_OVS:
+            port_body[portbindings.VIF_DETAILS] = {'port_filter': True,
+                                                   'ovs_hybrid_plug': True}
+            port_body[portbindings.VIF_TYPE] = portbindings.VIF_TYPE_OVS
+            port_body[portbindings.VNIC_TYPE] = portbindings.VNIC_NORMAL
+
+    def _prepare_shadow_ports_with_retry(self, ctx, client, req_create_bodys):
+        create_body_map = dict(
+            [(create_body['mac_address'],
+              create_body) for create_body in req_create_bodys])
+        max_tries = 5
+        conflict_port_ids = []
+        for i in xrange(max_tries):
+            create_bodys = list(create_body_map.values())
+            if not create_bodys:
+                ret_ports = []
+                break
+            try:
+                ret_ports = client.create_ports(ctx, {'ports': create_bodys})
+                break
+            except q_cli_exceptions.MacAddressInUseClient as e:
+                if i == max_tries - 1:
+                    # we fail in the last try, just raise exception
+                    raise
+                match = MAC_PATTERN.search(e.message)
+                if match:
+                    conflict_mac = match.group()
+                    if conflict_mac not in create_body_map:
+                        # rare case, we conflicted with an unrecognized mac
+                        raise
+                    conflict_port = create_body_map.pop(conflict_mac)
+                    conflict_port_ids.append(
+                        conflict_port['name'].split('_')[-1])
+                else:
+                    # the exception no longer contains mac information
+                    raise
+        ret_port_ids = [ret_port['id'] for ret_port in ret_ports]
+        ret_port_ids.extend(conflict_port_ids)
+        return ret_port_ids
+
+    def prepare_shadow_ports(self, ctx, project_id, target_pod, net_id,
+                             port_bodys, agents, max_bulk_size):
+        if not port_bodys:
+            return []
+        full_create_bodys = []
+        for port_body, agent in zip(port_bodys, agents):
+            host = port_body[portbindings.HOST_ID]
+            create_body = {
+                'port': {
+                    'tenant_id': project_id,
+                    'admin_state_up': True,
+                    'name': t_constants.shadow_port_name % port_body['id'],
+                    'network_id': net_id,
+                    'fixed_ips': [{
+                        'ip_address': port_body[
+                            'fixed_ips'][0]['ip_address']}],
+                    'mac_address': port_body['mac_address'],
+                    'device_owner': t_constants.DEVICE_OWNER_SHADOW,
+                    portbindings.HOST_ID: host
+                }
+            }
+            if agent:
+                create_body['port'].update(
+                    {portbindings.PROFILE: {
+                        t_constants.PROFILE_AGENT_TYPE: agent['type'],
+                        t_constants.PROFILE_TUNNEL_IP: agent['tunnel_ip']}})
+            full_create_bodys.append(create_body['port'])
+
+        cursor = 0
+        ret_port_ids = []
+        client = self._get_client(target_pod['region_name'])
+        while cursor < len(full_create_bodys):
+            ret_port_ids.extend(self._prepare_shadow_ports_with_retry(
+                ctx, client,
+                full_create_bodys[cursor: cursor + max_bulk_size]))
+            cursor += max_bulk_size
+        return ret_port_ids
 
     def prepare_shadow_port(self, ctx, project_id, target_pod, net_id,
                             port_body, agent=None):

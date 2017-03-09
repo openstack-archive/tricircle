@@ -57,6 +57,9 @@ LOG = log.getLogger(__name__)
 
 
 class TricirclePlugin(plugin.Ml2Plugin):
+
+    __native_bulk_support = True
+
     def __init__(self):
         super(TricirclePlugin, self).__init__()
         core_plugins_namespace = 'neutron.core_plugins'
@@ -422,6 +425,19 @@ class TricirclePlugin(plugin.Ml2Plugin):
         subnet_id = port['fixed_ips'][0]['subnet_id']
         t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', subnet_id)
         port['fixed_ips'][0]['ip_address'] = t_subnet['gateway_ip']
+
+    def create_port_bulk(self, context, ports):
+        # NOTE(zhiyuan) currently this bulk operation is only for shadow port
+        # creation optimization
+        for port in ports['ports']:
+            port_body = port['port']
+            self._create_shadow_agent(context, port_body)
+            self.get_network(context, port_body['network_id'])
+            port_body['id'] = port_body['name'].split('_')[-1]
+            helper.NetworkHelper.fill_binding_info(port_body)
+            # clear binding profile set by xmanager
+            port_body[portbindings.PROFILE] = {}
+        return self.core_plugin.create_port_bulk(context, ports)
 
     def create_port(self, context, port):
         port_body = port['port']

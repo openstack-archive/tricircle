@@ -131,6 +131,14 @@ class FakeClient(object):
             if res['id'] == _id:
                 res.update(body[resource])
 
+    def create_ports(self, ctx, body):
+        if 'ports' in body:
+            ret = []
+            for port in body['ports']:
+                ret.append(self.create_resources('port', ctx, {'port': port}))
+            return ret
+        return self.create_resources('port', ctx, body)
+
     def list_ports(self, cxt, filters=None):
         return self.list_resources('port', cxt, filters)
 
@@ -535,6 +543,7 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'compute:None',
                              'binding:vif_type': 'ovs',
                              'binding:host_id': 'host1',
+                             'mac_address': 'fa:16:3e:d4:01:03',
                              'fixed_ips': [{'subnet_id': subnet1_id,
                                             'ip_address': '10.0.1.3'}]})
         BOTTOM2_PORT.append({'id': port2_id,
@@ -542,6 +551,7 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'compute:None',
                              'binding:vif_type': 'ovs',
                              'binding:host_id': 'host2',
+                             'mac_address': 'fa:16:3e:d4:01:03',
                              'fixed_ips': [{'subnet_id': subnet1_id,
                                             'ip_address': '10.0.1.4'}]})
         db_api.ensure_agent_exists(

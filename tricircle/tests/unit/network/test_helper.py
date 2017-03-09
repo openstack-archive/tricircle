@@ -13,12 +13,28 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from mock import patch
 import six
 import unittest
 
+import neutronclient.common.exceptions as q_cli_exceptions
 from oslo_utils import uuidutils
 
 from tricircle.network import helper
+
+
+class FakeClient(object):
+    def __init__(self, region_name=None):
+        pass
+
+    def create_ports(self, context, body):
+        for port in body['ports']:
+            index = int(port['name'].split('-')[-1])
+            if index in (1, 3, 6, 7, 8, 14, 19):
+                raise q_cli_exceptions.MacAddressInUseClient(
+                    message='fa:16:3e:d4:01:%02x' % index)
+            port['id'] = port['name'].split('_')[-1]
+        return body['ports']
 
 
 class HelperTest(unittest.TestCase):
@@ -88,3 +104,21 @@ class HelperTest(unittest.TestCase):
                               {'start': '10.0.1.6', 'end': '10.0.1.254'}],
                              body['subnet']['allocation_pools'])
         self.assertEqual('10.0.1.5', body['subnet']['gateway_ip'])
+
+    @patch.object(helper.NetworkHelper, '_get_client', new=FakeClient)
+    def test_prepare_shadow_ports(self):
+        port_bodys = [{
+            'id': 'port-id-%d' % i,
+            'fixed_ips': [{'ip_address': '10.0.1.%d' % i}],
+            'mac_address': 'fa:16:3e:d4:01:%02x' % i,
+            'binding:host_id': 'host1'
+        } for i in range(1, 20)]
+        agents = [{'type': 'Open vSwitch agent',
+                   'tunnel_ip': '192.168.1.101'} for _ in range(1, 20)]
+        # we just want to test the logic, so we pass None for context, a
+        # malformed dict for target_pod
+        ret_port_ids = self.helper.prepare_shadow_ports(
+            None, 'project_id', {'region_name': 'pod1'}, 'net-id-1',
+            port_bodys, agents, 5)
+        req_port_ids = [port['id'] for port in port_bodys]
+        six.assertCountEqual(self, ret_port_ids, req_port_ids)

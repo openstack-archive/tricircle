@@ -733,10 +733,12 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # we use a "delete_server_port" job to delete the local ports.
         if port.get('device_owner') not in NON_VM_PORT_TYPES:
             try:
-                for pod, bottom_port_id in (
-                        self.helper.get_real_shadow_resource_iterator(
-                            t_ctx, t_constants.RT_PORT, port_id)):
-                    self.xjob_handler.delete_server_port(t_ctx, bottom_port_id,
+                # since we don't create resource routing entries for shadow
+                # ports, we traverse pods where the network is located to
+                # delete ports
+                for pod, _id in self.helper.get_real_shadow_resource_iterator(
+                        t_ctx, t_constants.RT_NETWORK, port['network_id']):
+                    self.xjob_handler.delete_server_port(t_ctx, port_id,
                                                          pod['pod_id'])
             except Exception:
                 raise
@@ -1166,13 +1168,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._delete_top_bridge_resource(t_ctx, q_ctx, t_constants.RT_PORT,
                                          bridge_port_id, bridge_port_name)
 
-    def _delete_shadow_bridge_port(self, t_ctx, bridge_port_id):
-        for pod, b_port_id in db_api.get_bottom_mappings_by_top_id(
-                t_ctx, bridge_port_id, t_constants.RT_SD_PORT):
+    def _delete_shadow_bridge_port(self, t_ctx, bridge_port):
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, bridge_port['network_id'], t_constants.RT_NETWORK)
+        for pod, _id in mappings:
             region_name = pod['region_name']
-            self._get_client(region_name).delete_ports(t_ctx, b_port_id)
-            db_api.delete_mappings_by_top_id(t_ctx, bridge_port_id,
-                                             pod_id=pod['pod_id'])
+            self._get_client(region_name).delete_ports(t_ctx,
+                                                       bridge_port['id'])
 
     def delete_router(self, context, _id):
         router = super(TricirclePlugin,
@@ -1197,7 +1199,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if bridge_ports:
                 # we will not create bridge ports for local router, so here no
                 # need to check "is_local_router" again
-                t_bridge_port_id = bridge_ports[0]['id']
+                t_bridge_port = bridge_ports[0]
+                t_bridge_port_id = t_bridge_port['id']
 
                 if not is_ns:
                     b_client.action_routers(t_ctx, 'remove_gateway',
@@ -1215,7 +1218,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                             pass
                         raise
 
-                self._delete_shadow_bridge_port(t_ctx, t_bridge_port_id)
+                self._delete_shadow_bridge_port(t_ctx, t_bridge_port)
                 self._delete_top_bridge_port(t_ctx, context, t_bridge_port_id,
                                              bridge_port_name)
             b_client.delete_routers(t_ctx, b_router_id)

@@ -69,7 +69,9 @@ client_opts = [
                help='cidr pool of the bridge network'),
     cfg.StrOpt('cross_pod_vxlan_mode', default='p2p',
                choices=['p2p', 'l2gw', 'noop'],
-               help='Cross-pod VxLAN networking support mode')
+               help='Cross-pod VxLAN networking support mode'),
+    cfg.IntOpt('max_shadow_port_bulk_size', default=100,
+               help='max bulk size to create shadow ports')
 ]
 client_opt_group = cfg.OptGroup('client')
 cfg.CONF.register_group(client_opt_group)

@@ -429,9 +429,10 @@ class XManager(PeriodicTasks):
                 agent_type = self.helper.get_agent_type_by_vif(
                     b_int_port['binding:vif_type'])
                 agent = db_api.get_agent_by_host_type(ctx, host, agent_type)
-                self.helper.prepare_shadow_port(
+                max_bulk_size = CONF.client.max_shadow_port_bulk_size
+                self.helper.prepare_shadow_ports(
                     ctx, project_id, b_ext_pod, t_int_net_id,
-                    b_int_port, agent)
+                    [b_int_port], [agent], max_bulk_size)
 
                 # create routing entries for shadow network and subnet so we
                 # can easily find them during central network and subnet
@@ -614,7 +615,10 @@ class XManager(PeriodicTasks):
                 if router_id == b_router_id:
                     continue
                 for cidr, ips in six.iteritems(cidr_ips_map):
-                    if cidr in router_ips_map[b_router_id]:
+                    if router_ips_map[b_router_id].get(cidr):
+                        # if the ip list is not empty, meaning that there are
+                        # already vm ports in the pod of b_router, so no need
+                        # to add extra routes
                         continue
                     for ip in ips:
                         route = {'nexthop': router_ew_bridge_ip_map[router_id],
@@ -924,11 +928,13 @@ class XManager(PeriodicTasks):
                                'value': b_net_id},
                               {'key': 'device_owner', 'comparator': 'eq',
                                'value': constants.DEVICE_OWNER_SHADOW},
-                              {'key': 'status', 'comparator': 'eq',
-                               'value': q_constants.PORT_STATUS_ACTIVE},
                               {'key': 'fields', 'comparator': 'eq',
-                               'value': 'id'}])
+                               'value': ['id', 'status']}])
             b_sw_port_ids = set([port['id'] for port in b_sw_ports])
+            if b_pod['pod_id'] == target_pod['pod_id']:
+                b_down_sw_port_ids = set(
+                    [port['id'] for port in b_sw_ports if (
+                        port['status'] == q_constants.PORT_STATUS_DOWN)])
             pod_sw_port_ids_map[b_pod['pod_id']] = b_sw_port_ids
             # port table has (network_id, device_owner) index
             b_ports = b_client.list_ports(
@@ -937,7 +943,7 @@ class XManager(PeriodicTasks):
                               {'key': 'fields', 'comparator': 'eq',
                                'value': ['id', 'binding:vif_type',
                                          'binding:host_id', 'fixed_ips',
-                                         'device_owner']}])
+                                         'device_owner', 'mac_address']}])
             LOG.debug('Shadow ports %s in pod %s %s',
                       b_sw_ports, target_pod_id, run_label)
             LOG.debug('Ports %s in pod %s %s',
@@ -970,6 +976,8 @@ class XManager(PeriodicTasks):
         LOG.debug('Sync pod ids %s %s', sync_pod_list, run_label)
 
         agent_info_map = {}
+        port_bodys = []
+        agents = []
         for port_id in sync_port_ids:
             port_body = port_info_map[port_id]
             host = port_body['binding:host_id']
@@ -989,15 +997,21 @@ class XManager(PeriodicTasks):
                                                    'host': host})
                     continue
                 agent_info_map[key] = agent
+            port_bodys.append(port_body)
+            agents.append(agent)
 
-            sw_port_id = self.helper.prepare_shadow_port(
-                ctx, project_id, target_pod, t_net_id, port_body, agent)
-            # value for key constants.PROFILE_FORCE_UP does not matter
-            update_body = {
-                'port': {
-                    'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}
-                }
+        max_bulk_size = CONF.client.max_shadow_port_bulk_size
+        sw_port_ids = self.helper.prepare_shadow_ports(
+            ctx, project_id, target_pod, t_net_id, port_bodys, agents,
+            max_bulk_size)
+        b_down_sw_port_ids = b_down_sw_port_ids | set(sw_port_ids)
+        # value for key constants.PROFILE_FORCE_UP does not matter
+        update_body = {
+            'port': {
+                'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}
             }
+        }
+        for sw_port_id in b_down_sw_port_ids:
             self._get_client(target_pod['region_name']).update_ports(
                 ctx, sw_port_id, update_body)
 

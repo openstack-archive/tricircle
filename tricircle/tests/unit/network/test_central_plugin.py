@@ -485,6 +485,11 @@ class FakeClient(object):
                 reason=_("updated subnet id not found"))
 
     def create_ports(self, ctx, body):
+        if 'ports' in body:
+            ret = []
+            for port in body['ports']:
+                ret.append(self.create_resources('port', ctx, {'port': port}))
+            return ret
         return self.create_resources('port', ctx, body)
 
     def list_ports(self, ctx, filters=None):
@@ -533,7 +538,7 @@ class FakeClient(object):
                 'mac_address': '',
                 'device_id': router_id,
                 'device_owner': 'network:router_gateway',
-                'binding:vif_type': helper.VIF_TYPE_OVS,
+                'binding:vif_type': portbindings.VIF_TYPE_OVS,
                 'binding:host_id': host_id
             }})
         except q_exceptions.IpAddressInUseClient:
@@ -1412,21 +1417,33 @@ class PluginTest(unittest.TestCase,
     def test_delete_port(self, mock_client_method, mock_plugin_method,
                          mock_context_method):
         self._basic_pod_route_setup()
-        self._basic_port_setup()
 
         fake_plugin = FakePlugin()
         neutron_context = FakeNeutronContext()
         tricircle_context = context.get_db_context()
         mock_context_method.return_value = tricircle_context
+        project_id = 'project_id'
 
-        fake_plugin.delete_port(neutron_context, 'top_id_0')
-        fake_plugin.delete_port(neutron_context, 'top_id_1')
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, tricircle_context, 'pod_1', 1)
+        t_port_id1, _ = self._prepare_port_test(
+            project_id, tricircle_context, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+        t_port_id2, _ = self._prepare_port_test(
+            project_id, tricircle_context, 'pod_1', 2, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
 
-        calls = [mock.call(neutron_context, 'top_id_0'),
-                 mock.call(neutron_context, 'top_id_1')]
-        mock_plugin_method.assert_has_calls(calls)
-        mock_client_method.assert_called_once_with(tricircle_context,
-                                                   'bottom_id_1', 'pod_id_1')
+        fake_plugin.delete_port(neutron_context, t_port_id1)
+        fake_plugin.delete_port(neutron_context, t_port_id2)
+
+        plugin_calls = [mock.call(neutron_context, t_port_id1),
+                        mock.call(neutron_context, t_port_id2)]
+        client_calls = [
+            mock.call(tricircle_context, t_port_id1, 'pod_id_1'),
+            mock.call(tricircle_context, t_port_id2, 'pod_id_1')]
+        mock_plugin_method.assert_has_calls(plugin_calls)
+        mock_client_method.assert_has_calls(client_calls)
 
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_network')
@@ -1768,7 +1785,8 @@ class PluginTest(unittest.TestCase,
             ip_address = ''
             for subnet in TOP_SUBNETS:
                 if subnet['id'] == t_subnet_id:
-                    ip_address = subnet['cidr'].replace('.0/24', '.5')
+                    ip_address = subnet['cidr'].replace('.0/24',
+                                                        '.%d' % (index + 4))
 
         t_port = {
             'id': t_port_id,
@@ -1951,6 +1969,7 @@ class PluginTest(unittest.TestCase,
             'device_owner': 'compute:None',
             'fixed_ips': [{'subnet_id': t_subnets[0]['id'],
                            'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
+            'mac_address': 'fa:16:3e:d4:%02x:%02x' % (index, ip_suffix),
             'security_groups': [],
             'tenant_id': project_id
         }
@@ -1963,6 +1982,7 @@ class PluginTest(unittest.TestCase,
             'device_owner': 'compute:None',
             'fixed_ips': [{'subnet_id': t_subnets[0]['id'],
                            'ip_address': '10.0.%d.%d' % (index, ip_suffix)}],
+            'mac_address': 'fa:16:3e:d4:%02x:%02x' % (index, ip_suffix),
             'security_groups': [],
             'tenant_id': project_id
         }
@@ -3189,7 +3209,8 @@ class PluginTest(unittest.TestCase,
             t_ctx, t_port['fixed_ips'][0]['subnet_id'], constants.RT_SD_SUBNET)
         cp_network_mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, t_port['network_id'], constants.RT_SD_NETWORK)
-        self.assertEqual(1, len(cp_port_mappings))
+        # no resource routing entry for shadow port
+        self.assertEqual(0, len(cp_port_mappings))
         self.assertEqual(1, len(cp_subnet_mappings))
         self.assertEqual(1, len(cp_network_mappings))
 
@@ -3270,12 +3291,10 @@ class PluginTest(unittest.TestCase,
         self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
         self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
 
-        # both creating floating ip and booting instance in vxlan network will
-        # create shadow port, so we leave shadow port deletion work to central
-        # plugin, it will delete shadow port when deleting instance port
+        # no resource routing entry for shadow port
         cp_port_mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, t_port_id, constants.RT_SD_PORT)
-        self.assertEqual(1, len(cp_port_mappings))
+        self.assertEqual(0, len(cp_port_mappings))
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -3517,7 +3536,7 @@ class PluginTest(unittest.TestCase,
         t_port_id1, b_port_id1 = self._prepare_port(
             TEST_TENANT_ID, t_ctx, 'pod_1', 1,
             {'binding:host_id': 'host1',
-             'binding:vif_type': helper.VIF_TYPE_OVS})
+             'binding:vif_type': portbindings.VIF_TYPE_OVS})
         update_body = {'port': {
             'binding:profile': {
                 constants.PROFILE_REGION: 'pod_1',
@@ -3530,7 +3549,7 @@ class PluginTest(unittest.TestCase,
         t_port_id2, b_port_id2 = self._prepare_port(
             TEST_TENANT_ID, t_ctx, 'pod_2', 1,
             {'binding:host_id': 'host2',
-             'binding:vif_type': helper.VIF_TYPE_OVS})
+             'binding:vif_type': portbindings.VIF_TYPE_OVS})
         update_body = {'port': {
             'binding:profile': {
                 constants.PROFILE_REGION: 'pod_2',
@@ -3541,11 +3560,13 @@ class PluginTest(unittest.TestCase,
         fake_plugin.update_port(q_ctx, t_port_id2, update_body)
 
         # shadow port is created
-        b_sd_port_id1 = db_api.get_bottom_id_by_top_id_region_name(
-            t_ctx, t_port_id1, 'pod_2', constants.RT_SD_PORT)
+        client = FakeClient('pod_2')
+        b_sd_port1 = client.list_ports(
+            t_ctx, [{'key': 'name', 'comparator': 'eq',
+                     'value': constants.shadow_port_name % t_port_id1}])[0]
         # shadow port is updated to active
         mock_update.assert_called_once_with(
-            t_ctx, b_sd_port_id1, {'port': {
+            t_ctx, b_sd_port1['id'], {'port': {
                 'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}}})
         # asynchronous job in pod_1 is registered
         mock_setup.assert_called_once_with(t_ctx, 'pod_id_1', t_net_id)
