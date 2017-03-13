@@ -18,6 +18,7 @@ import six
 
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
+from oslo_serialization import jsonutils
 
 from tricircle.common import client
 import tricircle.common.constants as t_constants
@@ -642,3 +643,28 @@ class NetworkHelper(object):
             'port_range_max': rule.get('port_range_max'),
             'port_range_min': rule.get('port_range_min'),
             'security_group_id': sg_id}}
+
+    @staticmethod
+    def get_router_az_hints(router):
+        # when called by api, availability_zone_hints included in
+        # extra_attributes, but when called by xjob, it included in router
+        # body directly.
+        extra_attributes = router.get('extra_attributes')
+        az_hints = router.get(AZ_HINTS)
+        if extra_attributes:
+            az_hints = extra_attributes.get(AZ_HINTS)
+        if not az_hints:
+            return None
+        if not isinstance(az_hints, list):
+            az_hints = jsonutils.loads(az_hints)
+        return az_hints
+
+    @staticmethod
+    def is_local_router(t_ctx, router):
+        router_az_hints = NetworkHelper.get_router_az_hints(router)
+        if not router_az_hints:
+            return False
+        if len(router_az_hints) > 1:
+            return False
+        router_az_hint = router_az_hints[0]
+        return bool(db_api.get_pod_by_name(t_ctx, router_az_hint))
