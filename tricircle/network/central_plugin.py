@@ -393,7 +393,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 t_ctx, network_id, t_constants.RT_NETWORK)
             if mappings:
                 self.xjob_handler.update_network(
-                    t_ctx, network_id, t_constants.POD_NOT_SPECIFIED)
+                    t_ctx, net['tenant_id'], network_id,
+                    t_constants.POD_NOT_SPECIFIED)
 
             self.type_manager.extend_network_dict_provider(context, net)
             return net
@@ -530,7 +531,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, subnet_id, t_constants.RT_SUBNET)
             if mappings:
-                self.xjob_handler.update_subnet(t_ctx, subnet_id,
+                self.xjob_handler.update_subnet(t_ctx, result['tenant_id'],
+                                                subnet_id,
                                                 t_constants.POD_NOT_SPECIFIED)
             return result
 
@@ -645,8 +647,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     # for local router, job will be triggered after router
                     # interface attachment.
                     self.xjob_handler.setup_bottom_router(
-                        admin_context, port_body['network_id'],
-                        router_id, pod['pod_id'])
+                        admin_context, router['tenant_id'],
+                        port_body['network_id'], router_id, pod['pod_id'])
                     # network will be attached to only one non-local router,
                     # so we break here
                     break
@@ -695,7 +697,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if is_vxlan_network and (
                     cfg.CONF.client.cross_pod_vxlan_mode in (
                         t_constants.NM_P2P, t_constants.NM_L2GW)):
-                self.xjob_handler.setup_shadow_ports(t_ctx, pod['pod_id'],
+                self.xjob_handler.setup_shadow_ports(t_ctx, res['tenant_id'],
+                                                     pod['pod_id'],
                                                      res['network_id'])
         # for vm port or port with empty device_owner, update top port and
         # bottom port
@@ -768,8 +771,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # delete ports
                 for pod, _id in self.helper.get_real_shadow_resource_iterator(
                         t_ctx, t_constants.RT_NETWORK, port['network_id']):
-                    self.xjob_handler.delete_server_port(t_ctx, port_id,
-                                                         pod['pod_id'])
+                    self.xjob_handler.delete_server_port(
+                        t_ctx, port['tenant_id'], port_id, pod['pod_id'])
             except Exception:
                 raise
             with t_ctx.session.begin():
@@ -1554,7 +1557,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         t_ctx = t_context.get_context_from_neutron_context(context)
         is_local_router = self.helper.is_local_router(t_ctx, router)
         if not is_local_router:
-            self.xjob_handler.configure_extra_routes(t_ctx, router_id)
+            self.xjob_handler.configure_route(
+                t_ctx, ret['tenant_id'], router_id)
         return ret
 
     def validate_router_net_location_match(self, t_ctx, router, net):
@@ -1674,10 +1678,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         try:
             if len(b_pods) == 1:
                 self.xjob_handler.setup_bottom_router(
-                    t_ctx, net_id, router_id, b_pods[0]['pod_id'])
+                    t_ctx, project_id, net_id, router_id, b_pods[0]['pod_id'])
             else:
                 self.xjob_handler.setup_bottom_router(
-                    t_ctx, net_id, router_id, t_constants.POD_NOT_SPECIFIED)
+                    t_ctx, project_id, net_id, router_id,
+                    t_constants.POD_NOT_SPECIFIED)
         except Exception:
             # NOTE(zhiyuan) we fail to submit the job, so bottom router
             # operations are not started, it's safe for us to remove the top
@@ -1703,15 +1708,20 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
         return_info = super(TricirclePlugin, self).remove_router_interface(
             context, router_id, interface_info)
+
+        router = self._get_router(context, router_id)
+
         if not b_pods:
             return return_info
         try:
             if len(b_pods) == 1:
                 self.xjob_handler.setup_bottom_router(
-                    t_ctx, net_id, router_id, b_pods[0]['pod_id'])
+                    t_ctx, router['tenant_id'], net_id,
+                    router_id, b_pods[0]['pod_id'])
             else:
                 self.xjob_handler.setup_bottom_router(
-                    t_ctx, net_id, router_id, t_constants.POD_NOT_SPECIFIED)
+                    t_ctx, router['tenant_id'], net_id,
+                    router_id, t_constants.POD_NOT_SPECIFIED)
         except Exception:
             # NOTE(zhiyuan) we fail to submit the job, so if bottom router
             # interface exists, it would not be deleted, then after we add
@@ -1832,8 +1842,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         int_net_pod, b_int_port_id = mappings[0]
         int_port = self.get_port(context, int_port_id)
         net_id = int_port['network_id']
+        router_id = floatingip_db['router_id']
+        router = self._get_router(context, router_id)
         self.xjob_handler.setup_bottom_router(
-            t_ctx, net_id, floatingip_db['router_id'], int_net_pod['pod_id'])
+            t_ctx, router['tenant_id'], net_id,
+            floatingip_db['router_id'], int_net_pod['pod_id'])
 
     def _disassociate_floatingip(self, context, ori_floatingip_db):
         if not ori_floatingip_db['port_id']:
@@ -1858,9 +1871,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         b_int_net_pod, b_int_port_id = mappings[0]
         int_port = self.get_port(context, t_int_port_id)
         net_id = int_port['network_id']
+        router_id = ori_floatingip_db['router_id']
+        router = self._get_router(context, router_id)
         self.xjob_handler.setup_bottom_router(
-            t_ctx, net_id, ori_floatingip_db['router_id'],
-            b_int_net_pod['pod_id'])
+            t_ctx, router['tenant_id'], net_id,
+            ori_floatingip_db['router_id'], b_int_net_pod['pod_id'])
 
     def delete_floatingip(self, context, _id):
         """Disassociate floating ip if needed then delete it

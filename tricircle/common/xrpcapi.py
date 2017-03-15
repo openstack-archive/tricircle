@@ -69,45 +69,55 @@ class XJobAPI(object):
         version_cap = 1.0
         return version_cap
 
-    def _invoke_method(self, ctxt, method, _type, id):
-        db_api.new_job(ctxt, _type, id)
+    def invoke_method(self, ctxt, project_id, method, _type, id):
+        db_api.new_job(ctxt, project_id, _type, id)
         self.client.prepare(exchange='openstack').cast(
             ctxt, method, payload={_type: id})
 
-    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
-        self._invoke_method(
-            ctxt, 'setup_bottom_router', constants.JT_ROUTER_SETUP,
+    def setup_bottom_router(self, ctxt, project_id, net_id, router_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id, constants.job_handles[constants.JT_ROUTER_SETUP],
+            constants.JT_ROUTER_SETUP,
             '%s#%s#%s' % (pod_id, router_id, net_id))
 
-    def configure_extra_routes(self, ctxt, router_id):
+    def configure_route(self, ctxt, project_id, router_id):
         # NOTE(zhiyuan) this RPC is called by plugin in Neutron server, whose
         # control exchange is "neutron", however, we starts xjob without
         # specifying its control exchange, so the default value "openstack" is
         # used, thus we need to pass exchange as "openstack" here.
-        self._invoke_method(
-            ctxt, 'configure_extra_routes', constants.JT_ROUTER, router_id)
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_CONFIGURE_ROUTE],
+            constants.JT_CONFIGURE_ROUTE, router_id)
 
-    def delete_server_port(self, ctxt, port_id, pod_id):
-        self._invoke_method(
-            ctxt, 'delete_server_port', constants.JT_PORT_DELETE,
+    def delete_server_port(self, ctxt, project_id, port_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id, constants.job_handles[constants.JT_PORT_DELETE],
+            constants.JT_PORT_DELETE,
             '%s#%s' % (pod_id, port_id))
 
     def configure_security_group_rules(self, ctxt, project_id):
-        self._invoke_method(
-            ctxt, 'configure_security_group_rules',
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_SEG_RULE_SETUP],
             constants.JT_SEG_RULE_SETUP, project_id)
 
-    def update_network(self, ctxt, network_id, pod_id):
-        self._invoke_method(
-            ctxt, 'update_network', constants.JT_NETWORK_UPDATE,
+    def update_network(self, ctxt, project_id, network_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_NETWORK_UPDATE],
+            constants.JT_NETWORK_UPDATE,
             '%s#%s' % (pod_id, network_id))
 
-    def update_subnet(self, ctxt, subnet_id, pod_id):
-        self._invoke_method(
-            ctxt, 'update_subnet', constants.JT_SUBNET_UPDATE,
+    def update_subnet(self, ctxt, project_id, subnet_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_SUBNET_UPDATE],
+            constants.JT_SUBNET_UPDATE,
             '%s#%s' % (pod_id, subnet_id))
 
-    def setup_shadow_ports(self, ctxt, pod_id, net_id):
-        self._invoke_method(
-            ctxt, 'setup_shadow_ports', constants.JT_SHADOW_PORT_SETUP,
-            '%s#%s' % (pod_id, net_id))
+    def setup_shadow_ports(self, ctxt, project_id, pod_id, net_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_SHADOW_PORT_SETUP],
+            constants.JT_SHADOW_PORT_SETUP, '%s#%s' % (pod_id, net_id))

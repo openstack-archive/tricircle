@@ -59,10 +59,77 @@ listed as following:
         Normal Response Code: 202
 
 
-* Get job(s)
+* Get a job
+
+  Retrieve a job from the Tricircle database.
+
+  The detailed information of the job will be shown. Otherwise
+  it will return "Resource not found" exception.
+
+  List Request::
+
+        GET /v1.0/jobs/3f4ecf30-0213-4f1f-9cb0-0233bcedb767
+
+        Response:
+        {
+            "job": {
+                "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "port_delete",
+                "timestamp": "2017-03-03 11:05:36",
+                "status": "NEW",
+                "resource": {
+                    "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                    "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+                }
+            }
+        }
+
+        Normal Response Code: 200
+
+* Get all jobs
+
+  Retrieve all of the jobs from the Tricircle database.
+
+  List Request::
+
+        GET /v1.0/jobs/detail
+
+        Response:
+        {
+           "jobs":
+               [
+                    {
+                        "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+                        "project_id": "d01246bc5792477d9062a76332b7514a",
+                        "type": "port_delete",
+                        "timestamp": "2017-03-03 11:05:36",
+                        "status": "NEW",
+                        "resource": {
+                            "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                            "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+                        }
+                    },
+                    {
+                        "id": "b01fe514-5211-4758-bbd1-9f32141a7ac2",
+                        "project_id": "d01246bc5792477d9062a76332b7514a",
+                        "type": "seg_rule_setup",
+                        "timestamp": "2017-03-01 17:14:44",
+                        "status": "FAIL",
+                        "resource": {
+                            "project_id": "d01246bc5792477d9062a76332b7514a"
+                        }
+                    }
+               ]
+        }
+
+        Normal Response Code: 200
+
+* Get all jobs with filter(s)
 
   Retrieve job(s) from the Tricircle database. We can filter them by
-  project ID, job type and job status.
+  project ID, job type and job status. If no filter is provided,
+  GET /v1.0/jobs will return all jobs.
 
   The response contains a list of jobs. Using filters, a subset of jobs
   will be returned.
@@ -117,7 +184,7 @@ listed as following:
            "schemas":
                [
                     {
-                        "type": "router",
+                        "type": "configure_route",
                         "resource": ["router_id"]
                     },
                     {
@@ -153,7 +220,7 @@ listed as following:
 * Delete a job
 
   Delete a failed or duplicated job from the Tricircle database.
-  Nothing will be returned for this request if succeeds, otherwise an
+  A pair of curly braces will be returned if succeeds, otherwise an
   exception will be thrown. What's more, we can list all jobs to verify
   whether it is deleted successfully or not.
 

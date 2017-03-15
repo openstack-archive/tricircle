@@ -57,6 +57,13 @@ ADMIN_API_ROUTINGS_PUT = 'admin_api:routings:put'
 ADMIN_API_ROUTINGS_SHOW = 'admin_api:routings:show'
 ADMIN_API_ROUTINGS_LIST = 'admin_api:routings:list'
 
+ADMIN_API_JOB_CREATE = 'admin_api:jobs:create'
+ADMIN_API_JOB_LIST = 'admin_api:jobs:list'
+ADMIN_API_JOB_SCHEMA_LIST = 'admin_api:jobs:schema_list'
+ADMIN_API_JOB_REDO = 'admin_api:jobs:redo'
+ADMIN_API_JOB_DELETE = 'admin_api:jobs:delete'
+
+
 tricircle_admin_api_policies = [
     policy.RuleDefault(ADMIN_API_PODS_CREATE,
                        'rule:admin_api',
@@ -86,6 +93,22 @@ tricircle_admin_api_policies = [
     policy.RuleDefault(ADMIN_API_ROUTINGS_LIST,
                        'rule:admin_api',
                        description='List resource routings'),
+
+    policy.RuleDefault(ADMIN_API_JOB_CREATE,
+                       'rule:admin_api',
+                       description='Create job'),
+    policy.RuleDefault(ADMIN_API_JOB_LIST,
+                       'rule:admin_api',
+                       description='List jobs'),
+    policy.RuleDefault(ADMIN_API_JOB_SCHEMA_LIST,
+                       'rule:admin_api',
+                       description='List job schemas'),
+    policy.RuleDefault(ADMIN_API_JOB_REDO,
+                       'rule:admin_api',
+                       description='Redo job'),
+    policy.RuleDefault(ADMIN_API_JOB_DELETE,
+                       'rule:admin_api',
+                       description='Delete job')
 ]
 
 

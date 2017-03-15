@@ -337,11 +337,12 @@ def find_pod_by_az_or_region(context, az_or_region):
             reason='Multiple pods with the same az_name are found')
 
 
-def new_job(context, _type, resource_id):
+def new_job(context, project_id, _type, resource_id):
     with context.session.begin():
         job_dict = {'id': uuidutils.generate_uuid(),
                     'type': _type,
                     'status': constants.JS_New,
+                    'project_id': project_id,
                     'resource_id': resource_id,
                     'extra_id': uuidutils.generate_uuid()}
         job = core.create_resource(context,
@@ -349,12 +350,13 @@ def new_job(context, _type, resource_id):
         return job
 
 
-def register_job(context, _type, resource_id):
+def register_job(context, project_id, _type, resource_id):
     try:
         context.session.begin()
         job_dict = {'id': uuidutils.generate_uuid(),
                     'type': _type,
                     'status': constants.JS_Running,
+                    'project_id': project_id,
                     'resource_id': resource_id,
                     'extra_id': constants.SP_EXTRA_ID}
         job = core.create_resource(context,
@@ -392,22 +394,68 @@ def get_latest_failed_or_new_jobs(context):
     # sort sequence is "0_Fail", "1_Success", "2_Running", "3_New"
     query = context.session.query(models.AsyncJob.type,
                                   models.AsyncJob.resource_id,
+                                  models.AsyncJob.project_id,
                                   sql.func.min(models.AsyncJob.status)).join(
         stmt, sql.and_(models.AsyncJob.type == stmt.c.type,
                        models.AsyncJob.resource_id == stmt.c.resource_id,
                        models.AsyncJob.timestamp == stmt.c.timestamp))
-    query = query.group_by(models.AsyncJob.type,
+    query = query.group_by(models.AsyncJob.project_id,
+                           models.AsyncJob.type,
                            models.AsyncJob.resource_id)
 
-    for job_type, resource_id, status in query:
+    for job_type, resource_id, project_id, status in query:
         if status == constants.JS_Fail:
-            failed_jobs.append({'type': job_type, 'resource_id': resource_id})
+            failed_jobs.append({'type': job_type, 'resource_id': resource_id,
+                                'project_id': project_id})
         elif status == constants.JS_New:
-            new_jobs.append({'type': job_type, 'resource_id': resource_id})
+            new_jobs.append({'type': job_type, 'resource_id': resource_id,
+                             'project_id': project_id})
     return failed_jobs, new_jobs
 
 
-def get_latest_timestamp(context, status, _type, resource_id):
+def list_jobs(context, filters=None, sorts=None):
+    with context.session.begin():
+        # get all jobs from job table
+        jobs = core.query_resource(context, models.AsyncJob,
+                                   filters or [], sorts or [])
+        return jobs
+
+
+def list_jobs_from_log(context, filters=None, sorts=None):
+    with context.session.begin():
+        # get all jobs from job log table, because the job log table only
+        # stores successful jobs, so this method merely returns successful jobs
+        if filters is not None:
+            for filter in filters:
+                if filter.get('key') == 'status':
+                    job_status = filter['value']
+                    # job entry in job log table has no status attribute.
+                    if job_status == constants.JS_Success:
+                        filters.remove(filter)
+                    else:
+                        return []
+
+        jobs_in_log = core.query_resource(
+            context, models.AsyncJobLog, filters or [], sorts or [])
+        return jobs_in_log
+
+
+def get_job(context, job_id):
+    with context.session.begin():
+        return core.get_resource(context, models.AsyncJob, job_id)
+
+
+def get_job_from_log(context, job_id):
+    with context.session.begin():
+        return core.get_resource(context, models.AsyncJobLog, job_id)
+
+
+def delete_job(context, job_id):
+    with context.session.begin():
+        return core.delete_resource(context, models.AsyncJob, job_id)
+
+
+def get_latest_job(context, status, _type, resource_id):
     jobs = core.query_resource(
         context, models.AsyncJob,
         [{'key': 'status', 'comparator': 'eq', 'value': status},
@@ -415,7 +463,7 @@ def get_latest_timestamp(context, status, _type, resource_id):
          {'key': 'resource_id', 'comparator': 'eq', 'value': resource_id}],
         [('timestamp', False)])
     if jobs:
-        return jobs[0]['timestamp']
+        return jobs[0]
     else:
         return None
 
@@ -442,6 +490,7 @@ def finish_job(context, job_id, successful, timestamp):
         if status == constants.JS_Success:
             log_dict = {'id': uuidutils.generate_uuid(),
                         'type': job['type'],
+                        'project_id': job['project_id'],
                         'timestamp': timestamp,
                         'resource_id': job['resource_id']}
             context.session.query(models.AsyncJob).filter(

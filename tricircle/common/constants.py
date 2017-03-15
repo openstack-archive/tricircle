@@ -90,7 +90,7 @@ PROFILE_FORCE_UP = 'force_up'
 DEVICE_OWNER_SHADOW = 'compute:shadow'
 
 # job type
-JT_ROUTER = 'router'
+JT_CONFIGURE_ROUTE = 'configure_route'
 JT_ROUTER_SETUP = 'router_setup'
 JT_PORT_DELETE = 'port_delete'
 JT_SEG_RULE_SETUP = 'seg_rule_setup'
@@ -108,3 +108,58 @@ NT_FLAT = 'flat'
 NM_P2P = 'p2p'
 NM_L2GW = 'l2gw'
 NM_NOOP = 'noop'
+
+# map job type to its resource, each resource is denoted by
+# (resource_type, resource_id), for the field necessary
+# to run the job but resides outside of job resource, we
+# denote its type by "None"
+job_resource_map = {
+    JT_CONFIGURE_ROUTE: [(RT_ROUTER, "router_id")],
+    JT_ROUTER_SETUP: [(None, "pod_id"),
+                      (RT_ROUTER, "router_id"),
+                      (RT_NETWORK, "network_id")],
+    JT_PORT_DELETE: [(None, "pod_id"),
+                     (RT_PORT, "port_id")],
+    JT_SEG_RULE_SETUP: [(None, "project_id")],
+    JT_NETWORK_UPDATE: [(None, "pod_id"),
+                        (RT_NETWORK, "network_id")],
+    JT_SUBNET_UPDATE: [(None, "pod_id"),
+                       (RT_SUBNET, "subnet_id")],
+    JT_SHADOW_PORT_SETUP: [(None, "pod_id"),
+                           (RT_NETWORK, "network_id")]
+}
+
+# map raw job status to more human readable job status
+job_status_map = {
+    JS_Fail: 'FAIL',
+    JS_Success: 'SUCCESS',
+    JS_Running: 'RUNNING',
+    JS_New: 'NEW'
+}
+
+# filter jobs according to the job's attributes
+JOB_LIST_SUPPORTED_FILTERS = ['project_id', 'type', 'status']
+
+# map job type to corresponding job handler
+job_handles = {
+    JT_CONFIGURE_ROUTE: "configure_route",
+    JT_ROUTER_SETUP: "setup_bottom_router",
+    JT_PORT_DELETE: "delete_server_port",
+    JT_SEG_RULE_SETUP: "configure_security_group_rules",
+    JT_NETWORK_UPDATE: "update_network",
+    JT_SUBNET_UPDATE: "update_subnet",
+    JT_SHADOW_PORT_SETUP: "setup_shadow_ports"
+}
+
+# map job type to its primary resource and then we only validate the project_id
+# of that resource. For JT_SEG_RULE_SETUP, as it has only one project_id
+# parameter, there is no need to validate it.
+job_primary_resource_map = {
+    JT_CONFIGURE_ROUTE: (RT_ROUTER, "router_id"),
+    JT_ROUTER_SETUP: (RT_ROUTER, "router_id"),
+    JT_PORT_DELETE: (RT_PORT, "port_id"),
+    JT_SEG_RULE_SETUP: (None, "project_id"),
+    JT_NETWORK_UPDATE: (RT_NETWORK, "network_id"),
+    JT_SUBNET_UPDATE: (RT_SUBNET, "subnet_id"),
+    JT_SHADOW_PORT_SETUP: (RT_NETWORK, "network_id")
+}

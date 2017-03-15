@@ -367,12 +367,15 @@ class XManagerTest(unittest.TestCase):
     @patch.object(FakeClient, 'update_routers')
     def test_configure_extra_routes_with_floating_ips(self, mock_update):
         top_router_id = 'router_id'
+        project_id = uuidutils.generate_uuid()
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
         ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
         self._prepare_dnat_test()
-        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
-        self.xmanager.configure_extra_routes(
-            self.context, payload={constants.JT_ROUTER: top_router_id})
+        db_api.new_job(self.context, project_id, constants.JT_CONFIGURE_ROUTE,
+                       top_router_id)
+        self.xmanager.configure_route(
+            self.context,
+            payload={constants.JT_CONFIGURE_ROUTE: top_router_id})
         calls = []
         ns_routes = []
         for i in range(2):
@@ -394,11 +397,14 @@ class XManagerTest(unittest.TestCase):
     @patch.object(FakeClient, 'update_routers')
     def test_configure_extra_routes_with_external_network(self, mock_update):
         top_router_id = 'router_id'
+        project_id = uuidutils.generate_uuid()
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
         ns_bridge_ip, ns_router_id = self._prepare_snat_test(top_router_id)
-        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
-        self.xmanager.configure_extra_routes(
-            self.context, payload={constants.JT_ROUTER: top_router_id})
+        db_api.new_job(self.context, project_id, constants.JT_CONFIGURE_ROUTE,
+                       top_router_id)
+        self.xmanager.configure_route(
+            self.context,
+            payload={constants.JT_CONFIGURE_ROUTE: top_router_id})
         calls = []
         ns_routes = []
         for i in range(2):
@@ -418,12 +424,15 @@ class XManagerTest(unittest.TestCase):
         self._check_extra_routes_calls(calls, mock_update.call_args_list)
 
     @patch.object(FakeClient, 'update_routers')
-    def test_configure_extra_routes(self, mock_update):
+    def test_configure_route(self, mock_update):
         top_router_id = 'router_id'
+        project_id = uuidutils.generate_uuid()
         bridge_infos = self._prepare_east_west_network_test(top_router_id)
-        db_api.new_job(self.context, constants.JT_ROUTER, top_router_id)
-        self.xmanager.configure_extra_routes(
-            self.context, payload={constants.JT_ROUTER: top_router_id})
+        db_api.new_job(self.context, project_id, constants.JT_CONFIGURE_ROUTE,
+                       top_router_id)
+        self.xmanager.configure_route(
+            self.context,
+            payload={constants.JT_CONFIGURE_ROUTE: top_router_id})
         calls = []
         for i in range(2):
             routes = []
@@ -538,9 +547,12 @@ class XManagerTest(unittest.TestCase):
         #       net3 is attached to R3
 
         target_router_id = 'top_router_3_id'
-        db_api.new_job(self.context, constants.JT_ROUTER, target_router_id)
-        self.xmanager.configure_extra_routes(
-            self.context, payload={constants.JT_ROUTER: target_router_id})
+        project_id = uuidutils.generate_uuid()
+        db_api.new_job(self.context, project_id,
+                       constants.JT_CONFIGURE_ROUTE, target_router_id)
+        self.xmanager.configure_route(
+            self.context,
+            payload={constants.JT_CONFIGURE_ROUTE: target_router_id})
 
         # for the following paths, packets will go to R3 via the interface
         # which is attached to R3
@@ -653,7 +665,8 @@ class XManagerTest(unittest.TestCase):
         RES_MAP['top']['subnet'].append(subnet_ipv6)
         RES_MAP['pod_1']['security_group'].append(sg)
 
-        db_api.new_job(self.context, constants.JT_SEG_RULE_SETUP, project_id)
+        db_api.new_job(self.context, project_id, constants.JT_SEG_RULE_SETUP,
+                       project_id)
         self.xmanager.configure_security_group_rules(
             self.context, payload={constants.JT_SEG_RULE_SETUP: project_id})
 
@@ -727,8 +740,8 @@ class XManagerTest(unittest.TestCase):
             '192.168.1.102')
 
         resource_id = 'pod_id_1#' + net1_id
-        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
-                       resource_id)
+        db_api.new_job(self.context, project_id,
+                       constants.JT_SHADOW_PORT_SETUP, resource_id)
         self.xmanager.setup_shadow_ports(
             self.context,
             payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
@@ -745,7 +758,8 @@ class XManagerTest(unittest.TestCase):
                       sd_ports[0]['binding:profile'])
 
         # check job to setup shadow ports for pod2 is registered
-        mock_setup.assert_called_once_with(self.context, 'pod_id_2', net1_id)
+        mock_setup.assert_called_once_with(self.context, project_id,
+                                           'pod_id_2', net1_id)
 
         # update shadow port to down and test again, this is possible when we
         # succeed to create shadow port but fail to update it to active
@@ -755,8 +769,8 @@ class XManagerTest(unittest.TestCase):
                              {'port': {'status': q_constants.PORT_STATUS_DOWN,
                                        'binding:profile': profile}})
 
-        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
-                       resource_id)
+        db_api.new_job(self.context, project_id,
+                       constants.JT_SHADOW_PORT_SETUP, resource_id)
         self.xmanager.setup_shadow_ports(
             self.context,
             payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
@@ -767,8 +781,8 @@ class XManagerTest(unittest.TestCase):
 
         # manually trigger shadow ports setup in pod2
         resource_id = 'pod_id_2#' + net1_id
-        db_api.new_job(self.context, constants.JT_SHADOW_PORT_SETUP,
-                       resource_id)
+        db_api.new_job(self.context, project_id,
+                       constants.JT_SHADOW_PORT_SETUP, resource_id)
         self.xmanager.setup_shadow_ports(
             self.context,
             payload={constants.JT_SHADOW_PORT_SETUP: resource_id})
@@ -789,8 +803,9 @@ class XManagerTest(unittest.TestCase):
             pass
 
         fake_id = 'fake_id'
+        fake_project_id = uuidutils.generate_uuid()
         payload = {job_type: fake_id}
-        db_api.new_job(self.context, job_type, fake_id)
+        db_api.new_job(self.context, fake_project_id, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
         logs = core.query_resource(self.context, models.AsyncJobLog, [], [])
@@ -806,8 +821,9 @@ class XManagerTest(unittest.TestCase):
             raise Exception()
 
         fake_id = 'fake_id'
+        fake_project_id = uuidutils.generate_uuid()
         payload = {job_type: fake_id}
-        db_api.new_job(self.context, job_type, fake_id)
+        db_api.new_job(self.context, fake_project_id, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
         jobs = core.query_resource(self.context, models.AsyncJob, [], [])
@@ -828,8 +844,9 @@ class XManagerTest(unittest.TestCase):
             pass
 
         fake_id = uuidutils.generate_uuid()
+        fake_project_id = uuidutils.generate_uuid()
         payload = {job_type: fake_id}
-        db_api.new_job(self.context, job_type, fake_id)
+        db_api.new_job(self.context, fake_project_id, job_type, fake_id)
         expired_job = {
             'id': uuidutils.generate_uuid(),
             'type': job_type,
@@ -860,8 +877,9 @@ class XManagerTest(unittest.TestCase):
         mock_get.return_value = None
 
         fake_id = uuidutils.generate_uuid()
+        fake_project_id = uuidutils.generate_uuid()
         payload = {job_type: fake_id}
-        db_api.new_job(self.context, job_type, fake_id)
+        db_api.new_job(self.context, fake_project_id, job_type, fake_id)
         fake_handle(None, self.context, payload=payload)
 
         # nothing to assert, what we test is that fake_handle can exit when
@@ -872,28 +890,28 @@ class XManagerTest(unittest.TestCase):
         mock_now.return_value = datetime.datetime(2000, 1, 2, 12, 0, 0)
         job_dict_list = [
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 0, 0),
-             'resource_id': 'uuid1', 'type': 'res1',
+             'resource_id': 'uuid1', 'type': 'res1', 'project_id': "uuid1",
              'status': constants.JS_Fail},  # job_uuid1
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 5, 0),
-             'resource_id': 'uuid1', 'type': 'res1',
+             'resource_id': 'uuid1', 'type': 'res1', 'project_id': "uuid1",
              'status': constants.JS_Fail},  # job_uuid3
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 20, 0),
-             'resource_id': 'uuid2', 'type': 'res2',
+             'resource_id': 'uuid2', 'type': 'res2', 'project_id': "uuid1",
              'status': constants.JS_Fail},  # job_uuid5
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 15, 0),
-             'resource_id': 'uuid2', 'type': 'res2',
+             'resource_id': 'uuid2', 'type': 'res2', 'project_id': "uuid1",
              'status': constants.JS_Fail},  # job_uuid7
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 25, 0),
-             'resource_id': 'uuid3', 'type': 'res3',
+             'resource_id': 'uuid3', 'type': 'res3', 'project_id': "uuid1",
              'status': constants.JS_Success},  # job_uuid9
             {'timestamp': datetime.datetime(2000, 1, 1, 12, 30, 0),
-             'resource_id': 'uuid4', 'type': 'res4',
+             'resource_id': 'uuid4', 'type': 'res4', 'project_id': "uuid1",
              'status': constants.JS_New},  # job_uuid11
             {'timestamp': datetime.datetime(1999, 12, 31, 12, 0, 0),
-             'resource_id': 'uuid5', 'type': 'res5',
+             'resource_id': 'uuid5', 'type': 'res5', 'project_id': "uuid1",
              'status': constants.JS_Fail},  # job_uuid13
             {'timestamp': datetime.datetime(1999, 12, 31, 11, 59, 59),
-             'resource_id': 'uuid6', 'type': 'res6',
+             'resource_id': 'uuid6', 'type': 'res6', 'project_id': "uuid1",
              'status': constants.JS_Fail}]  # job_uuid15
         for i, job_dict in enumerate(job_dict_list, 1):
             job_dict['id'] = 'job_uuid%d' % (2 * i - 1)
@@ -907,10 +925,11 @@ class XManagerTest(unittest.TestCase):
         # for res3 + uuid3, the latest job's status is "Success", not returned
         # for res6 + uuid6, the latest job is out of the redo time span
         expected_failed_jobs = [
-            {'resource_id': 'uuid1', 'type': 'res1'},
-            {'resource_id': 'uuid2', 'type': 'res2'},
-            {'resource_id': 'uuid5', 'type': 'res5'}]
-        expected_new_jobs = [{'resource_id': 'uuid4', 'type': 'res4'}]
+            {'resource_id': 'uuid1', 'type': 'res1', 'project_id': "uuid1"},
+            {'resource_id': 'uuid2', 'type': 'res2', 'project_id': "uuid1"},
+            {'resource_id': 'uuid5', 'type': 'res5', 'project_id': "uuid1"}]
+        expected_new_jobs = [{'resource_id': 'uuid4', 'type': 'res4',
+                              'project_id': "uuid1"}]
         (failed_jobs,
          new_jobs) = db_api.get_latest_failed_or_new_jobs(self.context)
         six.assertCountEqual(self, expected_failed_jobs, failed_jobs)

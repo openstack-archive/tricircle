@@ -1034,7 +1034,7 @@ class FakeBaseXManager(xmanager.XManager):
     def __init__(self, fake_plugin):
         self.clients = {constants.TOP: client.Client()}
         self.job_handles = {
-            constants.JT_ROUTER: self.configure_extra_routes,
+            constants.JT_CONFIGURE_ROUTE: self.configure_route,
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port}
         self.helper = FakeHelper(fake_plugin)
@@ -1070,15 +1070,15 @@ class FakeBaseRPCAPI(object):
     def __init__(self, fake_plugin):
         self.xmanager = FakeBaseXManager(fake_plugin)
 
-    def configure_extra_routes(self, ctxt, router_id):
+    def configure_route(self, ctxt, project_id, router_id):
         pass
 
-    def update_network(self, ctxt, network_id, pod_id):
+    def update_network(self, ctxt, project_id, network_id, pod_id):
         combine_id = '%s#%s' % (pod_id, network_id)
         self.xmanager.update_network(
             ctxt, payload={constants.JT_NETWORK_UPDATE: combine_id})
 
-    def update_subnet(self, ctxt, subnet_id, pod_id):
+    def update_subnet(self, ctxt, project_id, subnet_id, pod_id):
         combine_id = '%s#%s' % (pod_id, subnet_id)
         self.xmanager.update_subnet(
             ctxt, payload={constants.JT_SUBNET_UPDATE: combine_id})
@@ -1086,7 +1086,7 @@ class FakeBaseRPCAPI(object):
     def configure_security_group_rules(self, ctxt, project_id):
         pass
 
-    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+    def setup_shadow_ports(self, ctxt, project_id, pod_id, net_id):
         pass
 
 
@@ -1094,18 +1094,18 @@ class FakeRPCAPI(FakeBaseRPCAPI):
     def __init__(self, fake_plugin):
         self.xmanager = FakeXManager(fake_plugin)
 
-    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
+    def setup_bottom_router(self, ctxt, project_id, net_id, router_id, pod_id):
         combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
         self.xmanager.setup_bottom_router(
             ctxt, payload={constants.JT_ROUTER_SETUP: combine_id})
 
-    def delete_server_port(self, ctxt, port_id, pod_id):
+    def delete_server_port(self, ctxt, project_id, port_id, pod_id):
         pass
 
     def configure_security_group_rules(self, ctxt, project_id):
         pass
 
-    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+    def setup_shadow_ports(self, ctxt, project_id, pod_id, net_id):
         combine_id = '%s#%s' % (pod_id, net_id)
         self.xmanager.setup_shadow_ports(
             ctxt, payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
@@ -1381,7 +1381,8 @@ class PluginTest(unittest.TestCase,
                                port_id='top_id_0', ip_address='10.0.0.1',
                                subnet_id='top_subnet_id',
                                network_id='top_net_id')]},
-                          {'id': 'top_id_1', 'name': 'top'},
+                          {'id': 'top_id_1', 'name': 'top',
+                           'tenant_id': 'project_id'},
                           {'id': 'top_id_2', 'name': 'top'},
                           {'id': 'top_id_3', 'name': 'top'}])
         BOTTOM1_PORTS.append({'id': 'bottom_id_1', 'name': 'bottom'})
@@ -1518,8 +1519,8 @@ class PluginTest(unittest.TestCase,
         plugin_calls = [mock.call(neutron_context, t_port_id1),
                         mock.call(neutron_context, t_port_id2)]
         client_calls = [
-            mock.call(tricircle_context, t_port_id1, 'pod_id_1'),
-            mock.call(tricircle_context, t_port_id2, 'pod_id_1')]
+            mock.call(tricircle_context, project_id, t_port_id1, 'pod_id_1'),
+            mock.call(tricircle_context, project_id, t_port_id2, 'pod_id_1')]
         mock_plugin_method.assert_has_calls(plugin_calls)
         mock_client_method.assert_has_calls(client_calls)
 
@@ -1880,7 +1881,7 @@ class PluginTest(unittest.TestCase,
             'tenant_id': tenant_id,
             'mac_address': 'fa:16:3e:cd:76:40',
             'binding:vif_type': vif_type,
-            'project_id': 'tenant_id',
+            'project_id': 'project_id',
             'binding:host_id': 'zhiyuan-5',
             'status': 'ACTIVE'
         }
@@ -2488,7 +2489,7 @@ class PluginTest(unittest.TestCase,
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(FakeClient, 'add_gateway_routers')
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface(self, mock_context, mock_rpc, mock_action):
         self._basic_pod_route_setup()
@@ -2509,7 +2510,7 @@ class PluginTest(unittest.TestCase,
         _, b_router_id = db_api.get_bottom_mappings_by_top_id(
             t_ctx, t_router_id, constants.RT_ROUTER)[0]
 
-        mock_rpc.assert_called_once_with(t_ctx, t_router_id)
+        mock_rpc.assert_called_once_with(t_ctx, tenant_id, t_router_id)
         for b_net in BOTTOM1_NETS:
             if 'provider:segmentation_id' in b_net:
                 self.assertIn(b_net['provider:segmentation_id'], (2000, 2001))
@@ -2715,7 +2716,7 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(FakePlugin, '_get_bridge_network_subnet')
     @patch.object(FakeClient, 'add_gateway_routers')
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_for_local_router(
             self, mock_context, mock_rpc, mock_action, mock_get_bridge_net):
@@ -2861,7 +2862,7 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
     @patch.object(FakeClient, 'remove_interface_routers')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_remove_interface(self, mock_context, mock_remove, mock_rpc):
@@ -2891,7 +2892,7 @@ class PluginTest(unittest.TestCase,
 
         mock_remove.assert_called_with(
             t_ctx, b_router_id, {'port_id': b_interface_id})
-        mock_rpc.assert_called_with(t_ctx, t_router_id)
+        mock_rpc.assert_called_with(t_ctx, tenant_id, t_router_id)
 
     def _prepare_interface_port(self, t_ctx, t_subnet_id, ip_suffix):
         t_client = FakeClient()
@@ -2923,7 +2924,7 @@ class PluginTest(unittest.TestCase,
     @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
                   new=fake_make_router_dict)
     @patch.object(FakeClient, 'add_gateway_routers')
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_east_west_gw_router(self, mock_context, mock_rpc, mock_action):
         self._basic_pod_route_setup()
@@ -3844,7 +3845,8 @@ class PluginTest(unittest.TestCase,
             t_ctx, b_sd_port1['id'], {'port': {
                 'binding:profile': {constants.PROFILE_FORCE_UP: 'True'}}})
         # asynchronous job in pod_1 is registered
-        mock_setup.assert_called_once_with(t_ctx, 'pod_id_1', t_net_id)
+        mock_setup.assert_called_once_with(t_ctx, TEST_TENANT_ID,
+                                           'pod_id_1', t_net_id)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -3852,7 +3854,7 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
-    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes', new=mock.Mock)
+    @patch.object(FakeBaseRPCAPI, 'configure_route', new=mock.Mock)
     @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_trigger_l2pop(self, mock_context, mock_setup):
@@ -3919,8 +3921,10 @@ class PluginTest(unittest.TestCase,
         self.assertIn(constants.PROFILE_FORCE_UP,
                       shadow_ports[0]['binding:profile'])
         # asynchronous jobs are registered
-        calls = [mock.call(t_ctx, 'pod_id_2', shadow_ports[0]['network_id']),
-                 mock.call(t_ctx, 'pod_id_1', shadow_ports[0]['network_id'])]
+        calls = [mock.call(t_ctx, tenant_id, 'pod_id_2',
+                           shadow_ports[0]['network_id']),
+                 mock.call(t_ctx, tenant_id, 'pod_id_1',
+                           shadow_ports[0]['network_id'])]
         mock_setup.assert_has_calls(calls)
 
     def tearDown(self):

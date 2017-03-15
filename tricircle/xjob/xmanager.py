@@ -67,15 +67,16 @@ def _job_handle(job_type):
                 if delta.seconds >= CONF.worker_handle_timeout:
                     # quit when this handle is running for a long time
                     break
-                time_new = db_api.get_latest_timestamp(ctx, constants.JS_New,
-                                                       job_type, resource_id)
-                if not time_new:
+                job_new = db_api.get_latest_job(
+                    ctx, constants.JS_New, job_type, resource_id)
+                if not job_new:
                     break
-                time_success = db_api.get_latest_timestamp(
+                job_succ = db_api.get_latest_job(
                     ctx, constants.JS_Success, job_type, resource_id)
-                if time_success and time_success >= time_new:
+                if job_succ and job_succ['timestamp'] >= job_new['timestamp']:
                     break
-                job = db_api.register_job(ctx, job_type, resource_id)
+                job = db_api.register_job(ctx, job_new['project_id'], job_type,
+                                          resource_id)
                 if not job:
                     # fail to obtain the lock, let other worker handle the job
                     running_job = db_api.get_running_job(ctx, job_type,
@@ -94,7 +95,7 @@ def _job_handle(job_type):
                         # previous running job expires, we set its status to
                         # fail and try again to obtain the lock
                         db_api.finish_job(ctx, running_job['id'], False,
-                                          time_new)
+                                          job_new['timestamp'])
                         LOG.warning('Job %(job)s of type %(job_type)s for '
                                     'resource %(resource)s expires, set '
                                     'its state to Fail',
@@ -111,14 +112,15 @@ def _job_handle(job_type):
                 try:
                     func(*args, **kwargs)
                 except Exception:
-                    db_api.finish_job(ctx, job['id'], False, time_new)
+                    db_api.finish_job(ctx, job['id'], False,
+                                      job_new['timestamp'])
                     LOG.error('Job %(job)s of type %(job_type)s for '
                               'resource %(resource)s fails',
                               {'job': job['id'],
                                'job_type': job_type,
                                'resource': resource_id})
                     break
-                db_api.finish_job(ctx, job['id'], True, time_new)
+                db_api.finish_job(ctx, job['id'], True, job_new['timestamp'])
                 eventlet.sleep(CONF.worker_sleep_time)
         return handle_args
     return handle_func
@@ -145,7 +147,7 @@ class XManager(PeriodicTasks):
         self.additional_endpoints = []
         self.clients = {constants.TOP: client.Client()}
         self.job_handles = {
-            constants.JT_ROUTER: self.configure_extra_routes,
+            constants.JT_CONFIGURE_ROUTE: self.configure_route,
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port,
             constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
@@ -251,13 +253,14 @@ class XManager(PeriodicTasks):
         job_index = random.randint(0, len(jobs) - 1)
         job_type = jobs[job_index]['type']
         resource_id = jobs[job_index]['resource_id']
+        project_id = jobs[job_index]['project_id']
         payload = {job_type: resource_id}
         LOG.debug('Redo %(status)s job for %(resource_id)s of type '
                   '%(job_type)s',
                   {'status': 'new' if is_new_job else 'failed',
                    'resource_id': resource_id, 'job_type': job_type})
         if not is_new_job:
-            db_api.new_job(ctx, job_type, resource_id)
+            db_api.new_job(ctx, project_id, job_type, resource_id)
         self.job_handles[job_type](ctx, payload=payload)
 
     @staticmethod
@@ -512,6 +515,15 @@ class XManager(PeriodicTasks):
         (b_pod_id,
          t_router_id, t_net_id) = payload[constants.JT_ROUTER_SETUP].split('#')
 
+        t_client = self._get_client()
+        t_pod = db_api.get_top_pod(ctx)
+        t_router = t_client.get_routers(ctx, t_router_id)
+
+        if not t_router:
+            # we just end this job if top router no longer exists
+            return
+
+        project_id = t_router['tenant_id']
         if b_pod_id == constants.POD_NOT_SPECIFIED:
             mappings = db_api.get_bottom_mappings_by_top_id(
                 ctx, t_net_id, constants.RT_NETWORK)
@@ -520,15 +532,9 @@ class XManager(PeriodicTasks):
                 # NOTE(zhiyuan) we create one job for each pod to avoid
                 # conflict caused by different workers operating the same pod
                 self.xjob_handler.setup_bottom_router(
-                    ctx, t_net_id, t_router_id, b_pod['pod_id'])
+                    ctx, project_id, t_net_id, t_router_id, b_pod['pod_id'])
             return
 
-        t_client = self._get_client()
-        t_pod = db_api.get_top_pod(ctx)
-        t_router = t_client.get_routers(ctx, t_router_id)
-        if not t_router:
-            # we just end this job if top router no longer exists
-            return
         t_net = t_client.get_networks(ctx, t_net_id)
         if not t_net:
             # we just end this job if top network no longer exists
@@ -566,11 +572,12 @@ class XManager(PeriodicTasks):
             ctx, t_pod, b_pod, t_client, t_net, t_router, t_bridge_net,
             t_bridge_subnet, is_ext_net_pod)
         if not is_local_router:
-            self.xjob_handler.configure_extra_routes(ctx, t_router_id)
+            self.xjob_handler.configure_route(ctx, project_id,
+                                              t_router_id)
 
-    @_job_handle(constants.JT_ROUTER)
-    def configure_extra_routes(self, ctx, payload):
-        t_router_id = payload[constants.JT_ROUTER]
+    @_job_handle(constants.JT_CONFIGURE_ROUTE)
+    def configure_route(self, ctx, payload):
+        t_router_id = payload[constants.JT_CONFIGURE_ROUTE]
         t_client = self._get_client()
         t_router = t_client.get_routers(ctx, t_router_id)
         if not t_router:
@@ -867,19 +874,22 @@ class XManager(PeriodicTasks):
         """
         (b_pod_id, t_network_id) = payload[
             constants.JT_NETWORK_UPDATE].split('#')
-        if b_pod_id == constants.POD_NOT_SPECIFIED:
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                ctx, t_network_id, constants.RT_NETWORK)
-            b_pods = [mapping[0] for mapping in mappings]
-            for b_pod in b_pods:
-                self.xjob_handler.update_network(ctx, t_network_id,
-                                                 b_pod['pod_id'])
-            return
 
         t_client = self._get_client()
         t_network = t_client.get_networks(ctx, t_network_id)
         if not t_network:
             return
+
+        project_id = t_network['tenant_id']
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_network_id, constants.RT_NETWORK)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                self.xjob_handler.update_network(ctx, project_id,
+                                                 t_network_id, b_pod['pod_id'])
+            return
+
         b_pod = db_api.get_pod(ctx, b_pod_id)
         b_region_name = b_pod['region_name']
         b_client = self._get_client(region_name=b_region_name)
@@ -918,19 +928,22 @@ class XManager(PeriodicTasks):
         """
         (b_pod_id, t_subnet_id) = payload[
             constants.JT_SUBNET_UPDATE].split('#')
-        if b_pod_id == constants.POD_NOT_SPECIFIED:
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                ctx, t_subnet_id, constants.RT_SUBNET)
-            b_pods = [mapping[0] for mapping in mappings]
-            for b_pod in b_pods:
-                self.xjob_handler.update_subnet(ctx, t_subnet_id,
-                                                b_pod['pod_id'])
-            return
 
         t_client = self._get_client()
         t_subnet = t_client.get_subnets(ctx, t_subnet_id)
         if not t_subnet:
             return
+
+        project_id = t_subnet['tenant_id']
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_subnet_id, constants.RT_SUBNET)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                self.xjob_handler.update_subnet(ctx, project_id,
+                                                t_subnet_id, b_pod['pod_id'])
+            return
+
         b_pod = db_api.get_pod(ctx, b_pod_id)
         b_region_name = b_pod['region_name']
         b_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
@@ -1097,4 +1110,5 @@ class XManager(PeriodicTasks):
                 ctx, sw_port_id, update_body)
 
         for pod_id in sync_pod_list:
-            self.xjob_handler.setup_shadow_ports(ctx, pod_id, t_net_id)
+            self.xjob_handler.setup_shadow_ports(ctx, project_id,
+                                                 pod_id, t_net_id)

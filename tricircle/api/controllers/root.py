@@ -17,6 +17,7 @@
 import pecan
 from pecan import request
 
+from tricircle.api.controllers import job
 from tricircle.api.controllers import pod
 from tricircle.api.controllers import routing
 import tricircle.common.context as t_context
@@ -74,7 +75,8 @@ class V1Controller(object):
 
         self.sub_controllers = {
             "pods": pod.PodsController(),
-            "routings": routing.RoutingController()
+            "routings": routing.RoutingController(),
+            "jobs": job.AsyncJobController()
         }
 
         for name, ctrl in self.sub_controllers.items():
