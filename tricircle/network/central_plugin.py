@@ -140,7 +140,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                    "network_availability_zone",
                                    "dvr",
                                    "router",
-                                   "router_availability_zone"]
+                                   "router_availability_zone",
+                                   "allowed-address-pairs"]
 
     def __new__(cls, *args, **kwargs):
         n = super(TricirclePlugin, cls).__new__(cls, *args, **kwargs)
@@ -564,8 +565,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 new_mac=port['mac_address'])
 
     def _filter_unsupported_attrs(self, port_data):
-        unsupported_attrs = ['fixed_ips', 'qos_policy',
-                             'allowed_address_pair']
+        unsupported_attrs = ['fixed_ips', 'qos_policy']
         remove_keys = [key for key in port_data.keys() if (
             key in unsupported_attrs)]
         for key in remove_keys:
