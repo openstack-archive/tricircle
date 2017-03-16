@@ -439,6 +439,8 @@ class XManagerTest(unittest.TestCase):
         sg_id = uuidutils.generate_uuid()
         sg_rule_id_1 = uuidutils.generate_uuid()
         sg_rule_id_2 = uuidutils.generate_uuid()
+        sg_rule_id_3 = uuidutils.generate_uuid()
+
         sg = {'id': sg_id,
               'tenant_id': project_id,
               'name': 'default',
@@ -460,6 +462,15 @@ class XManagerTest(unittest.TestCase):
                    'ethertype': 'IPv4',
                    'port_range_max': -1,
                    'port_range_min': -1,
+                   'security_group_id': sg_id},
+                  {'id': sg_rule_id_3,
+                   'remote_group_id': None,
+                   'direction': 'ingress',
+                   'remote_ip_prefix': '2001:db8::/64',
+                   'protocol': None,
+                   'ethertype': 'IPv6',
+                   'port_range_max': -1,
+                   'port_range_min': -1,
                    'security_group_id': sg_id}]}
         RES_MAP['top']['security_group'].append(sg)
 
@@ -475,7 +486,8 @@ class XManagerTest(unittest.TestCase):
                       'network_id': network['id'],
                       'cidr': '10.0.%d.0/24' % i,
                       'gateway_ip': '10.0.%d.1' % i,
-                      'tenant_id': project_id}
+                      'tenant_id': project_id,
+                      'ip_version': q_constants.IP_VERSION_4}
             RES_MAP['top']['network'].append(network)
             RES_MAP['top']['subnet'].append(subnet)
 
@@ -487,6 +499,18 @@ class XManagerTest(unittest.TestCase):
             with self.context.session.begin():
                 core.create_resource(self.context, models.ResourceRouting,
                                      route)
+
+        network_ipv6 = {'id': 'network_ipv6_1',
+                        'tenant_id': project_id}
+        subnet_ipv6 = {'id': 'subnet_ipv6_1',
+                       'network_id': network_ipv6['id'],
+                       'cidr': '2001:db8::/64',
+                       'gateway_ip': '2001:db8::2',
+                       'tenant_id': project_id,
+                       'ip_version': q_constants.IP_VERSION_6}
+        RES_MAP['top']['network'].append(network_ipv6)
+        RES_MAP['top']['subnet'].append(subnet_ipv6)
+        RES_MAP['pod_1']['security_group'].append(sg)
 
         db_api.new_job(self.context, constants.JT_SEG_RULE_SETUP, project_id)
         self.xmanager.configure_security_group_rules(

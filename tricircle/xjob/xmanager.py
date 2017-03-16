@@ -734,10 +734,13 @@ class XManager(PeriodicTasks):
                     ip_net = netaddr.IPNetwork(subnet['cidr'])
                     if ip_net in bridge_ip_net:
                         continue
-                    # leave sg_id empty here
-                    new_b_rules.append(
-                        self._construct_bottom_rule(t_rule, '',
-                                                    subnet['cidr']))
+                    # leave sg_id empty here.
+                    # Tricircle has not supported IPv6 well yet,
+                    # so we ignore seg rules temporarily.
+                    if subnet['ip_version'] == q_constants.IP_VERSION_4:
+                        new_b_rules.append(
+                            self._construct_bottom_rule(t_rule, '',
+                                                        subnet['cidr']))
 
             mappings = db_api.get_bottom_mappings_by_top_id(
                 ctx, top_sg['id'], constants.RT_SG)
