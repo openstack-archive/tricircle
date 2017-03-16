@@ -186,6 +186,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                     availability_zones):
         self._validate_availability_zones(context, availability_zones)
 
+    def get_router_availability_zones(self, router_db):
+        return router_db.get(az_ext.AZ_HINTS)
+
     @staticmethod
     def _validate_availability_zones(context, az_list):
         if not az_list:
