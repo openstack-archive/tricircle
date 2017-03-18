@@ -31,6 +31,12 @@ RT_ROUTER = 'router'
 RT_NS_ROUTER = 'ns_router'
 RT_SG = 'security_group'
 
+REAL_SHADOW_TYPE_MAP = {
+    RT_NETWORK: RT_SD_NETWORK,
+    RT_SUBNET: RT_SD_SUBNET,
+    RT_PORT: RT_SD_PORT
+}
+
 
 # check whether the resource type is properly provisioned.
 def is_valid_resource_type(resource_type):

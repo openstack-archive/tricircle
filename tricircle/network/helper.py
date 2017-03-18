@@ -748,3 +748,44 @@ class NetworkHelper(object):
         agent_tunnel = profile[t_constants.PROFILE_TUNNEL_IP]
         db_api.ensure_agent_exists(t_ctx, pod['pod_id'], agent_host,
                                    agent_type, agent_tunnel)
+
+    def prepare_shadow_port(self, ctx, project_id, target_pod, net_id,
+                            port_body, agent=None):
+        host = port_body['binding:host_id']
+        create_body = {
+            'port': {
+                'tenant_id': project_id,
+                'admin_state_up': True,
+                'name': t_constants.shadow_port_name % port_body['id'],
+                'network_id': net_id,
+                'fixed_ips': [{
+                    'ip_address': port_body['fixed_ips'][0]['ip_address']}],
+                'device_owner': t_constants.DEVICE_OWNER_SHADOW,
+                'binding:host_id': host
+            }
+        }
+        if agent:
+            create_body['port'].update(
+                {'binding:profile': {
+                    t_constants.PROFILE_AGENT_TYPE: agent['type'],
+                    t_constants.PROFILE_TUNNEL_IP: agent['tunnel_ip']}})
+        _, sw_port_id = self.prepare_bottom_element(
+            ctx, project_id, target_pod, {'id': port_body['id']},
+            t_constants.RT_SD_PORT, create_body)
+        return sw_port_id
+
+    @staticmethod
+    def get_real_shadow_resource_iterator(t_ctx, res_type, res_id):
+        shadow_res_type = t_constants.REAL_SHADOW_TYPE_MAP[res_type]
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, res_id, res_type)
+        mappings.extend(db_api.get_bottom_mappings_by_top_id(
+            t_ctx, res_id, shadow_res_type))
+
+        processed_pod_set = set()
+        for pod, bottom_res_id in mappings:
+            region_name = pod['region_name']
+            if region_name in processed_pod_set:
+                continue
+            processed_pod_set.add(region_name)
+            yield pod, bottom_res_id
