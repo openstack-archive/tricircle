@@ -69,53 +69,45 @@ class XJobAPI(object):
         version_cap = 1.0
         return version_cap
 
-    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
-        combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
-        db_api.new_job(ctxt, constants.JT_ROUTER_SETUP, combine_id)
+    def _invoke_method(self, ctxt, method, _type, id):
+        db_api.new_job(ctxt, _type, id)
         self.client.prepare(exchange='openstack').cast(
-            ctxt, 'setup_bottom_router',
-            payload={constants.JT_ROUTER_SETUP: combine_id})
+            ctxt, method, payload={_type: id})
+
+    def setup_bottom_router(self, ctxt, net_id, router_id, pod_id):
+        self._invoke_method(
+            ctxt, 'setup_bottom_router', constants.JT_ROUTER_SETUP,
+            '%s#%s#%s' % (pod_id, router_id, net_id))
 
     def configure_extra_routes(self, ctxt, router_id):
         # NOTE(zhiyuan) this RPC is called by plugin in Neutron server, whose
         # control exchange is "neutron", however, we starts xjob without
         # specifying its control exchange, so the default value "openstack" is
         # used, thus we need to pass exchange as "openstack" here.
-        db_api.new_job(ctxt, constants.JT_ROUTER, router_id)
-        self.client.prepare(exchange='openstack').cast(
-            ctxt, 'configure_extra_routes',
-            payload={constants.JT_ROUTER: router_id})
+        self._invoke_method(
+            ctxt, 'configure_extra_routes', constants.JT_ROUTER, router_id)
 
     def delete_server_port(self, ctxt, port_id, pod_id):
-        combine_id = '%s#%s' % (pod_id, port_id)
-        db_api.new_job(ctxt, constants.JT_PORT_DELETE, combine_id)
-        self.client.prepare(exchange='openstack').cast(
-            ctxt, 'delete_server_port',
-            payload={constants.JT_PORT_DELETE: combine_id})
+        self._invoke_method(
+            ctxt, 'delete_server_port', constants.JT_PORT_DELETE,
+            '%s#%s' % (pod_id, port_id))
 
     def configure_security_group_rules(self, ctxt, project_id):
-        db_api.new_job(ctxt, constants.JT_SEG_RULE_SETUP, project_id)
-        self.client.prepare(exchange='openstack').cast(
+        self._invoke_method(
             ctxt, 'configure_security_group_rules',
-            payload={constants.JT_SEG_RULE_SETUP: project_id})
+            constants.JT_SEG_RULE_SETUP, project_id)
 
     def update_network(self, ctxt, network_id, pod_id):
-        combine_id = '%s#%s' % (pod_id, network_id)
-        db_api.new_job(ctxt, constants.JT_NETWORK_UPDATE, combine_id)
-        self.client.prepare(exchange='openstack').cast(
-            ctxt, 'update_network',
-            payload={constants.JT_NETWORK_UPDATE: combine_id})
+        self._invoke_method(
+            ctxt, 'update_network', constants.JT_NETWORK_UPDATE,
+            '%s#%s' % (pod_id, network_id))
 
     def update_subnet(self, ctxt, subnet_id, pod_id):
-        combine_id = '%s#%s' % (pod_id, subnet_id)
-        db_api.new_job(ctxt, constants.JT_SUBNET_UPDATE, combine_id)
-        self.client.prepare(exchange='openstack').cast(
-            ctxt, 'update_subnet',
-            payload={constants.JT_SUBNET_UPDATE: combine_id})
+        self._invoke_method(
+            ctxt, 'update_subnet', constants.JT_SUBNET_UPDATE,
+            '%s#%s' % (pod_id, subnet_id))
 
     def setup_shadow_ports(self, ctxt, pod_id, net_id):
-        combine_id = '%s#%s' % (pod_id, net_id)
-        db_api.new_job(ctxt, constants.JT_SHADOW_PORT_SETUP, combine_id)
-        self.client.prepare(exchange='openstack').cast(
-            ctxt, 'setup_shadow_ports',
-            payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
+        self._invoke_method(
+            ctxt, 'setup_shadow_ports', constants.JT_SHADOW_PORT_SETUP,
+            '%s#%s' % (pod_id, net_id))
