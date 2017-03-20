@@ -19,7 +19,7 @@ from oslo_log import log as logging
 
 from tricircle.common import constants
 import tricircle.common.context as t_context
-import tricircle.common.exceptions as t_exc
+import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 from tricircle.common.i18n import _LE
 from tricircle.common import policy
@@ -135,7 +135,7 @@ class RoutingController(rest.RestController):
 
         try:
             return {'routing': db_api.get_resource_routing(context, _id)}
-        except t_exc.ResourceNotFound:
+        except t_exceptions.ResourceNotFound:
             return utils.format_api_error(
                 404, _('Resource routing not found'))
 
@@ -149,7 +149,7 @@ class RoutingController(rest.RestController):
 
         try:
             db_api.get_resource_routing(context, _id)
-        except t_exc.ResourceNotFound:
+        except t_exceptions.ResourceNotFound:
             return utils.format_api_error(404,
                                           _('Resource routing not found'))
         try:
@@ -172,7 +172,7 @@ class RoutingController(rest.RestController):
 
         try:
             db_api.get_resource_routing(context, _id)
-        except t_exc.ResourceNotFound:
+        except t_exceptions.ResourceNotFound:
             return utils.format_api_error(404,
                                           _('Resource routing not found'))
 
@@ -203,7 +203,7 @@ class RoutingController(rest.RestController):
             try:
                 # find the pod through the pod_id and verify whether it exists
                 db_api.get_pod(context, new_pod_id)
-            except t_exc.ResourceNotFound:
+            except t_exceptions.ResourceNotFound:
                 return utils.format_api_error(
                     400, _("The pod %(new_pod_id)s doesn't"
                            " exist") % {'new_pod_id': new_pod_id})

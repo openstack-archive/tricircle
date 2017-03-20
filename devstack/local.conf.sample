@@ -23,7 +23,6 @@ HOST_IP=127.0.0.1
 # Specify port for central Neutron server
 # TRICIRCLE_NEUTRON_PORT=20001
 
-TRICIRCLE_START_SERVICES=True
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
-disable_service horizon
+# disable_service horizon
