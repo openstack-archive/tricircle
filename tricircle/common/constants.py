@@ -64,7 +64,8 @@ ns_router_name = 'ns_router_%s'
 
 shadow_port_name = 'shadow_port_%s'
 dhcp_port_name = 'dhcp_port_%s'  # subnet_id
-interface_port_name = 'interface_%s_%s'  # b_pod_id t_subnet_id
+snat_port_name = 'snat_port_%s'  # subnet_id
+interface_port_name = 'interface_%s_%s'  # b_region_name t_subnet_id
 interface_port_device_id = 'reserved_gateway_port'
 
 MAX_INT = 0x7FFFFFFF

@@ -158,6 +158,9 @@ class FakeClient(object):
             'subnet', cxt,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
 
+    def update_subnets(self, cxt, subnet_id, body):
+        pass
+
     def get_networks(self, cxt, net_id):
         return self.list_resources(
             'network', cxt,
@@ -431,6 +434,144 @@ class XManagerTest(unittest.TestCase):
                              {'router': {'routes': routes}})
             calls.append(call)
         self._check_extra_routes_calls(calls, mock_update.call_args_list)
+
+    @patch.object(FakeClient, 'update_subnets')
+    @patch.object(FakeClient, 'update_routers')
+    def test_configure_extra_routes_ew_gw(self, router_update, subnet_update):
+        for i in (1, 2):
+            pod_dict = {'pod_id': 'pod_id_%d' % i,
+                        'region_name': 'pod_%d' % i,
+                        'az_name': 'az_name_%d' % i}
+            db_api.create_pod(self.context, pod_dict)
+        for i in (1, 2, 3):
+            router = {'id': 'top_router_%d_id' % i}
+            TOP_ROUTER.append(router)
+
+        # gateway in podX is attached to routerX
+        gw_map = {'net1_pod1_gw': '10.0.1.1',
+                  'net2_pod2_gw': '10.0.2.1',
+                  'net3_pod1_gw': '10.0.3.3',
+                  'net3_pod2_gw': '10.0.3.4'}
+        # interfaces are all attached to router3
+        inf_map = {'net1_pod1_inf': '10.0.1.3',
+                   'net2_pod2_inf': '10.0.2.3',
+                   'net3_pod1_inf': '10.0.3.5',
+                   'net3_pod2_inf': '10.0.3.6'}
+        get_gw_map = lambda n_idx, p_idx: gw_map[
+            'net%d_pod%d_gw' % (n_idx, p_idx)]
+        get_inf_map = lambda n_idx, p_idx: inf_map[
+            'net%d_pod%d_inf' % (n_idx, p_idx)]
+        bridge_infos = []
+
+        for net_idx, router_idx, pod_idx in [(1, 1, 1), (3, 1, 1), (1, 3, 1),
+                                             (3, 3, 1), (2, 2, 2), (3, 2, 2),
+                                             (2, 3, 2), (3, 3, 2)]:
+            region_name = 'pod_%d' % pod_idx
+            pod_id = 'pod_id_%d' % pod_idx
+            top_router_id = 'top_router_%d_id' % router_idx
+
+            network = {'id': 'network_%d_id' % net_idx}
+            router = {'id': 'router_%d_%d_id' % (pod_idx, router_idx)}
+            subnet = {'id': 'subnet_%d_id' % net_idx,
+                      'network_id': network['id'],
+                      'cidr': '10.0.%d.0/24' % net_idx,
+                      'gateway_ip': get_gw_map(net_idx, pod_idx)}
+            port = {'network_id': network['id'],
+                    'device_id': router['id'],
+                    'device_owner': 'network:router_interface',
+                    'fixed_ips': [{'subnet_id': subnet['id']}]}
+            if router_idx == 3:
+                port['fixed_ips'][0][
+                    'ip_address'] = get_inf_map(net_idx, pod_idx)
+            else:
+                port['fixed_ips'][0][
+                    'ip_address'] = get_gw_map(net_idx, pod_idx)
+
+            if net_idx == pod_idx and router_idx == 3:
+                vm_idx = net_idx * 2 + pod_idx + 10
+                vm_ip = '10.0.%d.%d' % (net_idx, vm_idx)
+                vm_port = {'id': 'vm_port_%d_id' % vm_idx,
+                           'network_id': network['id'],
+                           'device_id': 'vm%d_id' % vm_idx,
+                           'device_owner': 'compute:None',
+                           'fixed_ips': [{'subnet_id': subnet['id'],
+                                          'ip_address': vm_ip}]}
+                bridge_network = {'id': 'bridge_network_%d_id' % net_idx}
+                bridge_subnet = {'id': 'bridge_subnet_%d_id' % net_idx,
+                                 'network_id': bridge_network['id'],
+                                 'cidr': '100.0.1.0/24',
+                                 'gateway_ip': '100.0.1.1'}
+                bridge_cidr = bridge_subnet['cidr']
+                bridge_port_ip = '%s.%d' % (
+                    bridge_cidr[:bridge_cidr.rindex('.')], 2 + pod_idx)
+                bridge_infos.append({'router_id': router['id'],
+                                     'bridge_ip': bridge_port_ip,
+                                     'vm_ip': vm_ip})
+                bridge_port = {
+                    'network_id': bridge_network['id'],
+                    'device_id': router['id'],
+                    'device_owner': 'network:router_gateway',
+                    'fixed_ips': [{'subnet_id': bridge_subnet['id'],
+                                   'ip_address': bridge_port_ip}]
+                }
+                RES_MAP[region_name]['port'].append(vm_port)
+                RES_MAP[region_name]['network'].append(bridge_network)
+                RES_MAP[region_name]['subnet'].append(bridge_subnet)
+                RES_MAP[region_name]['port'].append(bridge_port)
+
+            RES_MAP[region_name]['network'].append(network)
+            RES_MAP[region_name]['subnet'].append(subnet)
+            RES_MAP[region_name]['port'].append(port)
+            RES_MAP[region_name]['router'].append(router)
+
+            db_api.create_resource_mapping(self.context, top_router_id,
+                                           router['id'], pod_id, 'project_id',
+                                           constants.RT_ROUTER)
+        # the above codes create this topology
+        # pod1: net1 is attached to R1, default gateway is set on R1
+        #       net1 is attached to R3
+        #       net3 is attached to R1, default gateway is set on R1
+        #       net3 is attached to R3
+        # pod2: net2 is attached to R2, default gateway is set on R2
+        #       net2 is attached to R3
+        #       net3 is attached to R2, default gateway is set on R2
+        #       net3 is attached to R3
+
+        target_router_id = 'top_router_3_id'
+        db_api.new_job(self.context, constants.JT_ROUTER, target_router_id)
+        self.xmanager.configure_extra_routes(
+            self.context, payload={constants.JT_ROUTER: target_router_id})
+
+        # for the following paths, packets will go to R3 via the interface
+        # which is attached to R3
+        # net1 in pod1 -> net2 in pod2
+        # net2 in pod2 -> net1 in pod1
+        # net3 in pod1 -> net2 in pod2
+        # net3 in pod2 -> net1 in pod1
+        expect_calls = [
+            mock.call(self.context, 'subnet_1_id', {'subnet': {
+                'host_routes': [{'nexthop': get_inf_map(1, 1),
+                                 'destination': '10.0.2.0/24'}]}}),
+            mock.call(self.context, 'subnet_2_id', {'subnet': {
+                'host_routes': [{'nexthop': get_inf_map(2, 2),
+                                 'destination': '10.0.1.0/24'}]}}),
+            mock.call(self.context, 'subnet_3_id', {'subnet': {
+                'host_routes': [{'nexthop': get_inf_map(3, 1),
+                                 'destination': '10.0.2.0/24'}]}}),
+            mock.call(self.context, 'subnet_3_id', {'subnet': {
+                'host_routes': [{'nexthop': get_inf_map(3, 2),
+                                 'destination': '10.0.1.0/24'}]}})]
+        subnet_update.assert_has_calls(expect_calls, any_order=True)
+        expect_calls = []
+        for i in (0, 1):
+            bridge_info = bridge_infos[i]
+            expect_call = mock.call(
+                self.context, bridge_infos[1 - i]['router_id'],
+                {'router': {'routes': [
+                    {'nexthop': bridge_info['bridge_ip'],
+                     'destination': bridge_info['vm_ip'] + '/32'}]}})
+            expect_calls.append(expect_call)
+        router_update.assert_has_calls(expect_calls, any_order=True)
 
     @patch.object(FakeClient, 'delete_security_group_rules')
     @patch.object(FakeClient, 'create_security_group_rules')

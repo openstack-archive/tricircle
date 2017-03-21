@@ -38,3 +38,12 @@ class DhcpPortNotFound(exceptions.NotFound):
 class GatewayPortNotFound(exceptions.NotFound):
     message = _('Gateway port for subnet %(subnet_id)s and region %(region)s '
                 'not found')
+
+
+class CentralizedSNATPortNotFound(exceptions.NotFound):
+    message = _('Centralized snat port for subnet %(subnet_id)s not found')
+
+
+class NetAttachedToNonLocalRouter(exceptions.Conflict):
+    message = _('Network %(network_id)s has already been attached to non '
+                'local router %(router_id)s')

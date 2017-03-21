@@ -402,7 +402,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         b_subnet = self.core_plugin.get_subnet(context, _id)
         origin_enable_dhcp = b_subnet['enable_dhcp']
-        req_enable_dhcp = subnet['subnet']['enable_dhcp']
+        req_enable_dhcp = subnet['subnet'].get('enable_dhcp')
         # when request enable dhcp, and origin dhcp is disabled,
         # ensure subnet dhcp port is created
         if req_enable_dhcp and not origin_enable_dhcp:
@@ -424,7 +424,15 @@ class TricirclePlugin(plugin.Ml2Plugin):
             return
         subnet_id = port['fixed_ips'][0]['subnet_id']
         t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', subnet_id)
-        port['fixed_ips'][0]['ip_address'] = t_subnet['gateway_ip']
+        snat_port_name = t_constants.snat_port_name % t_subnet['id']
+        raw_client = self.neutron_handle._get_client(t_ctx)
+        params = {'name': snat_port_name}
+        t_ports = raw_client.list_ports(**params)['ports']
+        if not t_ports:
+            raise t_exceptions.CentralizedSNATPortNotFound(
+                subnet_id=t_subnet['id'])
+        port['fixed_ips'][0][
+            'ip_address'] = t_ports[0]['fixed_ips'][0]['ip_address']
 
     def create_port_bulk(self, context, ports):
         # NOTE(zhiyuan) currently this bulk operation is only for shadow port

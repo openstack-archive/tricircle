@@ -40,3 +40,13 @@ TRICIRCLE_START_SERVICES=True
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
 disable_service horizon
+
+# Enable l2population for vxlan network
+[[post-config|/$Q_PLUGIN_CONF_FILE]]
+
+[ml2]
+mechanism_drivers = openvswitch,linuxbridge,l2population
+
+[agent]
+tunnel_types=vxlan
+l2_population=True
