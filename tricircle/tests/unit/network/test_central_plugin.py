@@ -2174,7 +2174,9 @@ class PluginTest(unittest.TestCase,
                 'name': 'new_name',
                 'admin_state_up': False,
                 'mac_address': 'fa:16:3e:cd:76:bb',
-                'security_groups': [t_sg_id]
+                'security_groups': [t_sg_id],
+                'allowed_address_pairs': [{"ip_address": "23.23.23.1",
+                                           "mac_address": "fa:16:3e:c4:cd:3f"}]
             }
 
         }
@@ -2196,6 +2198,8 @@ class PluginTest(unittest.TestCase,
                          body_copy['port']['mac_address'])
         self.assertEqual(top_port['security_groups'],
                          body_copy['port']['security_groups'])
+        self.assertEqual(top_port['allowed_address_pairs'][0],
+                         body_copy['port']['allowed_address_pairs'][0])
 
         bottom_port = fake_client.get_ports(t_ctx, b_port_id)
         # name is set to bottom resource id, which is used by lock_handle to
@@ -2217,6 +2221,8 @@ class PluginTest(unittest.TestCase,
                          body_copy['port']['mac_address'])
         self.assertEqual(bottom_port['security_groups'],
                          body_copy['port']['security_groups'])
+        self.assertEqual(bottom_port['allowed_address_pairs'][0],
+                         body_copy['port']['allowed_address_pairs'][0])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
