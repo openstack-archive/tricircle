@@ -22,8 +22,6 @@ from oslo_config import cfg
 import oslo_log.log as logging
 from oslo_policy import opts as policy_opts
 
-from tricircle.common.i18n import _LI
-
 from tricircle.common import policy
 from tricircle.common import rpc
 from tricircle.common import version
@@ -53,8 +51,8 @@ def _setup_logging():
     """Sets up the logging options for a log with supplied name."""
     product_name = "tricircle"
     logging.setup(cfg.CONF, product_name)
-    LOG.info(_LI("Logging enabled!"))
-    LOG.info(_LI("%(prog)s version %(version)s"),
+    LOG.info("Logging enabled!")
+    LOG.info("%(prog)s version %(version)s",
              {'prog': sys.argv[0],
               'version': version.version_info})
     LOG.debug("command line: %s", " ".join(sys.argv))

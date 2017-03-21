@@ -21,7 +21,6 @@ from neutron.plugins.ml2.drivers import type_vxlan
 from neutron_lib import exceptions as n_exc
 
 from tricircle.common import constants
-from tricircle.common.i18n import _LE
 
 LOG = log.getLogger(__name__)
 
@@ -37,8 +36,8 @@ class VxLANTypeDriver(type_vxlan.VxlanTypeDriver):
         try:
             self._initialize(cfg.CONF.tricircle.vni_ranges)
         except n_exc.NetworkTunnelRangeError:
-            LOG.exception(_LE("Failed to parse vni_ranges. "
-                              "Service terminated!"))
+            LOG.exception("Failed to parse vni_ranges. "
+                          "Service terminated!")
             raise SystemExit()
 
     def reserve_provider_segment(self, context, segment):

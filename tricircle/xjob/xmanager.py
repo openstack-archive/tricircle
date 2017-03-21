@@ -31,7 +31,6 @@ import neutronclient.common.exceptions as q_cli_exceptions
 
 from tricircle.common import client
 from tricircle.common import constants
-from tricircle.common.i18n import _LE, _LI, _LW
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 import tricircle.network.exceptions as t_network_exc
@@ -96,9 +95,9 @@ def _job_handle(job_type):
                         # fail and try again to obtain the lock
                         db_api.finish_job(ctx, running_job['id'], False,
                                           time_new)
-                        LOG.warning(_LW('Job %(job)s of type %(job_type)s for '
-                                        'resource %(resource)s expires, set '
-                                        'its state to Fail'),
+                        LOG.warning('Job %(job)s of type %(job_type)s for '
+                                    'resource %(resource)s expires, set '
+                                    'its state to Fail',
                                     {'job': running_job['id'],
                                      'job_type': job_type,
                                      'resource': resource_id})
@@ -113,8 +112,8 @@ def _job_handle(job_type):
                     func(*args, **kwargs)
                 except Exception:
                     db_api.finish_job(ctx, job['id'], False, time_new)
-                    LOG.error(_LE('Job %(job)s of type %(job_type)s for '
-                                  'resource %(resource)s fails'),
+                    LOG.error('Job %(job)s of type %(job_type)s for '
+                              'resource %(resource)s fails',
                               {'job': job['id'],
                                'job_type': job_type,
                                'resource': resource_id})
@@ -210,7 +209,7 @@ class XManager(PeriodicTasks):
     # rpc message endpoint handling
     def test_rpc(self, ctx, payload):
 
-        LOG.info(_LI("xmanager receive payload: %s"), payload)
+        LOG.info("xmanager receive payload: %s", payload)
 
         info_text = "xmanager receive payload: %s" % payload
 
@@ -408,8 +407,8 @@ class XManager(PeriodicTasks):
             b_int_port_id = db_api.get_bottom_id_by_top_id_region_name(
                 ctx, t_int_port_id, b_pod['region_name'], constants.RT_PORT)
             if not b_int_port_id:
-                LOG.warning(_LW('Port %(port_id)s associated with floating ip '
-                                '%(fip)s is not mapped to bottom pod'),
+                LOG.warning('Port %(port_id)s associated with floating ip '
+                            '%(fip)s is not mapped to bottom pod',
                             {'port_id': t_int_port_id, 'fip': add_fip})
                 continue
             t_int_port = t_client.get_ports(ctx, t_int_port_id)
@@ -818,8 +817,8 @@ class XManager(PeriodicTasks):
         try:
             b_client.update_networks(ctx, b_network_id, body)
         except q_cli_exceptions.NotFound:
-            LOG.error(_LE('network: %(net_id)s not found,'
-                          'pod name: %(name)s'),
+            LOG.error('network: %(net_id)s not found,'
+                      'pod name: %(name)s',
                       {'net_id': b_network_id, 'name': b_region_name})
 
     @_job_handle(constants.JT_SUBNET_UPDATE)
@@ -879,8 +878,8 @@ class XManager(PeriodicTasks):
         try:
             b_client.update_subnets(ctx, b_subnet_id, body)
         except q_cli_exceptions.NotFound:
-            LOG.error(_LE('subnet: %(subnet_id)s not found, '
-                          'pod name: %(name)s'),
+            LOG.error('subnet: %(subnet_id)s not found, '
+                      'pod name: %(name)s',
                       {'subnet_id': b_subnet_id, 'name': b_region_name})
 
     @_job_handle(constants.JT_SHADOW_PORT_SETUP)
@@ -991,10 +990,10 @@ class XManager(PeriodicTasks):
             else:
                 agent = db_api.get_agent_by_host_type(ctx, host, agent_type)
                 if not agent:
-                    LOG.error(_LE('Agent of type %(agent_type)s in '
-                                  'host %(host)s not found during shadow '
-                                  'ports setup'), {'agent_type': agent_type,
-                                                   'host': host})
+                    LOG.error('Agent of type %(agent_type)s in '
+                              'host %(host)s not found during shadow '
+                              'ports setup',
+                              {'agent_type': agent_type, 'host': host})
                     continue
                 agent_info_map[key] = agent
             port_bodys.append(port_body)

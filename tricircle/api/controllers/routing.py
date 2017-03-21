@@ -21,7 +21,6 @@ from tricircle.common import constants
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exc
 from tricircle.common.i18n import _
-from tricircle.common.i18n import _LE
 from tricircle.common import policy
 from tricircle.common import utils
 
@@ -81,8 +80,8 @@ class RoutingController(rest.RestController):
                 return utils.format_api_error(
                     409, _('Resource routing already exists'))
         except Exception as e:
-            LOG.exception(_LE('Failed to create resource routing: '
-                              '%(exception)s '), {'exception': e})
+            LOG.exception('Failed to create resource routing: '
+                          '%(exception)s ', {'exception': e})
             return utils.format_api_error(
                 500, _('Failed to create resource routing'))
 
@@ -120,8 +119,8 @@ class RoutingController(rest.RestController):
             return {'routings': db_api.list_resource_routings(context,
                                                               filters)}
         except Exception as e:
-            LOG.exception(_LE('Failed to show all resource routings: '
-                              '%(exception)s '), {'exception': e})
+            LOG.exception('Failed to show all resource routings: '
+                          '%(exception)s ', {'exception': e})
             return utils.format_api_error(
                 500, _('Failed to show all resource routings'))
 
@@ -157,8 +156,8 @@ class RoutingController(rest.RestController):
             pecan.response.status = 200
             return pecan.response
         except Exception as e:
-            LOG.exception(_LE('Failed to delete the resource routing: '
-                              '%(exception)s '), {'exception': e})
+            LOG.exception('Failed to delete the resource routing: '
+                          '%(exception)s ', {'exception': e})
             return utils.format_api_error(
                 500, _('Failed to delete the resource routing'))
 
@@ -208,8 +207,8 @@ class RoutingController(rest.RestController):
                     400, _("The pod %(new_pod_id)s doesn't"
                            " exist") % {'new_pod_id': new_pod_id})
             except Exception as e:
-                LOG.exception(_LE('Failed to update resource routing: '
-                                  '%(exception)s '), {'exception': e})
+                LOG.exception('Failed to update resource routing: '
+                              '%(exception)s ', {'exception': e})
                 return utils.format_api_error(
                     500, _('Failed to update resource routing'))
 
@@ -218,7 +217,7 @@ class RoutingController(rest.RestController):
                 context, _id, update_dict)
             return {'routing': routing_updated}
         except Exception as e:
-            LOG.exception(_LE('Failed to update resource routing: '
-                              '%(exception)s '), {'exception': e})
+            LOG.exception('Failed to update resource routing: '
+                          '%(exception)s ', {'exception': e})
             return utils.format_api_error(
                 500, _('Failed to update resource routing'))

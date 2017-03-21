@@ -18,9 +18,6 @@ from oslo_log import log
 
 from neutron.plugins.ml2 import managers
 
-from tricircle.common.i18n import _LE
-from tricircle.common.i18n import _LI
-
 LOG = log.getLogger(__name__)
 
 
@@ -36,7 +33,7 @@ class TricircleTypeManager(managers.TypeManager):
             'tricircle.network.type_drivers',
             cfg.CONF.tricircle.type_drivers,
             invoke_on_load=True)
-        LOG.info(_LI('Loaded type driver names: %s'), self.names())
+        LOG.info('Loaded type driver names: %s', self.names())
 
         self._register_types()
         self._check_tenant_network_types(
@@ -48,14 +45,14 @@ class TricircleTypeManager(managers.TypeManager):
         if not bridge_network_type:
             return
         if bridge_network_type == 'local':
-            LOG.error(_LE("Local is not a valid bridge network type. "
-                          "Service terminated!"), bridge_network_type)
+            LOG.error("Local is not a valid bridge network type. "
+                      "Service terminated!", bridge_network_type)
             raise SystemExit(1)
 
         type_set = set(self.tenant_network_types)
         if bridge_network_type not in type_set:
-            LOG.error(_LE("Bridge network type %s is not registered. "
-                          "Service terminated!"), bridge_network_type)
+            LOG.error("Bridge network type %s is not registered. "
+                      "Service terminated!", bridge_network_type)
             raise SystemExit(1)
 
     def _register_types(self):

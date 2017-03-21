@@ -29,7 +29,6 @@ from tricircle.common import constants
 from tricircle.common.context import is_admin_context as _is_admin_context
 from tricircle.common import exceptions
 from tricircle.common.i18n import _
-from tricircle.common.i18n import _LW
 
 from tricircle.db import core
 from tricircle.db import models
@@ -562,8 +561,8 @@ def _retry_on_deadlock(f):
             try:
                 return f(*args, **kwargs)
             except db_exc.DBDeadlock:
-                LOG.warning(_LW("Deadlock detected when running "
-                                "'%(func_name)s': Retrying..."),
+                LOG.warning("Deadlock detected when running "
+                            "'%(func_name)s': Retrying...",
                             dict(func_name=f.__name__))
                 # Retry!
                 time.sleep(0.5)

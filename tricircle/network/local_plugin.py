@@ -32,7 +32,7 @@ from neutron.plugins.ml2 import plugin
 from tricircle.common import client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
-from tricircle.common.i18n import _, _LE
+from tricircle.common.i18n import _
 
 from tricircle.common import resource_handle
 import tricircle.common.utils as t_utils
@@ -286,9 +286,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 located = self._is_network_located_in_region(network,
                                                              region_name)
                 if not located:
-                    LOG.error(_LE('network: %(net_id)s not located in current '
-                                  'region: %(region_name)s, '
-                                  'az_hints: %(az_hints)s'),
+                    LOG.error('network: %(net_id)s not located in current '
+                              'region: %(region_name)s, '
+                              'az_hints: %(az_hints)s',
                               {'net_id': network['id'],
                                'region_name': region_name,
                                'az_hints': network[az_ext.AZ_HINTS]})
@@ -566,8 +566,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                                  profile_dict)
         elif cfg.CONF.client.cross_pod_vxlan_mode == t_constants.NM_L2GW:
             if not cfg.CONF.tricircle.l2gw_tunnel_ip:
-                LOG.error(_LE('Cross-pod VxLAN networking mode is set to l2gw '
-                              'but L2 gateway tunnel ip is not configured'))
+                LOG.error('Cross-pod VxLAN networking mode is set to l2gw '
+                          'but L2 gateway tunnel ip is not configured')
                 return
             l2gw_tunnel_ip = cfg.CONF.tricircle.l2gw_tunnel_ip
             helper.NetworkHelper.fill_agent_data(agent_type, host, agents[0],

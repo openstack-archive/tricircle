@@ -23,7 +23,6 @@ from neutron_lib import exceptions
 from oslo_log import log as logging
 
 from tricircle.common.i18n import _
-from tricircle.common.i18n import _LE
 
 
 LOG = logging.getLogger(__name__)
@@ -91,8 +90,8 @@ class TricircleException(Exception):
     def _should_format(self):
 
         if self.kwargs['message'] is None and '%(message)' in self.message:
-            LOG.error(_LE('\%(message)s in message '
-                          'but init parameter is None'))
+            LOG.error('\%(message)s in message '
+                      'but init parameter is None')
 
         return self.kwargs['message'] is None or '%(message)' in self.message
 

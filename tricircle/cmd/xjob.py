@@ -26,7 +26,6 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from tricircle.common import config
-from tricircle.common.i18n import _LI, _LW
 
 from tricircle.xjob import xservice
 
@@ -41,15 +40,15 @@ def main():
     workers = CONF.workers
 
     if workers < 1:
-        LOG.warning(_LW("Wrong worker number, worker = %(workers)s"), workers)
+        LOG.warning("Wrong worker number, worker = %(workers)s", workers)
         workers = 1
 
-    LOG.info(_LI("XJob Server on http://%(host)s with %(workers)s"),
+    LOG.info("XJob Server on http://%(host)s with %(workers)s",
              {'host': host, 'workers': workers})
 
     xservice.serve(xservice.create_service(), workers)
 
-    LOG.info(_LI("Configuration:"))
+    LOG.info("Configuration:")
     CONF.log_opt_values(LOG, logging.INFO)
 
     xservice.wait()
