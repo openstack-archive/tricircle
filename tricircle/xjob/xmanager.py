@@ -777,7 +777,7 @@ class XManager(PeriodicTasks):
 
         :param ctx: tricircle context
         :param payload: dict whose key is JT_NETWORK_UPDATE and value
-        is "top_network_id#bottom_pod_id"
+        is "bottom_pod_id#top_network_id"
         :return: None
         """
         (b_pod_id, t_network_id) = payload[
@@ -828,7 +828,7 @@ class XManager(PeriodicTasks):
 
         :param ctx: tricircle context
         :param payload: dict whose key is JT_SUBNET_UPDATE and value
-        is "top_subnet_id#bottom_pod_id"
+        is "bottom_pod_id#top_subnet_id"
         :return: None
         """
         (b_pod_id, t_subnet_id) = payload[
