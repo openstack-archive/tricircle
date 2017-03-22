@@ -16,26 +16,28 @@ to say, local type network doesn't support cross-pod l2 networking.
 With multi-pod installation of the Tricircle, you can try out cross-pod l2
 networking and cross-pod l3 networking features.
 
-As the first step to support cross-pod l2 networking, we have added VLAN
+To support cross-pod l2 networking, we have added both VLAN and VxLAN
 network type to the Tricircle. When a VLAN type network created via the
 central Neutron server is used to boot virtual machines in different pods, local
 Neutron server in each pod will create a VLAN type network with the same VLAN
 ID and physical network as the central network, so each pod should be configured
 with the same VLAN allocation pool and physical network. Then virtual machines
 in different pods can communicate with each other in the same physical network
-with the same VLAN tag.
+with the same VLAN tag. Similarly, for VxLAN network type, each pod should be
+configured with the same VxLAN allocation pool, so local Neutron server in each
+pod can create a VxLAN type network with the same VxLAN ID as is allocated by
+the central Neutron server.
 
 Cross-pod l3 networking is supported in two ways in the Tricircle. If two
-networks connected to the router are of local type, we utilize a shared provider
-VLAN network to achieve cross-pod l3 networking. Later we may also use VxLAN
-network or multi-segment VLAN network. When a subnet is attached to a router via
-the central Neutron server, the Tricircle not only creates corresponding subnet
-and router in the pod, but also creates a VLAN type "bridge" network. Both
-tenant network and "bridge" network are attached to the router. Each tenant will
-have one allocated VLAN, which is shared by the tenant's "bridge" networks
-across pods. The CIDRs of "bridge" networks for one tenant are also the same, so
-the router interfaces in "bridge" networks across different pods can communicate
-with each other via the provider VLAN network. By adding an extra route as
+networks connected to the router are of local type, we utilize a shared
+VLAN or VxLAN network to achieve cross-pod l3 networking. When a subnet is
+attached to a router via the central Neutron server, the Tricircle not only
+creates corresponding subnet and router in the pod, but also creates a "bridge"
+network. Both tenant network and "bridge" network are attached to the router.
+Each tenant will have one allocated VLAN or VxLAN ID, which is shared by the
+tenant's "bridge" networks across pods. The CIDRs of "bridge" networks for one
+tenant are also the same, so the router interfaces in "bridge" networks across
+different pods can communicate with each other. By adding an extra route as
 following::
 
   destination: CIDR of tenant network in another pod
@@ -67,9 +69,11 @@ Prerequisite
 
 In this guide we take two nodes deployment as an example. One node to run the
 Tricircle API, the central Neutron server and one pod, the other one node to run
-another pod. Both nodes have two network interfaces, for management network and
-provider VLAN network. For VLAN network, the physical network infrastructure
-should support VLAN tagging. If you would like to try north-south networking,
+another pod. For VLAN network, both nodes should have two network interfaces,
+which are connected to the management network and provider VLAN network. The
+physical network infrastructure should support VLAN tagging. For VxLAN network,
+you can combine the management plane and data plane, in this case, only one
+network interface is needed. If you would like to try north-south networking,
 too, you should prepare one more network interface in the second node for the
 external network. In this guide, the external network is also VLAN type, so the
 local.conf sample is based on VLAN type external network setup. For the resource
@@ -111,12 +115,20 @@ RegionOne,
 
       Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
 
+  - if you would like to also configure vxlan network, you can set
+    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS. the format of it is
+    (vni_ranges=<min vxlan>:<max vxlan>)::
+
+      Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
+
   - the format of OVS_BRIDGE_MAPPINGS is <physical network name>:<ovs bridge name>,
     you can change these names, but remember to adapt your change to the
     commands showed in this guide. You do not need specify the bridge mapping
     for "extern", because this physical network is located in other pods::
 
       OVS_BRIDGE_MAPPINGS=bridge:br-vlan
+
+    this option can be omitted if only VxLAN networks are needed
 
   - set TRICIRCLE_START_SERVICES to True to install the Tricircle service and
     central Neutron in node1::
@@ -129,7 +141,8 @@ RegionOne,
     sudo ovs-vsctl add-port br-vlan eth1
 
   br-vlan is the OVS bridge name you configure on OVS_PHYSICAL_BRIDGE, eth1 is
-  the device name of your VLAN network interface
+  the device name of your VLAN network interface, this step can be omitted if
+  only VxLAN networks are provided to tenants.
 
 - 5 Run DevStack. In DevStack folder, run ::
 
@@ -169,11 +182,21 @@ In pod2 in node2 for OpenStack RegionTwo,
 
       Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
 
+  - if you would like to also configure vxlan network, you can set
+    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS. the format of it is
+    (vni_ranges=<min vxlan>:<max vxlan>)::
+
+      Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
+
   - the format of OVS_BRIDGE_MAPPINGS is <physical network name>:<ovs bridge name>,
     you can change these names, but remember to adapt your change to the commands
     showed in this guide::
 
       OVS_BRIDGE_MAPPINGS=bridge:br-vlan,extern:br-ext
+
+    if you only use vlan network for external network, it can be configured like::
+
+      OVS_BRIDGE_MAPPINGS=extern:br-ext
 
   - set TRICIRCLE_START_SERVICES to False(it's True by default) so Tricircle
     services and central Neutron will not be started in node2::
@@ -196,7 +219,8 @@ In pod2 in node2 for OpenStack RegionTwo,
 
   br-vlan and br-ext are the OVS bridge names you configure on
   OVS_PHYSICAL_BRIDGE, eth1 and eth2 are the device names of your VLAN network
-  interfaces, for the "bridge" network and the external network.
+  interfaces, for the "bridge" network and the external network. Omit br-vlan
+  if you only use vxlan network as tenant network.
 
 - 5 Run DevStack. In DevStack folder, run ::
 

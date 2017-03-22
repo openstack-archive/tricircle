@@ -175,7 +175,6 @@ function start_central_neutron_server {
         type_drivers+=,vlan
         tenant_network_types+=,vlan
         iniset $NEUTRON_CONF.$server_index tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
-        iniset $NEUTRON_CONF.$server_index tricircle bridge_network_type vlan
     fi
     if [ "$Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS" != "" ]; then
         type_drivers+=,vxlan
@@ -185,6 +184,7 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index tricircle type_drivers $type_drivers
     iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types
     iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
+    # default value of bridge_network_type is vxlan
 
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head

@@ -70,11 +70,11 @@ from tricircle.network import security_groups
 
 tricircle_opts = [
     cfg.ListOpt('type_drivers',
-                default=['local'],
+                default=['local,vxlan'],
                 help=_('List of network type driver entry points to be loaded '
                        'from the tricircle.network.type_drivers namespace.')),
     cfg.ListOpt('tenant_network_types',
-                default=['local'],
+                default=['local,vxlan'],
                 help=_('Ordered list of network_types to allocate as tenant '
                        'networks. The default value "local" is useful for '
                        'single pod connectivity.')),
@@ -91,7 +91,7 @@ tricircle_opts = [
                        'enumerating ranges of VXLAN VNI IDs that are '
                        'available for tenant network allocation.')),
     cfg.StrOpt('bridge_network_type',
-               default='',
+               default='vxlan',
                help=_('Type of l3 bridge network, this type should be enabled '
                       'in tenant_network_types and is not local type.')),
     cfg.StrOpt('default_region_for_external_network',

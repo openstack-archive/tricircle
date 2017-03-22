@@ -31,6 +31,7 @@ KEYSTONE_SERVICE_HOST=10.250.201.24
 KEYSTONE_AUTH_HOST=10.250.201.24
 
 Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=(network_vlan_ranges=bridge:2001:3000,extern:3001:4000)
+Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
 OVS_BRIDGE_MAPPINGS=bridge:br-vlan,extern:br-ext
 
 # Specify Central Region name
