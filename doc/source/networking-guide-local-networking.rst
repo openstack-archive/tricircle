@@ -40,7 +40,6 @@ will be created in a default region.
 .. code-block:: console
 
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --router:external --availability-zone-hint RegionOne ext-net1
-
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
@@ -52,6 +51,29 @@ will be created in a default region.
     | provider:network_type     | vlan                                 |
     | provider:physical_network | extern                               |
     | provider:segmentation_id  | 170                                  |
+    | router:external           | True                                 |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | c0e194dfadd44fc1983fd6dd7c8ed384     |
+    +---------------------------+--------------------------------------+
+
+Now you can also create flat type external network
+
+.. code-block:: console
+
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type flat --provider:physical_network extern --router:external --availability-zone-hint RegionOne ext-net1
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | RegionOne                            |
+    | id                        | df2c8e3a-3f25-4cba-a902-33289f3a8aee |
+    | name                      | ext-net1                             |
+    | project_id                | c0e194dfadd44fc1983fd6dd7c8ed384     |
+    | provider:network_type     | flat                                 |
+    | provider:physical_network | extern                               |
+    | provider:segmentation_id  |                                      |
     | router:external           | True                                 |
     | shared                    | False                                |
     | status                    | ACTIVE                               |

@@ -96,6 +96,7 @@ function init_local_neutron_variables {
         local vlan_ranges=(network_vlan_ranges=$vlan_option,$ext_option)
         Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS=$vlan_ranges
         Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS="vni_ranges=$TRICIRCLE_DEFAULT_VXLAN_RANGE"
+        Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS="flat_networks=$TRICIRCLE_DEFAULT_FLAT_NETWORKS"
 
         local vlan_mapping="bridge:$TRICIRCLE_DEFAULT_VLAN_BRIDGE"
         local ext_mapping="extern:$TRICIRCLE_DEFAULT_EXT_BRIDGE"
@@ -248,6 +249,11 @@ function start_central_neutron_server {
         type_drivers+=,vxlan
         tenant_network_types+=,vxlan
         iniset $NEUTRON_CONF.$server_index tricircle vni_ranges `echo $Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
+    fi
+    if [ "Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS" != "" ]; then
+        type_drivers+=,flat
+        tenant_network_types+=,flat
+        iniset $NEUTRON_CONF.$server_index tricircle flat_networks `echo $Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS | awk -F= '{print $2}'`
     fi
     iniset $NEUTRON_CONF.$server_index tricircle type_drivers $type_drivers
     iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types

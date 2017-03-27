@@ -130,6 +130,19 @@ RegionOne,
 
     this option can be omitted if only VxLAN networks are needed
 
+  - if you would like to also configure flat network, you can set
+    Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS, the format of it is
+    (flat_networks=phy_net1,phy_net2,...). Besides specifying a list of
+    physical network names, you can also use '*' to allow flat networks with
+    arbitrary physical network names; or use an empty list to disable flat
+    networks. For simplicity, we use the same physical networks and bridge
+    mappings for vlan and flat network configuration. Similar to vlan network,
+    You need to additionally specify the physical network "extern" to ensure
+    the central neutron can create "extern" physical network which located in
+    other pods::
+
+      Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS=(flat_networks=bridge,extern)
+
   - set TRICIRCLE_START_SERVICES to True to install the Tricircle service and
     central Neutron in node1::
 
@@ -197,6 +210,16 @@ In pod2 in node2 for OpenStack RegionTwo,
     if you only use vlan network for external network, it can be configured like::
 
       OVS_BRIDGE_MAPPINGS=extern:br-ext
+
+  - if you would like to also configure flat network, you can set
+    Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS, the format of it is
+    (flat_networks=phy_net1,phy_net2,...). Besides specifying a list of
+    physical network names, you can also use '*' to allow flat networks with
+    arbitrary physical network names; or use an empty list to disable flat
+    networks. For simplicity, we use the same physical networks and bridge
+    mappings for vlan and flat network configuration::
+
+      Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS=(flat_networks=bridge,extern)
 
   - set TRICIRCLE_START_SERVICES to False(it's True by default) so Tricircle
     services and central Neutron will not be started in node2::

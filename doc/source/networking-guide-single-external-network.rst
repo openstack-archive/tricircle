@@ -108,6 +108,29 @@ Create external network ext-net1, which will be located in RegionThree.
     | tenant_id                 | 640e791e767e49939d5c600fdb3f8431     |
     +---------------------------+--------------------------------------+
 
+Now you can also create flat type external network
+
+.. code-block:: console
+
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type flat --provider:physical_network extern --router:external --availability-zone-hint RegionTwo ext-net1
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | RegionTwo                            |
+    | id                        | c151c1a2-ec8c-4975-bb85-9a8e143100b0 |
+    | name                      | ext-net1                             |
+    | project_id                | 640e791e767e49939d5c600fdb3f8431     |
+    | provider:network_type     | flat                                 |
+    | provider:physical_network | extern                               |
+    | provider:segmentation_id  |                                      |
+    | router:external           | True                                 |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | 640e791e767e49939d5c600fdb3f8431     |
+    +---------------------------+--------------------------------------+
+
 Create subnet in ext-net1.
 
 .. code-block:: console

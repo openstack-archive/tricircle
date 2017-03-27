@@ -67,12 +67,19 @@ network is 1001~2000, add the following configuration to the above local.conf::
 
     Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
 
+If you also want to configure flat network, suppose you use the same physical
+network as the vlan network, configure the local.conf like this::
+
+    Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS=(flat_networks=bridge,extern)
+
 In both RegionOne and RegionTwo, external network is able to be provisioned,
 the settings will look like this in /etc/neutron/plugins/ml2/ml2_conf.ini::
 
     network_vlan_ranges = bridge:101:150,extern:151:200
 
     vni_ranges = 1001:2000(or the range that you configure)
+
+    flat_networks = bridge,extern
 
     bridge_mappings = bridge:br-vlan,extern:br-ext
 
@@ -85,8 +92,9 @@ follows::
     bridge_network_type = vxlan
     network_vlan_ranges = bridge:101:150,extern:151:200
     vni_ranges = 1001:2000
-    tenant_network_types = local,vlan,vxlan
-    type_drivers = local,vlan,vxlan
+    flat_networks = bridge,extern
+    tenant_network_types = local,vlan,vxlan,flat
+    type_drivers = local,vlan,vxlan,flat
 
 The default network type in central Neutron is local network, i.e, one
 network can only be presented in one local Neutron. In which region the
@@ -102,6 +110,10 @@ command for vlan network type, or --provider-network-type vxlan for vxlan
 network type. Both vlan and vxlan network type could work as the bridge
 network. The default bridge network type is vxlan.
 
+If you want to create a flat network, which is usually used as the external
+network type, then you have to specify --provider-network-type flat in network
+creation command.
+
 You can create L2 network for different purposes, and the supported network
 types for different purposes are summarized as follows.
 
@@ -113,10 +125,10 @@ types for different purposes are summarized as follows.
        * - Networking purpose
          - Supported
        * - Local L2 network for instances
-         - VLAN, VxLAN
+         - FLAT, VLAN, VxLAN
        * - Cross Neutron L2 network for instances
-         - VLAN, VxLAN
+         - FLAT, VLAN, VxLAN
        * - Bridge network for routers
-         - VLAN, VxLAN
+         - FLAT, VLAN, VxLAN
        * - External network
-         - VLAN
+         - FLAT, VLAN

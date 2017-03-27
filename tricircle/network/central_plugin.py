@@ -90,6 +90,12 @@ tricircle_opts = [
                 help=_('Comma-separated list of <vni_min>:<vni_max> tuples '
                        'enumerating ranges of VXLAN VNI IDs that are '
                        'available for tenant network allocation.')),
+    cfg.ListOpt('flat_networks',
+                default='*',
+                help=_("List of physical_network names with which flat "
+                       "networks can be created. Use default '*' to allow "
+                       "flat networks with arbitrary physical_network names. "
+                       "Use an empty list to disable flat networks.")),
     cfg.StrOpt('bridge_network_type',
                default='vxlan',
                help=_('Type of l3 bridge network, this type should be enabled '
