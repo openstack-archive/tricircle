@@ -44,6 +44,11 @@ configure the local.conf like this::
     TRICIRCLE_START_SERVICES=True
     enable_plugin tricircle https://github.com/openstack/tricircle/
 
+If you also want to configure vxlan network, suppose the vxlan range for tenant
+network is 1001~2000, add the following configuration to the above local.conf::
+
+    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
+
 In the node which will run local Neutron without Tricircle services, configure
 the local.conf like this::
 
@@ -57,12 +62,17 @@ You may have noticed that the only difference is TRICIRCLE_START_SERVICES
 is True or False. All examples given in this document will be based on these
 settings.
 
+If you also want to configure vxlan network, suppose the vxlan range for tenant
+network is 1001~2000, add the following configuration to the above local.conf::
+
+    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
+
 In both RegionOne and RegionTwo, external network is able to be provisioned,
 the settings will look like this in /etc/neutron/plugins/ml2/ml2_conf.ini::
 
     network_vlan_ranges = bridge:101:150,extern:151:200
 
-    vni_ranges = 1:1000
+    vni_ranges = 1001:2000(or the range that you configure)
 
     bridge_mappings = bridge:br-vlan,extern:br-ext
 
@@ -72,10 +82,11 @@ Please be aware that the physical network name for tenant VLAN network is
 In central Neutron's configuration file, the default settings look like as
 follows::
 
-    bridge_network_type = vlan
-    network_vlan_ranges = bridge:101:150
-    tenant_network_types = local,vlan
-    type_drivers = local,vlan
+    bridge_network_type = vxlan
+    network_vlan_ranges = bridge:101:150,extern:151:200
+    vni_ranges = 1001:2000
+    tenant_network_types = local,vlan,vxlan
+    type_drivers = local,vlan,vxlan
 
 The default network type in central Neutron is local network, i.e, one
 network can only be presented in one local Neutron. In which region the
@@ -87,9 +98,9 @@ configuration.
 
 If you want to create a L2 network across multiple Neutron, then you
 have to speficy --provider-network-type vlan in network creation
-command for vlan network type. Currently only vlan network
-type could work as the bridge network. VxLAN network to support L2 networking
-across Neutron will be introduced later.
+command for vlan network type, or --provider-network-type vxlan for vxlan
+network type. Both vlan and vxlan network type could work as the bridge
+network. The default bridge network type is vxlan.
 
 You can create L2 network for different purposes, and the supported network
 types for different purposes are summarized as follows.
@@ -104,8 +115,8 @@ types for different purposes are summarized as follows.
        * - Local L2 network for instances
          - VLAN, VxLAN
        * - Cross Neutron L2 network for instances
-         - VLAN
+         - VLAN, VxLAN
        * - Bridge network for routers
-         - VLAN
+         - VLAN, VxLAN
        * - External network
          - VLAN

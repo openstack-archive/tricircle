@@ -202,6 +202,7 @@ Create net3 which will work as the L2 network across RegionOne and RegionTwo.
 
 .. code-block:: console
 
+    If net3 is vlan based cross-OpenStack L2 network
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network bridge --availability-zone-hint az1 --availability-zone-hint az2 net3
 
     +---------------------------+--------------------------------------+
@@ -223,6 +224,27 @@ Create net3 which will work as the L2 network across RegionOne and RegionTwo.
     | tenant_id                 | 532890c765604609a8d2ef6fc8e5f6ef     |
     +---------------------------+--------------------------------------+
 
+    If net3 is vxlan based cross-OpenStack L2 network
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vxlan --availability-zone-hint az1 --availability-zone-hint az2 net3
+
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | az1                                  |
+    |                           | az2                                  |
+    | id                        | 0f171049-0c15-4d1b-95cd-ede8dc554b44 |
+    | name                      | net3                                 |
+    | project_id                | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | provider:network_type     | vxlan                                |
+    | provider:physical_network |                                      |
+    | provider:segmentation_id  | 1031                                 |
+    | router:external           | False                                |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | 532890c765604609a8d2ef6fc8e5f6ef     |
+    +---------------------------+--------------------------------------+
 
 Create a subnet in net3.
 

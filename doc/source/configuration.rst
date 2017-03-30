@@ -148,16 +148,18 @@ configured in central Neutron's neutron.conf.
      - (String) core plugin central Neutron server uses, should be set to tricircle.network.central_plugin.TricirclePlugin
    * - **[tricircle]**
      -
-   * - ``bridge_network_type`` = ``vlan``
-     - (String) Type of l3 bridge network, this type should be enabled in tenant_network_types and is not local type, for example, vlan.
+   * - ``bridge_network_type`` = ``vxlan``
+     - (String) Type of l3 bridge network, this type should be enabled in tenant_network_types and is not local type, for example, vlan or vxlan.
    * - ``default_region_for_external_network`` = ``RegionOne``
      - (String) Default region where the external network belongs to, it must exist, for example, RegionOne.
    * - ``network_vlan_ranges`` = ``None``
-     - (String) List of <physical_network>:<vlan_min>:<vlan_max> or <physical_network> specifying physical_network names usable for VLAN provider and tenant networks, as well as ranges of VLAN tags on each available for allocation to tenant networks, for example,bridge:2001:3000.
-   * - ``tenant_network_types`` = ``local,vlan``
-     - (String) Ordered list of network_types to allocate as tenant networks. The default value "local" is useful for single pod connectivity. For example, local and vlan.
-   * - ``type_drivers`` = ``local,vlan``
-     - (String) List of network type driver entry points to be loaded from the tricircle.network.type_drivers namespace. For example, local and vlan.
+     - (String) List of <physical_network>:<vlan_min>:<vlan_max> or <physical_network> specifying physical_network names usable for VLAN provider and tenant networks, as well as ranges of VLAN tags on each available for allocation to tenant networks, for example, bridge:2001:3000.
+   * - ``tenant_network_types`` = ``local,vxlan``
+     - (String) Ordered list of network_types to allocate as tenant networks. The default value "local" is useful for single pod connectivity, for example, local vlan and vxlan.
+   * - ``type_drivers`` = ``local,vxlan``
+     - (String) List of network type driver entry points to be loaded from the tricircle.network.type_drivers namespace, for example, local vlan and vxlan.
+   * - ``vni_ranges`` = ``None``
+     - (String) Comma-separated list of <vni_min>:<vni_max> tuples enumerating ranges of VXLAN VNI IDs that are available for tenant network allocation, for example, 1001:2000
 
 
 

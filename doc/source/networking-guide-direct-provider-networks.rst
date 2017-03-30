@@ -141,6 +141,7 @@ Create net1 which will work as the L2 network across RegionOne and RegionTwo.
 
 .. code-block:: console
 
+    If net1 is vlan based cross-OpenStack L2 network
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network bridge --availability-zone-hint az1 --availability-zone-hint az2 net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
@@ -154,6 +155,27 @@ Create net1 which will work as the L2 network across RegionOne and RegionTwo.
     | provider:network_type     | vlan                                 |
     | provider:physical_network | bridge                               |
     | provider:segmentation_id  | 132                                  |
+    | router:external           | False                                |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | ce444c8be6da447bb412db7d30cd7023     |
+    +---------------------------+--------------------------------------+
+
+    If net1 is vxlan based cross-OpenStack L2 network
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vxlan --availability-zone-hint az1 --availability-zone-hint az2 net1
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | az1                                  |
+    |                           | az2                                  |
+    | id                        | 0093f32c-2ecd-4888-a8c2-a6a424bddfe8 |
+    | name                      | net1                                 |
+    | project_id                | ce444c8be6da447bb412db7d30cd7023     |
+    | provider:network_type     | vxlan                                |
+    | provider:physical_network |                                      |
+    | provider:segmentation_id  | 1036                                 |
     | router:external           | False                                |
     | shared                    | False                                |
     | status                    | ACTIVE                               |

@@ -167,10 +167,12 @@ Installation with Central Neutron Server
      [client] admin_tenant, "project name of admin account", demo
      [client] admin_user_domain_name, "user domain name of admin account", Default
      [client] admin_tenant_domain_name, "project name of admin account", Default
-     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "local,vlan"
-     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "local,vlan"
+     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "local,vlan,vxlan"
+     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "local,vlan,vxlan"
      [tricircle] network_vlan_ranges, "physical_network names and VLAN tags range usable of VLAN provider", "bridge:2001:3000"
-     [tricircle] bridge_network_type, "l3 bridge network type which is enabled in tenant_network_types and is not local type", vlan
+     [tricircle] vni_ranges, "VxLAN VNI range", "1001:2000"
+     [tricircle] bridge_network_type, "l3 bridge network type which is enabled in tenant_network_types and is not local type", vxlan
+     [tricircle] default_region_for_external_network, "Default Region where the external network belongs to", RegionOne
      [tricircle] enable_api_gateway, "whether the API gateway is enabled", False
 
   .. note:: Change keystone_service_host to the address of Keystone service.
