@@ -242,12 +242,21 @@ def get_bottom_mappings_by_tenant_pod(context,
     return routings
 
 
-def delete_mappings_by_top_id(context, top_id):
+def delete_mappings_by_top_id(context, top_id, pod_id=None):
+    """Delete resource routing entry based on top resource ID
+
+    If pod ID is also provided, only entry in the specific pod will be deleted
+
+    :param context: context object
+    :param top_id: top resource ID
+    :param pod_id: optional pod ID
+    :return: None
+    """
+    filters = [{'key': 'top_id', 'comparator': 'eq', 'value': top_id}]
+    if pod_id:
+        filters.append({'key': 'pod_id', 'comparator': 'eq', 'value': pod_id})
     with context.session.begin():
-        core.delete_resources(
-            context, models.ResourceRouting,
-            filters=[{'key': 'top_id', 'comparator': 'eq',
-                      'value': top_id}])
+        core.delete_resources(context, models.ResourceRouting, filters=filters)
 
 
 def delete_mappings_by_bottom_id(context, bottom_id):

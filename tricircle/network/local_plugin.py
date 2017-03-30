@@ -432,6 +432,15 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         raw_client = self.neutron_handle._get_client(t_ctx)
 
+        def get_top_port_by_ip(ip):
+            params = {'fixed_ips': 'ip_address=%s' % ip,
+                      'network_id': network_id}
+            t_ports = raw_client.list_ports(**params)['ports']
+            if not t_ports:
+                raise q_exceptions.InvalidIpForNetwork(
+                    ip_address=fixed_ip['ip_address'])
+            return t_ports[0]
+
         if port_body['fixed_ips'] is not q_constants.ATTR_NOT_SPECIFIED:
             if not self._is_special_port(port_body):
                 fixed_ip = port_body['fixed_ips'][0]
@@ -441,12 +450,14 @@ class TricirclePlugin(plugin.Ml2Plugin):
                     # specifying ip address, we just raise an exception to
                     # reject this request
                     raise q_exceptions.InvalidIpForNetwork(ip_address='None')
-                params = {'fixed_ips': 'ip_address=%s' % ip_address}
-                t_ports = raw_client.list_ports(**params)['ports']
-                if not t_ports:
-                    raise q_exceptions.InvalidIpForNetwork(
-                        ip_address=fixed_ip['ip_address'])
-                t_port = t_ports[0]
+                t_port = get_top_port_by_ip(ip_address)
+            elif helper.NetworkHelper.is_need_top_sync_port(
+                    port_body, cfg.CONF.client.bridge_cidr):
+                # for port that needs to be synced with top port, we keep ids
+                # the same
+                ip_address = port_body['fixed_ips'][0]['ip_address']
+                port_body['id'] = get_top_port_by_ip(ip_address)['id']
+                t_port = port_body
             else:
                 self._handle_dvr_snat_port(t_ctx, port_body)
                 t_port = port_body
@@ -547,21 +558,30 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                                  profile_dict,
                                                  tunnel_ip=l2gw_tunnel_ip)
 
+    @staticmethod
+    def _need_top_update(port, update_body):
+        if not update_body.get(portbindings.HOST_ID):
+            # no need to update top port if host is not updated
+            return False
+        # only for those ports that are synced with top port, we need to
+        # update top port
+        return helper.NetworkHelper.is_need_top_sync_port(
+            port, cfg.CONF.client.bridge_cidr)
+
     def update_port(self, context, _id, port):
+        # ovs agent will not call update_port, it updates port status via rpc
+        # and direct db operation
         profile_dict = port['port'].get(portbindings.PROFILE, {})
         if profile_dict.pop(t_constants.PROFILE_FORCE_UP, None):
             port['port']['status'] = q_constants.PORT_STATUS_ACTIVE
             port['port'][
                 portbindings.VNIC_TYPE] = q_constants.ATTR_NOT_SPECIFIED
         b_port = self.core_plugin.update_port(context, _id, port)
-        if port['port'].get('device_owner', '').startswith('compute') and (
-                port['port'].get(portbindings.HOST_ID)):
-            # we check both "device_owner" and "binding:host_id" to ensure the
-            # request comes from nova. and ovs agent will not call update_port.
-            # it updates port status via rpc and direct db operation
+        if self._need_top_update(b_port, port['port']):
             region_name = cfg.CONF.nova.region_name
             update_dict = {portbindings.PROFILE: {
-                t_constants.PROFILE_REGION: region_name}}
+                t_constants.PROFILE_REGION: region_name,
+                t_constants.PROFILE_DEVICE: b_port['device_owner']}}
             self._fill_agent_info_in_profile(
                 context, _id, port['port'][portbindings.HOST_ID],
                 update_dict[portbindings.PROFILE])

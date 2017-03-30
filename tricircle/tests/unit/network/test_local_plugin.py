@@ -119,7 +119,7 @@ class FakeCorePlugin(object):
         return port['port']
 
     def update_port(self, context, _id, port):
-        pass
+        return update_resource('port', False, _id, port['port'])
 
     def get_port(self, context, _id, fields=None):
         return get_resource('port', False, _id)
@@ -477,10 +477,9 @@ class PluginTest(unittest.TestCase):
             b_port.pop('project_id')
             self.assertDictEqual(t_ports[i], b_port)
 
-    @patch.object(FakeCorePlugin, 'update_port')
     @patch.object(t_context, 'get_context_from_neutron_context')
     @patch.object(FakeNeutronHandle, 'handle_update')
-    def test_update_port(self, mock_update, mock_context, mock_core_update):
+    def test_update_port(self, mock_update, mock_context):
         t_net, t_subnet, _, _ = self._prepare_resource()
         b_net = self.plugin.get_network(self.context, t_net['id'])
         cfg.CONF.set_override('region_name', 'Pod1', 'nova')
@@ -505,7 +504,8 @@ class PluginTest(unittest.TestCase):
         # network is not vxlan type
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
 
         # update network type from vlan to vxlan
         update_resource('network', False, b_net['id'],
@@ -515,7 +515,8 @@ class PluginTest(unittest.TestCase):
         # port vif type is not recognized
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
 
         # update network type from fake_vif_type to ovs
         update_resource('port', False, port_id,
@@ -527,7 +528,8 @@ class PluginTest(unittest.TestCase):
         # agent in the specific host is not found
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
 
         self.plugin.update_port(self.context, port_id, update_body)
         # default p2p mode, update with agent host tunnel ip
@@ -536,7 +538,8 @@ class PluginTest(unittest.TestCase):
             {'port': {'binding:profile': {'region': 'Pod1',
                                           'tunnel_ip': '192.168.1.101',
                                           'type': 'Open vSwitch agent',
-                                          'host': host_id}}})
+                                          'host': host_id,
+                                          'device': 'compute:None'}}})
 
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
         cfg.CONF.set_override('l2gw_tunnel_ip', '192.168.1.105', 'tricircle')
@@ -549,7 +552,8 @@ class PluginTest(unittest.TestCase):
             {'port': {'binding:profile': {'region': 'Pod1',
                                           'tunnel_ip': '192.168.1.105',
                                           'type': 'Open vSwitch agent',
-                                          'host': host_id}}})
+                                          'host': 'fake_host',
+                                          'device': 'compute:None'}}})
 
         cfg.CONF.set_override('l2gw_tunnel_ip', '', 'tricircle')
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
@@ -557,31 +561,32 @@ class PluginTest(unittest.TestCase):
         # l2gw mode, but l2 gateway tunnel ip is not configured
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
 
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'noop', 'client')
         self.plugin.update_port(self.context, port_id, update_body)
         # noop mode
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
 
         FakeCorePlugin.supported_extension_aliases = []
         self.plugin.update_port(self.context, port_id, update_body)
         # core plugin doesn't support "agent" extension
         mock_update.assert_called_with(
             self.context, 'port', port_id,
-            {'port': {'binding:profile': {'region': 'Pod1'}}})
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None'}}})
         FakeCorePlugin.supported_extension_aliases = ['agent']
 
         self.plugin.update_port(self.context, port_id,
                                 {'port': {portbindings.PROFILE: {
                                     constants.PROFILE_FORCE_UP: True}}})
-        mock_core_update.assert_called_with(
-            self.context, port_id,
-            {'port': {'status': q_constants.PORT_STATUS_ACTIVE,
-                      portbindings.PROFILE: {},
-                      portbindings.VNIC_TYPE: q_constants.ATTR_NOT_SPECIFIED}})
+        b_port = get_resource('port', False, port_id)
+        # port status is update to active
+        self.assertEqual(q_constants.PORT_STATUS_ACTIVE, b_port['status'])
 
     @patch.object(t_context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):
