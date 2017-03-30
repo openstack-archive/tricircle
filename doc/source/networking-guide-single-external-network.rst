@@ -7,6 +7,48 @@ south networking traffic for the tenant will be centralized through
 single external network. Only one virtual router is needed even if
 the tenant's network are located in multiple OpenStack regions.
 
+Only Neutron and Tricircle Local Neutron Plugin are required to be deployed
+in RegionThree if you want to make the external network being floating and
+applicable to all tenant's network.
+
+.. code-block:: console
+
+                          +-------------+
+                          | RegionThree |
+                          |             |
+                          |   ext-net1  |
+                          | +----+----+ |
+                          |      |      |
+                          |   +--+--+   |
+                          |   |  R1 |   |
+                          |   +-+---+   |
+                          |     |       |
+                          +-----+-------+
+    +-----------------+         |         +-----------------+
+    |   RegionOne     |         |         |   RegionTwo     |
+    |                 |  bridge | net     |                 |
+    |        ++-----------------+-----------------+-+       |
+    |         |       |                   |       |         |
+    |      +--+--+    |                   |     +-+---+     |
+    |      |  R1 |    |                   |     |  R1 |     |
+    |      +--+--+    |                   |     +--+--+     |
+    |         | net1  |                   |   net2 |        |
+    |     +---+--+-+  |                   |   +-+--+---+    |
+    |            |    |                   |     |           |
+    |  +---------+-+  |                   |  +--+--------+  |
+    |  | Instance1 |  |                   |  | Instance2 |  |
+    |  +-----------+  |                   |  +-----------+  |
+    +-----------------+                   +-----------------+
+
+    Figure 1 North South Networking via Single External Network
+
+.. note:: Please note that if local network and external network are located
+   in the same region, attaching router interface to non local router will
+   lead to one additional logical router for east-west networking. For example,
+   in the following figure, external network ext-net1 is in RegionTwo, and
+   if local network net2 is attached to the router R1, then the additional
+   logical router R1 for east-west networking is created.
+
 .. code-block:: console
 
     +-----------------+       +-----------------+        +-----------------+       +-----------------+
@@ -33,24 +75,26 @@ the tenant's network are located in multiple OpenStack regions.
     |  +-----------+  |       |                 |        |  +-----------+  |       |  +-----------+  |
     +-----------------+       +-----------------+        +-----------------+       +-----------------+
 
+    Figure 2 What happens if local network and external network are in the same region
+
 How to create this network topology
 ===================================
 
-The first step is to create the left topology, then enhance the topology to
-the right one. Different order to create this topology is also possible,
-for example, create router and tenant network first, then boot instance,
-set the router gateway, and associate floating IP as the last step.
+Following commands are executed to create the Figure 1 topology. Different
+order to create this topology is also possible, for example, create router
+and tenant network first, then boot instance, set the router gateway, and
+associate floating IP as the last step.
 
-Create external network ext-net1, which will be located in RegionTwo.
+Create external network ext-net1, which will be located in RegionThree.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --router:external --availability-zone-hint RegionTwo ext-net1
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --router:external --availability-zone-hint RegionThree ext-net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   | RegionTwo                            |
+    | availability_zone_hints   | RegionThree                          |
     | id                        | 494a1d2f-9a0f-4d0d-a5e9-f926fce912ac |
     | name                      | ext-net1                             |
     | project_id                | 640e791e767e49939d5c600fdb3f8431     |
@@ -337,7 +381,7 @@ Associate the floating IP to instance1's IP in net1.
     $ neutron --os-region-name=CentralRegion floatingip-associate 04c18e73-675b-4273-a73a-afaf1e4f9811 37e9cfe5-d410-4625-963d-b7ea4347d72e
     Associated floating IP 04c18e73-675b-4273-a73a-afaf1e4f9811
 
-Create network topology in RegionTwo.
+Proceed with the creation network topology in RegionTwo.
 
 Create net2 in RegionTwo.
 
@@ -588,7 +632,7 @@ Make sure the floating IP association works.
     | f917dede-6e0d-4c5a-8d02-7d5774d094ba | 10.0.2.10        | 163.3.124.13        | ed9bdc02-0f0d-4763-a993-e0972c6563fa |
     +--------------------------------------+------------------+---------------------+--------------------------------------+
 
-    $ neutron --os-region-name=RegionTwo floatingip-list
+    $ neutron --os-region-name=RegionThree floatingip-list
     +--------------------------------------+------------------+---------------------+--------------------------------------+
     | id                                   | fixed_ip_address | floating_ip_address | port_id                              |
     +--------------------------------------+------------------+---------------------+--------------------------------------+
