@@ -382,6 +382,21 @@ class PluginTest(unittest.TestCase):
         self.assertDictEqual(t_port, b_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_create_port_lbaas(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        port = {'name': 'loadbalancer-lb-1',
+                'network_id': t_net['id'],
+                'mac_address': q_constants.ATTR_NOT_SPECIFIED,
+                'admin_state_up': False,
+                'device_id': 'lb_1',
+                'device_owner': q_constants.DEVICE_OWNER_LOADBALANCERV2,
+                'fixed_ips': [{'subnet_id': t_subnet['id']}]}
+
+        t_port = self.plugin.create_port(self.context, {'port': port})
+        b_port = get_resource('port', False, t_port['id'])
+        self.assertDictEqual(t_port, b_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port_ip_specified(self):
         t_net, t_subnet, t_port, t_sg = self._prepare_resource()
 
