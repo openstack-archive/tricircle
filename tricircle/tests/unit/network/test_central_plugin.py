@@ -894,6 +894,9 @@ class FakeSession(object):
 
         return dummy_method
 
+    def __contains__(self, item):
+        return False
+
     @property
     def is_active(self):
         return True
