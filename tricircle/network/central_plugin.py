@@ -28,9 +28,9 @@ from neutron.callbacks import events
 from neutron.callbacks import registry
 from neutron.callbacks import resources
 import neutron.common.exceptions as ml2_exceptions
+from neutron.db import _resource_extend as resource_extend
 from neutron.db import api as q_db_api
 from neutron.db.availability_zone import router as router_az
-from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
 from neutron.db import extradhcpopt_db
@@ -218,12 +218,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     availability_zone=diff.pop())
 
     @staticmethod
+    @resource_extend.extends([attributes.NETWORKS])
     def _extend_availability_zone(net_res, net_db):
         net_res[az_ext.AZ_HINTS] = az_ext.convert_az_string_to_list(
             net_db[az_ext.AZ_HINTS])
-
-    common_db_mixin.CommonDbMixin.register_dict_extend_funcs(
-        attributes.NETWORKS, ['_extend_availability_zone'])
 
     @staticmethod
     def _ensure_az_set_for_external_network(context, req_data):

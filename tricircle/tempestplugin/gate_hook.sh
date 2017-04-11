@@ -40,11 +40,23 @@ function _setup_tricircle_multinode {
 
     ENABLE_TRICIRCLE="enable_plugin tricircle https://git.openstack.org/openstack/tricircle/"
 
+    # Configure primary node
     export DEVSTACK_LOCAL_CONFIG="$ENABLE_TRICIRCLE"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"REGION_NAME=RegionOne"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"HOST_IP=$PRIMARY_NODE_IP"
 
+    ML2_CONFIG=$'\n'"ML2_L3_PLUGIN=tricircle.network.local_l3_plugin.TricircleL3Plugin"
+    ML2_CONFIG+=$'\n'"[[post-config|/"'$Q_PLUGIN_CONF_FILE]]'
+    ML2_CONFIG+=$'\n'"[ml2]"
+    ML2_CONFIG+=$'\n'"mechanism_drivers = openvswitch,linuxbridge,l2population"
+    ML2_CONFIG+=$'\n'"[agent]"
+    ML2_CONFIG+=$'\n'"tunnel_types=vxlan"
+    ML2_CONFIG+=$'\n'"l2_population=True"
+
+    export DEVSTACK_LOCAL_CONFIG+=$ML2_CONFIG
+
+    # Configure sub-node
     export DEVSTACK_SUBNODE_CONFIG="$ENABLE_TRICIRCLE"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=False"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"REGION_NAME=RegionTwo"
@@ -59,6 +71,8 @@ function _setup_tricircle_multinode {
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"DATABASE_HOST=$SUBNODE_IP"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"GLANCE_HOSTPORT=$SUBNODE_IP:9292"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"Q_HOST=$SUBNODE_IP"
+
+    export DEVSTACK_SUBNODE_CONFIG+=$ML2_CONFIG
 }
 
 if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then

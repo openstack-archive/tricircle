@@ -35,10 +35,10 @@ from tricircle.db import models
 
 client_opts = [
     cfg.StrOpt('auth_url',
-               default='http://127.0.0.1:5000/v3',
+               default='http://127.0.0.1/identity/v3',
                help='keystone authorization url'),
     cfg.StrOpt('identity_url',
-               default='http://127.0.0.1:35357/v3',
+               default='http://127.0.0.1/identity_admin/v3',
                help='keystone service url'),
     cfg.BoolOpt('auto_refresh_endpoint',
                 default=False,
