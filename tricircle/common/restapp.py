@@ -17,7 +17,7 @@ from oslo_config import cfg
 from oslo_middleware import request_id
 from oslo_service import service
 
-from tricircle.common import exceptions as t_exc
+from tricircle.common import exceptions as t_exceptions
 from tricircle.common.i18n import _
 
 
@@ -31,7 +31,7 @@ def auth_app(app):
         # version, passing "project" as empty string to bypass it
         app = auth_token.AuthProtocol(app, {'project': ''})
     else:
-        raise t_exc.InvalidConfigurationOption(
+        raise t_exceptions.InvalidConfigurationOption(
             opt_name='auth_strategy', opt_value=cfg.CONF.auth_strategy)
 
     return app

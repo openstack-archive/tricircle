@@ -23,7 +23,7 @@ from oslo_log import log as logging
 from oslo_utils import uuidutils
 
 import tricircle.common.context as t_context
-import tricircle.common.exceptions as t_exc
+import tricircle.common.exceptions as t_exceptions
 from tricircle.common.i18n import _
 from tricircle.common import policy
 
@@ -124,7 +124,7 @@ class PodsController(rest.RestController):
 
         try:
             return {'pod': db_api.get_pod(context, _id)}
-        except t_exc.ResourceNotFound:
+        except t_exceptions.ResourceNotFound:
             pecan.abort(404, _('Pod not found'))
             return
 
@@ -158,7 +158,7 @@ class PodsController(rest.RestController):
                 core.delete_resource(context, models.Pod, _id)
                 pecan.response.status = 200
                 return {}
-        except t_exc.ResourceNotFound:
+        except t_exceptions.ResourceNotFound:
             return Response(_('Pod not found'), 404)
         except Exception as e:
             LOG.exception('Failed to delete pod: %(pod_id)s,'
