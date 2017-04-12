@@ -57,7 +57,7 @@ import tricircle.common.client as t_client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exceptions
-from tricircle.common.i18n import _, _LE, _LI, _LW
+from tricircle.common.i18n import _
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 from tricircle.db import core
@@ -151,7 +151,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def __init__(self):
         super(TricirclePlugin, self).__init__()
-        LOG.info(_LI("Starting Tricircle Neutron Plugin"))
+        LOG.info("Starting Tricircle Neutron Plugin")
         self.clients = {}
         self.xjob_handler = xrpcapi.XJobAPI()
         self._setup_rpc()
@@ -568,7 +568,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 updated_sens_attrs.append('%s = %s' % (key, request_body[key]))
 
         warning_attrs = ', '.join(updated_sens_attrs)
-        LOG.warning(_LW('update port: %(port_id)s , %(warning_attrs)s'),
+        LOG.warning('update port: %(port_id)s , %(warning_attrs)s',
                     {'port_id': port_id, 'warning_attrs': warning_attrs})
 
     def _handle_bottom_security_group(self, t_ctx, top_sg, bottom_pod):
@@ -698,8 +698,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                         b_client.update_ports(t_ctx, b_port_id, port)
                     except q_cli_exceptions.NotFound:
                         LOG.error(
-                            _LE('port: %(port_id)s not found, '
-                                'region name: %(name)s'),
+                            ('port: %(port_id)s not found, '
+                             'region name: %(name)s'),
                             {'port_id': b_port_id, 'name': b_region_name})
 
                     if request_body.get('security_groups', None):
@@ -1681,8 +1681,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     floating_ip.update(org_data)
         except Exception as e:
             # log the exception and re-raise it
-            LOG.exception(_LE('Fail to rollback floating ip data, reason: '
-                              '%(reason)s') % {'reason': e.message})
+            LOG.exception('Fail to rollback floating ip data, reason: '
+                          '%(reason)s' % {'reason': e.message})
             raise
 
     def update_floatingip(self, context, _id, floatingip):
@@ -1708,9 +1708,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # NOTE(zhiyuan) when exception occurs, we update floating ip object
             # to rollback fixed_port_id, fixed_ip_address, router_id
             LOG.exception(
-                _LE('Fail to update floating ip, reason: '
-                    '%(reason)s, rollback floating ip data') % {
-                    'reason': e.message})
+                'Fail to update floating ip, reason: '
+                '%(reason)s, rollback floating ip data' %
+                {'reason': e.message})
             org_data = {
                 'fixed_port_id': org_floatingip_dict['port_id'],
                 'fixed_ip_address': org_floatingip_dict['fixed_ip_address'],
@@ -1754,8 +1754,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # top and bottom internal port, this is an inconsistent state,
             # but since bottom internal port does not exist, no operation
             # in bottom pod is required
-            LOG.warning(_LW('Internal port associated with floating ip '
-                            'does not exist in bottom pod.'))
+            LOG.warning('Internal port associated with floating ip '
+                        'does not exist in bottom pod.')
             return
 
         b_int_net_pod, b_int_port_id = mappings[0]

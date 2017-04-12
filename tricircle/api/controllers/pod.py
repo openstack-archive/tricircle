@@ -25,7 +25,6 @@ from oslo_utils import uuidutils
 import tricircle.common.context as t_context
 import tricircle.common.exceptions as t_exc
 from tricircle.common.i18n import _
-from tricircle.common.i18n import _LE
 from tricircle.common import policy
 
 from tricircle.db import api as db_api
@@ -95,17 +94,17 @@ class PodsController(rest.RestController):
                      'dc_name': dc_name,
                      'az_name': az_name})
         except db_exc.DBDuplicateEntry as e1:
-            LOG.exception(_LE('Record already exists on %(region_name)s: '
-                              '%(exception)s'),
+            LOG.exception('Record already exists on %(region_name)s: '
+                          '%(exception)s',
                           {'region_name': region_name,
-                          'exception': e1})
+                           'exception': e1})
             return Response(_('Record already exists'), 409)
         except Exception as e2:
-            LOG.exception(_LE('Failed to create pod: %(region_name)s,'
-                              'pod_az_name: %(pod_az_name)s,'
-                              'dc_name: %(dc_name)s,'
-                              'az_name: %(az_name)s'
-                              '%(exception)s '),
+            LOG.exception('Failed to create pod: %(region_name)s,'
+                          'pod_az_name: %(pod_az_name)s,'
+                          'dc_name: %(dc_name)s,'
+                          'az_name: %(az_name)s'
+                          '%(exception)s ',
                           {'region_name': region_name,
                            'pod_az_name': pod_az_name,
                            'dc_name': dc_name,
@@ -140,7 +139,7 @@ class PodsController(rest.RestController):
         try:
             return {'pods': db_api.list_pods(context)}
         except Exception as e:
-            LOG.exception(_LE('Failed to list all pods: %(exception)s '),
+            LOG.exception('Failed to list all pods: %(exception)s ',
                           {'exception': e})
 
             pecan.abort(500, _('Failed to list pods'))
@@ -162,8 +161,8 @@ class PodsController(rest.RestController):
         except t_exc.ResourceNotFound:
             return Response(_('Pod not found'), 404)
         except Exception as e:
-            LOG.exception(_LE('Failed to delete pod: %(pod_id)s,'
-                              '%(exception)s'),
+            LOG.exception('Failed to delete pod: %(pod_id)s,'
+                          '%(exception)s',
                           {'pod_id': _id,
                            'exception': e})
 
@@ -179,7 +178,7 @@ class PodsController(rest.RestController):
                     if pod['az_name'] == '' and pod['region_name'] != '':
                         return pod['region_name']
         except Exception as e:
-            LOG.exception(_LE('Failed to get top region: %(exception)s '),
+            LOG.exception('Failed to get top region: %(exception)s ',
                           {'exception': e})
 
             return top_region_name

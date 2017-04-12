@@ -23,7 +23,6 @@ from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_vlan
 
 from tricircle.common import constants
-from tricircle.common.i18n import _LE, _LI
 
 LOG = log.getLogger(__name__)
 
@@ -37,10 +36,10 @@ class VLANTypeDriver(type_vlan.VlanTypeDriver):
             self.network_vlan_ranges = plugin_utils.parse_network_vlan_ranges(
                 cfg.CONF.tricircle.network_vlan_ranges)
         except Exception:
-            LOG.exception(_LE('Failed to parse network_vlan_ranges. '
-                              'Service terminated!'))
+            LOG.exception('Failed to parse network_vlan_ranges. '
+                          'Service terminated!')
             sys.exit(1)
-        LOG.info(_LI('Network VLAN ranges: %s'), self.network_vlan_ranges)
+        LOG.info('Network VLAN ranges: %s', self.network_vlan_ranges)
 
     def get_type(self):
         return constants.NT_VLAN

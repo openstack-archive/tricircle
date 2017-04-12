@@ -24,7 +24,7 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import service as srv
 
-from tricircle.common.i18n import _, _LE, _LI
+from tricircle.common.i18n import _
 
 from tricircle.common import baserpc
 from tricircle.common import context
@@ -113,10 +113,9 @@ class XService(srv.Service):
 
     def start(self):
         ver_str = version.version_info
-        LOG.info(_LI('Starting %(topic)s node (version %(version)s)'),
+        LOG.info('Starting %(topic)s node (version %(version)s)',
                  {'topic': self.topic, 'version': ver_str})
 
-        self.basic_config_check()
         self.manager.init_host()
         self.manager.pre_start_hook()
 
@@ -206,7 +205,7 @@ class XService(srv.Service):
         try:
             self.manager.cleanup_host()
         except Exception:
-            LOG.exception(_LE('Service error occurred during cleanup_host'))
+            LOG.exception('Service error occurred during cleanup_host')
             pass
 
         super(XService, self).stop()
@@ -215,16 +214,6 @@ class XService(srv.Service):
         """Tasks to be run at a periodic interval."""
         ctxt = context.get_admin_context()
         return self.manager.periodic_tasks(ctxt, raise_on_error=raise_on_error)
-
-    def basic_config_check(self):
-        """Perform basic config checks before starting processing."""
-        # Make sure the tempdir exists and is writable
-        # try:
-        #    with utils.tempdir():
-        #        pass
-        # except Exception as e:
-        #    LOG.error(_LE('Temporary directory is invalid: %s'), e)
-        #    sys.exit(1)
 
 
 def create_service():

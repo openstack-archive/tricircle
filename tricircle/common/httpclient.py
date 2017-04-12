@@ -21,7 +21,6 @@ from oslo_log import log as logging
 
 from tricircle.common import client
 from tricircle.common import constants as cons
-from tricircle.common.i18n import _LE
 from tricircle.db import api as db_api
 
 
@@ -172,7 +171,7 @@ def get_res_routing_ref(context, _id, t_url, s_type):
                                 s_type=s_type)
 
     if s_ctx['b_url'] == '':
-        LOG.error(_LE("bottom pod endpoint incorrect %s") %
+        LOG.error("bottom pod endpoint incorrect %s" %
                   region_name)
 
     return s_ctx

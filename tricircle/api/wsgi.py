@@ -28,7 +28,6 @@ from oslo_log import log as logging
 
 from tricircle.api import app
 from tricircle.common import config
-from tricircle.common.i18n import _LI
 
 CONFIG_FILE = 'api.conf'
 
@@ -50,7 +49,7 @@ def init_application():
     conf_file = _get_config_file()
     config.init(app.common_opts, ['--config-file', conf_file])
 
-    LOG.info(_LI("Configuration:"))
+    LOG.info("Configuration:")
     CONF.log_opt_values(LOG, logging.INFO)
 
     # return WSGI app

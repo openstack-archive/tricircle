@@ -31,7 +31,6 @@ import oslo_log.log as logging
 from oslo_policy import policy
 
 from tricircle.common import exceptions as t_exec
-from tricircle.common.i18n import _LE
 
 _ENFORCER = None
 CONF = cfg.CONF
@@ -185,6 +184,6 @@ def enforce(context, rule=None, target=None, *args, **kwargs):
 
     except t_exec.PolicyNotAuthorized as e:
         result = False
-        LOG.exception(_LE("%(msg)s, %(rule)s, %(target)s"),
+        LOG.exception("%(msg)s, %(rule)s, %(target)s",
                       {'msg': str(e), 'rule': rule, 'target': target})
     return result
