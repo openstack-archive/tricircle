@@ -709,4 +709,483 @@ from the database.
         }
     }
 
+Asynchronous Job
+================
+Tricircle XJob provides OpenStack multi-region functionality. It receives jobs
+from the Admin API or Tricircle Central Neutron Plugin and handles them
+asynchronously in Local Neutron(s).
+
+However, XJob server may strike occasionally so the tenants or administrators
+need to know the job status and delete or redo the failed job if necessary.
+Asynchronous job management APIs provide such functionality and allow user
+to perform CRUD operations on a job. For example, when there is a need to
+synchronize resource between central Neutron and local Neutron, administrator
+can create a job to process it.
+
+Jobs are categorized into different groups according to their phases in
+lifespan. Each job lives from birth till death. Right after a job is created,
+its status is NEW. After picked up by the job handler its status becomes
+RUNNING. Then if executed successfully, its status will be SUCCESS, otherwise
+its status will be set to FAIL. But not all jobs go through the three phases.
+For job whose status is NEW, if a newer job performing the same task comes,
+then this newer job will be picked up by job handler, the status of the
+relatively old job won't be changed until this job is cleaned from the job
+queue. A NEW job may also expire if it waits for too long, then its status is
+set to FAIL directly and skips the RUNNING phase. The expiration time span is
+set by administrator. All failed jobs have the opportunity to run again in next
+cycle of a periodical task.
+
+After a job runs successfully it will be moved to job log table automatically,
+the older versions of this job like new and failed jobs are removed from job
+table at the same time.
+
+There are two places to store jobs. All active jobs are stored in job table,
+including NEW, RUNNING, FAIL jobs and a small bunch of SUCCESS jobs that
+haven't been moved to job log table timely. But job log table only contains
+SUCCESS jobs, they can be listed and shown like other jobs in job table,
+but when performing delete or redo operation on them, an exception will
+be raised.
+
++------------------+----------------+---------------------------+------------------------+
+|**GET**           |/jobs           |                           |Retrieve Job List       |
++------------------+----------------+---------------------------+------------------------+
+
+By default, this fetches all of the jobs including active jobs like NEW, FAIL
+and RUNNING jobs as well as SUCCESS jobs from job log. We can filter them by
+project ID, job type and job status to only get the specific kind of job
+entries. Accordingly the filtering condition will be added to the tail
+of the service url separated by question mark. For example, the default
+service url is GET /jobs. Using a filter the service url becomes
+GET /jobs?filter_name=value. One or multiple filtering conditions are
+supported. Particularly, job status is case insensitive when filtering the
+jobs, so both 'GET /jobs?status=NEW' and 'GET /jobs?status=new' will return
+the same job set.
+
+Normal Response Code: 200
+
+**Response**
+
+In normal case, a set of expected jobs will be returned. For invalid filtering
+value, an empty set will be returned. For unsupported filter name, an error
+will be raised.
+
+The attributes of single job are described in the following table.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|id         |body   | string        |id is a uuid attribute of the job.                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|project_id |body   | string        |project_id is the uuid of a project object in        |
+|           |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|           |       |               |Keystone. Starting in API version 3, "project" is the|
+|           |       |               |preferred term. They are identical in the context.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|status     |body   | string        |job status, including NEW, RUNNING, SUCCESS, FAIL.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | object        |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+|timestamp  |body   | timestamp     |create or update time of the job.                    |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /jobs. By default, all the
+job entries will be retrieved.
+
+
+::
+
+    {
+        "jobs": [
+            {
+                "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "port_delete",
+                "timestamp": "2017-03-03 11:05:36",
+                "status": "NEW",
+                "resource": {
+                    "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                    "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+                }
+            },
+            {
+                "id": "b01fe514-5211-4758-bbd1-9f32141a7ac2",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "seg_rule_setup",
+                "timestamp": "2017-03-01 17:14:44",
+                "status": "FAIL",
+                "resource": {
+                    "project_id": "d01246bc5792477d9062a76332b7514a"
+                }
+            }
+        ]
+    }
+
+This is an example of response information for GET /job?type=port_delete. Using
+a filter only a part of job entries are retrieved.
+
+::
+
+    {
+        "jobs": [
+            {
+                "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "port_delete",
+                "timestamp": "2017-03-03 11:05:36",
+                "status": "NEW",
+                "resource": {
+                    "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                    "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+                }
+            }
+        ]
+    }
+
++------------------+-------------------+-----------------------+-------------------------------+
+|**GET**           |/jobs/detail       |                       |Retrieve Jobs with Filter(s)   |
++------------------+-------------------+-----------------------+-------------------------------+
+
+Retrieve jobs from the Tricircle database. We can filter them by project ID,
+job type and job status. It functions the same as service GET /jobs.
+
+Normal Response Code: 200
+
+**Response**
+
+A list of jobs will be returned. The attributes of single job are described
+in the following table.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|id         |body   | string        |id is a uuid attribute of the job.                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|project_id |body   | string        |project_id is the uuid of a project object in        |
+|           |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|           |       |               |Keystone. Starting in API version 3, "project" is the|
+|           |       |               |preferred term. They are identical in the context.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|status     |body   | string        |job status, including NEW, RUNNING, SUCCESS, FAIL.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | object        |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+|timestamp  |body   | timestamp     |create or update time of the job.                    |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /jobs/detail.
+::
+
+    {
+        "jobs": [
+            {
+                "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "port_delete",
+                "timestamp": "2017-03-03 11:05:36",
+                "status": "NEW",
+                "resource": {
+                    "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                    "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+                }
+            },
+            {
+                "id": "b01fe514-5211-4758-bbd1-9f32141a7ac2",
+                "project_id": "d01246bc5792477d9062a76332b7514a",
+                "type": "seg_rule_setup",
+                "timestamp": "2017-03-01 17:14:44",
+                "status": "FAIL",
+                "resource": {
+                    "project_id": "d01246bc5792477d9062a76332b7514a"
+                }
+            }
+        ]
+    }
+
++------------------+---------------+---------------+-------------------------------------+
+|**GET**           |/jobs/{id}     |               |Retrieve a Single Job                |
++------------------+---------------+---------------+-------------------------------------+
+
+This fetches a single job entry. This entry may be from job table or job log
+table.
+
+Normal Response Code: 200
+
+**Request**
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |path   | string        |id is a uuid attribute of the job.                   |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+The attributes of the returned job are described in the following table.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|id         |body   | string        |id is a uuid attribute of the job.                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|project_id |body   | string        |project_id is the uuid of a project object in        |
+|           |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|           |       |               |Keystone. Starting in API version 3, "project" is the|
+|           |       |               |preferred term. They are identical in the context.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|status     |body   | string        |job status, including NEW, RUNNING, SUCCESS, FAIL.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | object        |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+|timestamp  |body   | timestamp     |create or update time of the job.                    |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /job/{id}.
+
+::
+
+    {
+        "job": {
+            "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+            "project_id": "d01246bc5792477d9062a76332b7514a",
+            "type": "port_delete",
+            "timestamp": "2017-03-03 11:05:36",
+            "status": "NEW",
+            "resource": {
+                "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+            }
+        }
+    }
+
++------------------+----------------+---------------------------+------------------------+
+|**GET**           |/jobs/schemas   |                           |Retrieve Jobs' Schemas  |
++------------------+----------------+---------------------------+------------------------+
+
+Retrieve all jobs' schemas.
+
+
+Normal Response Code: 200
+
+**Response**
+
+This returns a list of all jobs' schemas. The architecture of job schema
+is described as following.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | array         |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response Example**
+
+This is an example of response information for GET /jobs/schemas.
+
+::
+
+    {
+        "schemas": [
+            {
+                "type": "configure_route",
+                "resource": ["router_id"]
+            },
+            {
+                "type": "router_setup",
+                "resource": ["pod_id", "router_id", "network_id"]
+            },
+            {
+                "type": "port_delete",
+                "resource": ["pod_id", "port_id"]
+            },
+            {
+                "type": "seg_rule_setup",
+                "resource": ["project_id"]
+            },
+            {
+                "type": "update_network",
+                "resource": ["pod_id", "network_id"]
+            },
+            {
+                "type": "subnet_update",
+                "resource": ["pod_id", "subnet_id"]
+            },
+            {
+                "type": "shadow_port_setup",
+                "resource": [pod_id", "network_id"]
+            }
+        ]
+    }
+
++---------------+-------+------------------------------------+--------------------+
+|**POST**       |/job   |                                    |Create a Job        |
++---------------+-------+------------------------------------+--------------------+
+
+This creates a new job. If target job already exists in the job table and its
+status is NEW, then this newer job will be picked up by job handler.
+
+Normal Response Code: 202
+
+**Request**
+
+Some essential attributes of the job are required and they are described
+in the following table.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|project_id |body   | string        |project_id is the uuid of a project object in        |
+|           |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|           |       |               |Keystone. Starting in API version 3, "project" is the|
+|           |       |               |preferred term. They are identical in the context.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | object        |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+This returns a newly created job. Its attributes are described in the following
+table.
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|id         |body   | string        |id is a uuid attribute of the job.                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|project_id |body   | string        |project_id is the uuid of a project object in        |
+|           |       |               |KeyStone. "Tenant" is an old term for a project in   |
+|           |       |               |Keystone. Starting in API version 3, "project" is the|
+|           |       |               |preferred term. They are identical in the context.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|type       |body   | string        |the type of a job.                                   |
++-----------+-------+---------------+-----------------------------------------------------+
+|status     |body   | string        |job status, including NEW, RUNNING, SUCCESS, FAIL.   |
++-----------+-------+---------------+-----------------------------------------------------+
+|resource   |body   | object        |all kinds of resources that are needed to run the    |
+|           |       |               |job. It may also contain other necessary parameters  |
+|           |       |               |such as pod_id and project_id that are not Neutron   |
+|           |       |               |resources.                                           |
++-----------+-------+---------------+-----------------------------------------------------+
+|timestamp  |body   | timestamp     |create time of the job.                              |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Request Example**
+
+This is an example of request information for POST /jobs.
+
+::
+
+    {
+        "job": {
+            "type": "port_delete",
+            "project_id": "d01246bc5792477d9062a76332b7514a",
+            "resource": {
+                "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+            }
+        }
+    }
+
+**Response Example**
+
+This is an example of response information for POST /jobs.
+
+::
+
+    {
+        "job": {
+            "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
+            "project_id": "d01246bc5792477d9062a76332b7514a",
+            "type": "port_delete",
+            "timestamp": "2017-03-03 11:05:36",
+            "status": "NEW",
+            "resource": {
+                "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
+                "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
+            }
+        }
+    }
+
++------------------+-----------------+------------------------+-------------------------+
+|**DELETE**        |/jobs/{id}       |                        |Delete a Job             |
++------------------+-----------------+------------------------+-------------------------+
+
+Delete a failed or duplicated job from the job table. If a user tries to delete
+a job from job log table, an error will be raised.
+
+Normal Response Code: 200
+
+**Request**
+
++-----------+-------+---------------+-----------------------------------------------------+
+|Name       |In     |   Type        |    Description                                      |
++===========+=======+===============+=====================================================+
+|id         |path   | string        |id is a uuid attribute of the job.                   |
++-----------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+A pair of curly braces will be returned if succeeds, otherwise an exception
+will be thrown. We can list jobs to verify whether it has been deleted
+successfully or not.
+
++------------------+---------------+-----------------+-----------------------------------+
+|**PUT**           |/jobs/{id}     |                 |Redo a Job                         |
++------------------+---------------+-----------------+-----------------------------------+
+
+Redo a halted job brought by the XJob server corruption or network failures.
+The job handler will redo a failed job with time interval, but this Admin API
+will redo a job immediately. If a user tries to redo a job in job log table,
+an error will be raised.
+
+
+Normal Response Code: 200
+
+**Request**
+
+Only job id is needed. We use PUT method to redo a job. Regularly PUT method
+requires a request body, but considering the job redo operation doesn't
+need more information other than job id, we will issue this request without
+request body.
+
++-------------+-------+---------------+-----------------------------------------------------+
+|Name         |In     |   Type        |    Description                                      |
++=============+=======+===============+=====================================================+
+|id           |path   | string        |id is a uuid attribute of the job.                   |
++-------------+-------+---------------+-----------------------------------------------------+
+
+**Response**
+
+Nothing will be returned for this request, but we can monitor its status
+through the execution state.
 
