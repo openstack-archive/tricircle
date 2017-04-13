@@ -1133,6 +1133,21 @@ class FakePlugin(plugin.TricirclePlugin):
     def _get_client(self, region_name):
         return FakeClient(region_name)
 
+    def create_network(self, context, network):
+        # neutron has been updated to use the new enginefacade, we no longer
+        # call update_network in TricirclePlugin.create_network to update AZ
+        # info. new context manager will update AZ info after context exits,
+        # but since we don't simulate such process, we override this method to
+        # insert AZ info
+        net = super(FakePlugin, self).create_network(context, network)
+        if 'availability_zone_hints' not in network['network']:
+            return net
+        for _net in TOP_NETS:
+            if _net['id'] == net['id']:
+                _net['availability_zone_hints'] = jsonutils.dumps(
+                    network['network']['availability_zone_hints'])
+        return net
+
     def _make_network_dict(self, network, fields=None,
                            process_extensions=True, context=None):
         network = _transform_az(network)
@@ -1449,9 +1464,8 @@ class PluginTest(unittest.TestCase,
         mock_client_method.assert_has_calls(client_calls)
 
     @patch.object(context, 'get_context_from_neutron_context')
-    @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_network')
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'create_network')
-    def test_network_az_region(self, mock_create, mock_update, mock_context):
+    def test_network_az_region(self, mock_create, mock_context):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -1461,14 +1475,12 @@ class PluginTest(unittest.TestCase,
 
         network = {'network': {
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
+            'admin_state_up': True, 'shared': False,
             'availability_zone_hints': ['az_name_1', 'pod_2']}}
         mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
-        mock_update.return_value = network['network']
-        fake_plugin.create_network(neutron_context, network)
-        mock_update.assert_called_once_with(
-            neutron_context, 'net_id',
-            {'network': {
-                'availability_zone_hints': '["az_name_1", "pod_2"]'}})
+        ret_net = fake_plugin.create_network(neutron_context, network)
+        self.assertEqual(['az_name_1', 'pod_2'],
+                         ret_net['availability_zone_hints'])
 
         err_network = {'network': {
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,

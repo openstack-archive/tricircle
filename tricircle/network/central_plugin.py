@@ -26,6 +26,7 @@ from neutron.api.v2 import attributes
 from neutron.callbacks import events
 from neutron.callbacks import registry
 from neutron.callbacks import resources
+from neutron.db import api as q_db_api
 from neutron.db.availability_zone import router as router_az
 from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_v2
@@ -289,8 +290,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if az_ext.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
                                               net_data[az_ext.AZ_HINTS])
-        with context.session.begin(subtransactions=True):
-            res = super(TricirclePlugin, self).create_network(context, network)
+        with q_db_api.context_manager.writer.using(context):
+            net_db = self.create_network_db(context, network)
+            res = self._make_network_dict(net_db, process_extensions=False,
+                                          context=context)
+            self._process_l3_create(context, res, net_data)
             net_data['id'] = res['id']
             self.type_manager.create_network_segments(context, net_data,
                                                       tenant_id)
@@ -298,11 +302,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if az_ext.AZ_HINTS in net_data:
                 az_hints = az_ext.convert_az_list_to_string(
                     net_data[az_ext.AZ_HINTS])
-                update_res = super(TricirclePlugin, self).update_network(
-                    context, res['id'],
-                    {'network': {az_ext.AZ_HINTS: az_hints}})
-                res[az_ext.AZ_HINTS] = update_res[az_ext.AZ_HINTS]
-            self._process_l3_create(context, res, net_data)
+                net_db[az_ext.AZ_HINTS] = az_hints
+                res[az_ext.AZ_HINTS] = net_data[az_ext.AZ_HINTS]
             # put inside a session so when bottom operations fails db can
             # rollback
             if is_external:
