@@ -164,7 +164,7 @@ class FakeContext(object):
         self.session = FakeSession()
         self.auth_token = 'token'
         self.project_id = ''
-        self.request_id = 'abcdefg'
+        self.request_id = 'req-' + uuidutils.generate_uuid()
 
 
 def fake_get_trunk_plugin(trunk):
@@ -259,6 +259,7 @@ class FakePlugin(plugin.TricirclePlugin):
         self.core_plugin = FakeCorePlugin()
         self.neutron_handle = FakeNeutronHandle()
         self.on_trunk_create = {}
+        self.on_subnet_delete = {}
 
 
 class PluginTest(unittest.TestCase):
