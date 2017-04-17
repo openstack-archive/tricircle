@@ -1473,27 +1473,30 @@ class PluginTest(unittest.TestCase,
         tricircle_context = context.get_db_context()
         mock_context.return_value = tricircle_context
 
+        net_id = uuidutils.generate_uuid()
         network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
+            'id': net_id, 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'admin_state_up': True, 'shared': False,
             'availability_zone_hints': ['az_name_1', 'pod_2']}}
-        mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
+        mock_create.return_value = {'id': net_id, 'name': 'net_az'}
         ret_net = fake_plugin.create_network(neutron_context, network)
         self.assertEqual(['az_name_1', 'pod_2'],
                          ret_net['availability_zone_hints'])
 
+        net_id = uuidutils.generate_uuid()
         err_network = {'network': {
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['az_name_1', 'az_name_3']}}
-        mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
+        mock_create.return_value = {'id': net_id, 'name': 'net_az'}
         self.assertRaises(az_ext.AvailabilityZoneNotFound,
                           fake_plugin.create_network,
                           neutron_context, err_network)
 
+        net_id = uuidutils.generate_uuid()
         err_network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
+            'id': net_id, 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['pod_1', 'pod_3']}}
-        mock_create.return_value = {'id': 'net_id', 'name': 'net_az'}
+        mock_create.return_value = {'id': net_id, 'name': 'net_az'}
         self.assertRaises(az_ext.AvailabilityZoneNotFound,
                           fake_plugin.create_network,
                           neutron_context, err_network)
@@ -1508,7 +1511,8 @@ class PluginTest(unittest.TestCase,
         mock_context.return_value = tricircle_context
 
         network = {'network': {
-            'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
+            'id': uuidutils.generate_uuid(), 'name': 'net_az',
+            'tenant_id': TEST_TENANT_ID,
             'admin_state_up': True, 'shared': False,
             'availability_zone_hints': ['az_name_1', 'az_name_2']}}
         fake_plugin.create_network(neutron_context, network)
