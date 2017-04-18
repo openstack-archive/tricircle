@@ -746,6 +746,8 @@ def update_floatingip(self, context, _id, floatingip):
 
 
 class FakeQuery(object):
+    pk_map = {'ports': 'id'}
+
     def __init__(self, records, table):
         self.records = records
         self.table = table
@@ -819,6 +821,12 @@ class FakeQuery(object):
             if selected:
                 filtered_list.append(record)
         return FakeQuery(filtered_list, self.table)
+
+    def get(self, pk):
+        pk_field = self.pk_map[self.table]
+        for record in self.records:
+            if record.get(pk_field) == pk:
+                return record
 
     def delete(self, synchronize_session=False):
         for model_obj in self.records:
@@ -933,6 +941,7 @@ class FakeSession(object):
         if model_obj.__tablename__ == 'ports':
             model_dict['dhcp_opts'] = []
             model_dict['security_groups'] = []
+            model_dict['fixed_ips'] = []
 
         link_models(model_obj, model_dict,
                     'subnetpoolprefixes', 'subnetpool_id',
@@ -1158,7 +1167,14 @@ class FakePlugin(plugin.TricirclePlugin):
     def _make_subnet_dict(self, subnet, fields=None, context=None):
         return subnet
 
-    def _make_port_dict(self, port, fields=None, process_extensions=True):
+    def _make_port_dict(self, ori_port, fields=None, process_extensions=True):
+        if not isinstance(ori_port, dict):
+            port = ori_port._as_dict()
+            port['fixed_ips'] = ori_port.get('fixed_ips')
+        else:
+            port = ori_port
+        if 'project_id' in port:
+            port['tenant_id'] = port['project_id']
         if port.get('fixed_ips'):
             if isinstance(port['fixed_ips'][0], dict):
                 return port
@@ -1167,6 +1183,8 @@ class FakePlugin(plugin.TricirclePlugin):
                     port['fixed_ips'][i] = {
                         'subnet_id': fixed_ip['subnet_id'],
                         'ip_address': fixed_ip['ip_address']}
+                return port
+        # if fixed_ips is empty, we try first to load it from ip allocation
         for allocation in TOP_IPALLOCATIONS:
             if allocation['port_id'] == port['id']:
                 ret = {}
@@ -1179,8 +1197,6 @@ class FakePlugin(plugin.TricirclePlugin):
                 if 'project_id' in ret:
                     ret['tenant_id'] = ret['project_id']
                 return ret
-        if 'project_id' in port:
-            port['tenant_id'] = port['project_id']
         return port
 
     def _make_security_group_dict(self, security_group, fields=None):
@@ -1229,7 +1245,14 @@ def fake_allocate_ips_for_port(self, context, port):
         return port['port']['fixed_ips']
     for subnet in TOP_SUBNETS:
         if subnet['network_id'] == port['port']['network_id']:
-            return [fake_generate_ip(subnet)]
+            allocation = fake_generate_ip(subnet)
+            # save allocation so we can retrieve it in make_port_dict
+            TOP_IPALLOCATIONS.append(models_v2.IPAllocation(
+                network_id=subnet['network_id'],
+                port_id=port['port']['id'],
+                ip_address=allocation['ip_address'],
+                subnet_id=allocation['subnet_id']))
+            return [allocation]
 
 
 @classmethod
