@@ -101,6 +101,7 @@ JT_SHADOW_PORT_SETUP = 'shadow_port_setup'
 NT_LOCAL = 'local'
 NT_VLAN = 'vlan'
 NT_VxLAN = 'vxlan'
+NT_FLAT = 'flat'
 
 # cross-pod VxLAN networking support mode
 NM_P2P = 'p2p'

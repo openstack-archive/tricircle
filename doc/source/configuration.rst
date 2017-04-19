@@ -160,7 +160,8 @@ configured in central Neutron's neutron.conf.
      - (String) List of network type driver entry points to be loaded from the tricircle.network.type_drivers namespace, for example, local vlan and vxlan.
    * - ``vni_ranges`` = ``None``
      - (String) Comma-separated list of <vni_min>:<vni_max> tuples enumerating ranges of VXLAN VNI IDs that are available for tenant network allocation, for example, 1001:2000
-
+   * - ``flat_networks`` = ``*``
+     - (String) List of physical_network names with which flat networks can be created. Use default '*' to allow flat networks with arbitrary physical_network names. Use an empty list to disable flat networks.
 
 
 **Tricircle Local Neutron Plugin**

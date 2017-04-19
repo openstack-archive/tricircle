@@ -44,7 +44,6 @@ Create external network ext-net1, which will be located in RegionOne.
 .. code-block:: console
 
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --router:external --availability-zone-hint RegionOne ext-net1
-
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
@@ -56,6 +55,29 @@ Create external network ext-net1, which will be located in RegionOne.
     | provider:network_type     | vlan                                 |
     | provider:physical_network | extern                               |
     | provider:segmentation_id  | 170                                  |
+    | router:external           | True                                 |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | 532890c765604609a8d2ef6fc8e5f6ef     |
+    +---------------------------+--------------------------------------+
+
+Now you can also create flat type external network
+
+.. code-block:: console
+
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type flat --provider:physical_network extern --router:external --availability-zone-hint RegionOne ext-net1
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | RegionOne                            |
+    | id                        | 17d969a5-efe3-407f-9657-61658a4a5193 |
+    | name                      | ext-net1                             |
+    | project_id                | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | provider:network_type     | flat                                 |
+    | provider:physical_network | extern                               |
+    | provider:segmentation_id  |                                      |
     | router:external           | True                                 |
     | shared                    | False                                |
     | status                    | ACTIVE                               |
@@ -501,6 +523,29 @@ Create external network ext-net2, which will be located in RegionTwo.
     | provider:network_type     | vlan                                 |
     | provider:physical_network | extern                               |
     | provider:segmentation_id  | 183                                  |
+    | router:external           | True                                 |
+    | shared                    | False                                |
+    | status                    | ACTIVE                               |
+    | subnets                   |                                      |
+    | tenant_id                 | 532890c765604609a8d2ef6fc8e5f6ef     |
+    +---------------------------+--------------------------------------+
+
+Now you can also create flat type external network
+
+.. code-block:: console
+
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type flat --provider:physical_network extern --router:external --availability-zone-hint RegionTwo ext-net2
+    +---------------------------+--------------------------------------+
+    | Field                     | Value                                |
+    +---------------------------+--------------------------------------+
+    | admin_state_up            | True                                 |
+    | availability_zone_hints   | RegionTwo                            |
+    | id                        | 0b6d43d1-a837-4f91-930e-dfcc74ef483b |
+    | name                      | ext-net2                             |
+    | project_id                | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | provider:network_type     | flat                                 |
+    | provider:physical_network | extern                               |
+    | provider:segmentation_id  |                                      |
     | router:external           | True                                 |
     | shared                    | False                                |
     | status                    | ACTIVE                               |
