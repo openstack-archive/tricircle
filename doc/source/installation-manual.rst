@@ -64,9 +64,9 @@ Installation with Central Neutron Server
    :header: "Option", "Description", "Example"
 
    [DEFAULT] tricircle_db_connection, "database connection string for tricircle", mysql+pymysql://root:password@ 127.0.0.1/tricircle?charset=utf8
-   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@127.0.0.1:5672
+   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@ 127.0.0.1:5672
    [keystone_authtoken] auth_type, "authentication method", password
-   [keystone_authtoken] auth_url, "keystone authorization url", http://$keystone_service_host/identity_admin
+   [keystone_authtoken] auth_url, "keystone authorization url", http://$keystone_service_host/identity
    [keystone_authtoken] username, "username of service account, needed for password authentication", tricircle
    [keystone_authtoken] password, "password of service account, needed for password authentication", password
    [keystone_authtoken] user_domain_name, "user domain name of service account, needed for password authentication", Default
@@ -76,8 +76,8 @@ Installation with Central Neutron Server
    [keystone_authtoken] cafile, "A PEM encoded Certificate Authority to use when verifying HTTPs", /opt/stack/data/ca-bundle.pem
    [keystone_authtoken] signing_dir, "Directory used to cache files related to PKI tokens", /var/cache/tricircle
    [keystone_authtoken] memcached_servers, "Optionally specify a list of memcached server(s) to use for caching", $keystone_service_host:11211
-   [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
-   [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
+   [client] auth_url, "keystone authorization url", http://$keystone_service_host/identity
+   [client] identity_url, "keystone service url", http://$keystone_service_host/identity/v3
    [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
    [client] top_region_name, "name of central region which client needs to access", CentralRegion
    [client] admin_username, "username of admin account", admin
@@ -116,9 +116,9 @@ Installation with Central Neutron Server
    :header: "Option", "Description", "Example"
 
    [DEFAULT] tricircle_db_connection, "database connection string for tricircle", mysql+pymysql://root:password@ 127.0.0.1/tricircle?charset=utf8
-   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@127.0.0.1:5672
-   [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
-   [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
+   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@ 127.0.0.1:5672
+   [client] auth_url, "keystone authorization url", http://$keystone_service_host/identity
+   [client] identity_url, "keystone service url", http://$keystone_service_host/identity/v3
    [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
    [client] top_region_name, "name of central region which client needs to access", CentralRegion
    [client] admin_username, "username of admin account", admin
@@ -157,11 +157,11 @@ Installation with Central Neutron Server
 
      [database] connection, "database connection string for central Neutron server", mysql+pymysql://root:password@ 127.0.0.1/neutron?charset=utf8
      [DEFAULT] bind_port, "Port central Neutron server binds to", change to a different value rather than 9696 if you run central and local Neutron server in the same host
-     [DEFAULT] core_plugin, "core plugin central Neutron server uses", tricircle.network.central_plugin.TricirclePlugin
+     [DEFAULT] core_plugin, "core plugin central Neutron server uses", tricircle.network.central_plugin. TricirclePlugin
      [DEFAULT] service_plugins, "service plugin central Neutron server uses", "(leave empty)"
      [DEFAULT] tricircle_db_connection, "database connection string for tricircle", mysql+pymysql://root:password@ 127.0.0.1/tricircle?charset=utf8
-     [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
-     [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
+     [client] auth_url, "keystone authorization url", http://$keystone_service_host/identity
+     [client] identity_url, "keystone service url", http://$keystone_service_host/identity/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
      [client] top_region_name, "name of central region which client needs to access", CentralRegion
      [client] admin_username, "username of admin account", admin
@@ -226,8 +226,8 @@ Installation with Local Neutron Server
 
      [DEFAULT] core_plugin, "core plugin local Neutron server uses", tricircle.network.local_plugin. TricirclePlugin
      [DEFAULT] service_plugins, "service plugins local Neutron server uses", tricircle.network.local_l3_plugin. TricircleL3Plugin
-     [client] auth_url, "keystone authorization url", http://$keystone_service_host :5000/v3
-     [client] identity_url, "keystone service url", http://$keystone_service_host :35357/v3
+     [client] auth_url, "keystone authorization url", http://$keystone_service_host/identity
+     [client] identity_url, "keystone service url", http://$keystone_service_host/identity/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
      [client] top_region_name, "name of central region which client needs to access", CentralRegion
      [client] admin_username, "username of admin account", admin

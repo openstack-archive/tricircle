@@ -39,14 +39,14 @@ Central Plugin.
      - (String) user domain name of admin account, needed when auto_refresh_endpoint set to True.
    * - ``admin_username`` = ``None``
      - (String) username of admin account, needed when auto_refresh_endpoint set to True.
-   * - ``auth_url`` = ``http://127.0.0.1:5000/v3``
-     - (String) keystone authorization url, for example, http://$service_host:5000/v3
+   * - ``auth_url`` = ``http://127.0.0.1/identity``
+     - (String) keystone authorization url, for example, http://$service_host/identity
+   * - ``identity_url`` = ``http://127.0.0.1/identity/v3``
+     - (String) keystone service url, for example, http://$service_host/identity/v3
    * - ``auto_refresh_endpoint`` = ``True``
      - (Boolean) if set to True, endpoint will be automatically refreshed if timeout accessing endpoint.
    * - ``bridge_cidr`` = ``100.0.0.0/9``
      - (String) cidr pool of the bridge network, for example, 100.0.0.0/9
-   * - ``identity_url`` = ``http://127.0.0.1:35357/v3``
-     - (String) keystone service url, for example, http://$service_host:35357/v3
    * - ``neutron_timeout`` = ``60``
      - (Integer) timeout for neutron client in seconds.
    * - ``top_region_name`` = ``None``

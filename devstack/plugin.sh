@@ -51,6 +51,8 @@ function init_common_tricircle_conf {
     iniset $conf_file DEFAULT use_syslog $SYSLOG
     iniset $conf_file DEFAULT tricircle_db_connection `database_connection_url tricircle`
 
+    iniset $conf_file client auth_url http://$KEYSTONE_SERVICE_HOST/identity
+    iniset $conf_file client identity_url http://$KEYSTONE_SERVICE_HOST/identity/v3
     iniset $conf_file client admin_username admin
     iniset $conf_file client admin_password $ADMIN_PASSWORD
     iniset $conf_file client admin_tenant demo
@@ -65,8 +67,8 @@ function init_local_neutron_conf {
 
     iniset $NEUTRON_CONF DEFAULT core_plugin tricircle.network.local_plugin.TricirclePlugin
 
-    iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST/identity/v3
-    iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST/identity_admin/v3
+    iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST/identity
+    iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST/identity/v3
     iniset $NEUTRON_CONF client admin_username admin
     iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
     iniset $NEUTRON_CONF client admin_tenant demo
@@ -317,6 +319,13 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
     echo_summary "Initializing Tricircle Service"
 
+    if [[ ${USE_VENV} = True ]]; then
+        PROJECT_VENV["tricircle"]=${TRICIRCLE_DIR}.venv
+        TRICIRCLE_BIN_DIR=${PROJECT_VENV["tricircle"]}/bin
+    else
+        TRICIRCLE_BIN_DIR=$(get_python_exec_prefix)
+    fi
+
     if is_service_enabled t-api; then
 
         create_tricircle_accounts
@@ -324,12 +333,12 @@ elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         if [[ "$TRICIRCLE_DEPLOY_WITH_WSGI" == "True" ]]; then
             start_tricircle_api_wsgi
         else
-            run_process t-api "tricircle-api --config-file $TRICIRCLE_API_CONF"
+            run_process t-api "$TRICIRCLE_BIN_DIR/tricircle-api --config-file $TRICIRCLE_API_CONF"
         fi
     fi
 
     if is_service_enabled t-job; then
-        run_process t-job "tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
+        run_process t-job "$TRICIRCLE_BIN_DIR/tricircle-xjob --config-file $TRICIRCLE_XJOB_CONF"
     fi
 fi
 

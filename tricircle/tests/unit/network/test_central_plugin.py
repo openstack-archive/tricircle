@@ -1285,6 +1285,13 @@ def fake_allocate_ips_for_port(self, context, port):
             return [allocation]
 
 
+def fake_update_ips_for_port(self, context, port, host,
+                             original_ips, new_ips, mac):
+    # NOTE: remove this mock after we support ip updating
+    return ipam_pluggable_backend.IpamPluggableBackend.Changes(
+        add=[], original=[], remove=[])
+
+
 @classmethod
 def fake_get_instance(cls, subnet_pool, context):
     return FakePool(subnet_pool, context)
@@ -2267,6 +2274,8 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(bottom_subnet['enable_dhcp'],
                          body_copy['subnet']['enable_dhcp'])
 
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_update_ips_for_port', new=fake_update_ips_for_port)
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(_utils, 'filter_non_model_columns',
