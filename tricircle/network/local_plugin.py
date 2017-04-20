@@ -457,7 +457,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
                     ip_address=fixed_ip['ip_address'])
             return t_ports[0]
 
-        if port_body['fixed_ips'] is not q_constants.ATTR_NOT_SPECIFIED:
+        if port_body['fixed_ips'] is not q_constants.ATTR_NOT_SPECIFIED and (
+            port_body.get('device_owner') != (
+                q_constants.DEVICE_OWNER_LOADBALANCERV2)):
             if not self._is_special_port(port_body):
                 fixed_ip = port_body['fixed_ips'][0]
                 ip_address = fixed_ip.get('ip_address')
@@ -682,6 +684,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
         self.core_plugin.delete_port(context, _id, l3_port_check)
 
     def _handle_security_group(self, t_ctx, q_ctx, port):
+        if 'security_groups' not in port:
+            return
         if not port['security_groups']:
             raw_client = self.neutron_handle._get_client(t_ctx)
             params = {'name': 'default'}
