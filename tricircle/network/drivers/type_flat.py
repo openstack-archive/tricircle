@@ -16,6 +16,7 @@
 from oslo_config import cfg
 from oslo_log import log
 
+from neutron.common import exceptions
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_flat
 
@@ -36,8 +37,15 @@ class FlatTypeDriver(type_flat.FlatTypeDriver):
         LOG.info("FlatTypeDriver initialization complete")
 
     def reserve_provider_segment(self, context, segment):
-        res = super(FlatTypeDriver,
-                    self).reserve_provider_segment(context, segment)
+        try:
+            res = super(FlatTypeDriver,
+                        self).reserve_provider_segment(context, segment)
+        except exceptions.FlatNetworkInUse:
+            # to support multiple regions sharing the same physical network
+            # for external network, we ignore this exception and let local
+            # Neutron judge whether the physical network is valid
+            res = segment
+            res[driver_api.MTU] = None
         res[driver_api.NETWORK_TYPE] = self.get_type()
         return res
 

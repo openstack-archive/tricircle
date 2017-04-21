@@ -28,13 +28,13 @@ from sqlalchemy.sql import elements
 from sqlalchemy.sql import selectable
 
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
 import neutron_lib.context as q_context
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.plugins import directory
 
 import neutron.conf.common as q_config
-
 from neutron.db import _utils
 from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
@@ -42,6 +42,7 @@ from neutron.db import ipam_pluggable_backend
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
+import neutron.objects.exceptions as q_obj_exceptions
 
 from neutron.extensions import availability_zone as az_ext
 
@@ -66,6 +67,7 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.central_plugin as plugin
+from tricircle.network.drivers import type_flat
 from tricircle.network.drivers import type_local
 from tricircle.network.drivers import type_vlan
 from tricircle.network.drivers import type_vxlan
@@ -84,6 +86,7 @@ TOP_SUBNETPOOLPREFIXES = []
 TOP_IPALLOCATIONS = []
 TOP_VLANALLOCATIONS = []
 TOP_VXLANALLOCATIONS = []
+TOP_FLATALLOCATIONS = []
 TOP_SEGMENTS = []
 TOP_EXTNETS = []
 TOP_FLOATINGIPS = []
@@ -106,8 +109,8 @@ BOTTOM2_SGS = []
 BOTTOM2_FIPS = []
 RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_ROUTERS, TOP_ROUTERPORT,
             TOP_SUBNETPOOLS, TOP_SUBNETPOOLPREFIXES, TOP_IPALLOCATIONS,
-            TOP_VLANALLOCATIONS, TOP_VXLANALLOCATIONS, TOP_SEGMENTS,
-            TOP_EXTNETS, TOP_FLOATINGIPS, TOP_SGS, TOP_SG_RULES,
+            TOP_VLANALLOCATIONS, TOP_VXLANALLOCATIONS, TOP_FLOATINGIPS,
+            TOP_SEGMENTS, TOP_EXTNETS, TOP_FLOATINGIPS, TOP_SGS, TOP_SG_RULES,
             TOP_NETWORK_RBAC, TOP_SUBNETROUTES, TOP_DNSNAMESERVERS,
             BOTTOM1_NETS, BOTTOM1_SUBNETS, BOTTOM1_PORTS, BOTTOM1_ROUTERS,
             BOTTOM1_SGS, BOTTOM1_FIPS,
@@ -123,6 +126,7 @@ RES_MAP = {'networks': TOP_NETS,
            'subnetpoolprefixes': TOP_SUBNETPOOLPREFIXES,
            'ml2_vlan_allocations': TOP_VLANALLOCATIONS,
            'ml2_vxlan_allocations': TOP_VXLANALLOCATIONS,
+           'ml2_flat_allocations': TOP_FLATALLOCATIONS,
            'networksegments': TOP_SEGMENTS,
            'externalnetworks': TOP_EXTNETS,
            'floatingips': TOP_FLOATINGIPS,
@@ -996,6 +1000,13 @@ class FakeSession(object):
                 subnet['dns_nameservers'].append(dnsnameservers)
                 break
 
+        if model_obj.__tablename__ == 'ml2_flat_allocations':
+            for alloc in TOP_FLATALLOCATIONS:
+                if alloc['physical_network'] == model_dict['physical_network']:
+                    raise q_obj_exceptions.NeutronDbObjectDuplicateEntry(
+                        model_obj.__class__,
+                        DotDict({'columns': '', 'value': ''}))
+
         self._extend_standard_attr(model_dict)
 
         RES_MAP[model_obj.__tablename__].append(model_dict)
@@ -1114,6 +1125,8 @@ class FakeTypeManager(managers.TricircleTypeManager):
         self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
         vxlan_driver = type_vxlan.VxLANTypeDriver()
         self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
+        local_driver = type_flat.FlatTypeDriver()
+        self.drivers[constants.NT_FLAT] = FakeExtension(local_driver)
 
     def extend_network_dict_provider(self, cxt, net):
         target_net = None
@@ -2898,6 +2911,38 @@ class PluginTest(unittest.TestCase,
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, top_net['id'], constants.RT_NETWORK)
         self.assertEqual(mappings[0][1], bottom_net['id'])
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_flat_external_network(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        body = {
+            'network': {
+                'name': 'ext-net1',
+                'admin_state_up': True,
+                'shared': False,
+                'tenant_id': TEST_TENANT_ID,
+                'router:external': True,
+                'availability_zone_hints': ['pod_1'],
+                provider_net.PHYSICAL_NETWORK: 'extern',
+                provider_net.NETWORK_TYPE: 'flat'
+            }
+        }
+        fake_plugin.create_network(q_ctx, body)
+        body['network']['name'] = ['ext-net2']
+        body['network']['availability_zone_hints'] = ['pod_2']
+        fake_plugin.create_network(q_ctx, body)
+        # we have ignore the FlatNetworkInUse exception, so only one allocation
+        # record is created, and both pods have one external network
+        self.assertEqual(1, len(TOP_FLATALLOCATIONS))
+        self.assertEqual(1, len(BOTTOM1_NETS))
+        self.assertEqual(1, len(BOTTOM2_NETS))
 
     def _prepare_external_net_router_test(self, q_ctx, fake_plugin,
                                           router_az_hints=None):

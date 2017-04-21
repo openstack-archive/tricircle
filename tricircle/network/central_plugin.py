@@ -15,6 +15,7 @@
 
 import collections
 import copy
+import re
 import six
 
 from oslo_config import cfg
@@ -26,6 +27,7 @@ from neutron.api.v2 import attributes
 from neutron.callbacks import events
 from neutron.callbacks import registry
 from neutron.callbacks import resources
+import neutron.common.exceptions as ml2_exceptions
 from neutron.db import api as q_db_api
 from neutron.db.availability_zone import router as router_az
 from neutron.db import common_db_mixin
@@ -314,8 +316,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # rollback
             if is_external:
                 self._fill_provider_info(res, net_data)
-                self._create_bottom_external_network(
-                    context, net_data, res['id'])
+                try:
+                    self._create_bottom_external_network(
+                        context, net_data, res['id'])
+                except q_cli_exceptions.Conflict as e:
+                    pattern = re.compile('Physical network (.*) is in use')
+                    match = pattern.search(e.message)
+                    if not match:
+                        raise
+                    else:
+                        raise ml2_exceptions.FlatNetworkInUse(
+                            physical_network=match.groups()[0])
         return res
 
     def delete_network(self, context, network_id):
