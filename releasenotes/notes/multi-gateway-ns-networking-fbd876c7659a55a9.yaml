@@ -1,0 +1,5 @@
+---
+features:
+  - Support network topology that each OpenStack cloud provides external
+    network for tenant's north-south traffic and at the same time east-west
+    networking of tenant networks among OpenStack clouds is also enabled

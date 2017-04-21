@@ -64,6 +64,7 @@ Installation with Central Neutron Server
    :header: "Option", "Description", "Example"
 
    [DEFAULT] tricircle_db_connection, "database connection string for tricircle", mysql+pymysql://root:password@ 127.0.0.1/tricircle?charset=utf8
+   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@127.0.0.1:5672
    [keystone_authtoken] auth_type, "authentication method", password
    [keystone_authtoken] auth_url, "keystone authorization url", http://$keystone_service_host/identity_admin
    [keystone_authtoken] username, "username of service account, needed for password authentication", tricircle
@@ -115,6 +116,7 @@ Installation with Central Neutron Server
    :header: "Option", "Description", "Example"
 
    [DEFAULT] tricircle_db_connection, "database connection string for tricircle", mysql+pymysql://root:password@ 127.0.0.1/tricircle?charset=utf8
+   [DEFAULT] transport_url, "a URL representing the used messaging driver and its full configuration", rabbit://user:password@127.0.0.1:5672
    [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
    [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
    [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
@@ -167,10 +169,11 @@ Installation with Central Neutron Server
      [client] admin_tenant, "project name of admin account", demo
      [client] admin_user_domain_name, "user domain name of admin account", Default
      [client] admin_tenant_domain_name, "project name of admin account", Default
-     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "local,vlan,vxlan"
-     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "local,vlan,vxlan"
-     [tricircle] network_vlan_ranges, "physical_network names and VLAN tags range usable of VLAN provider", "bridge:2001:3000"
+     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "local,vlan,vxlan,flat"
+     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "local,vlan,vxlan,flat"
+     [tricircle] network_vlan_ranges, "physical network names and VLAN tags range usable of VLAN provider", "bridge:2001:3000"
      [tricircle] vni_ranges, "VxLAN VNI range", "1001:2000"
+     [tricircle] flat_networks, "physical network names with which flat networks can be created", bridge
      [tricircle] bridge_network_type, "l3 bridge network type which is enabled in tenant_network_types and is not local type", vxlan
      [tricircle] default_region_for_external_network, "Default Region where the external network belongs to", RegionOne
      [tricircle] enable_api_gateway, "whether the API gateway is enabled", False
@@ -202,32 +205,29 @@ Installation with Local Neutron Server
   groups, please refer to the configuration guide. After the change, you just
   restart the Neutron server.
 
-  - configure local Neutron server
+  edit neutron.conf.
 
-    edit neutron.conf.
+  .. note::
 
-    .. note::
+    Pay attention to the service_plugins configuration item, make sure
+    the plugin which is configured can support the association of floating IP
+    to a port whose network is not directly attached to the router. To support
+    it, TricircleL3Plugin is inherited from Neutron original L3RouterPlugin
+    and overrides the original "get_router_for_floatingip" implementation.
+    In order to configure local Neutron to use original L3RouterPlugin, you
+    will need to patch the function "get_router_for_floatingip" in the same
+    way that has been done for TricircleL3Plugin.
 
-      Pay attention to the service_plugins configuration item, make sure
-      the plugin which is configured can support associating a floating ip to
-      a port whose network is not directly attached to the router.
-      TricircleL3Plugin is inherited from Neutron original L3RouterPlugin,
-      and overrides the original "get_router_for_floatingip" implementation
-      to allow associating a floating ip to a port whose network is not
-      directly attached to the router. If you want to configure local Neutron
-      to use original L3RouterPlugin, then you need to patch the function
-      "get_router_for_floatingip" as what has been done in TricircleL3Plugin.
-
-      If only cross Neutron L2 networking is needed in the deployment, it's
-      not necessary to configure the service plugins.
+    It's not necessary to configure the service plugins if cross Neutron L2
+    networking is the only need in the deployment.
 
   .. csv-table::
      :header: "Option", "Description", "Example"
 
-     [DEFAULT] core_plugin, "core plugin local Neutron server uses", tricircle.network.local_plugin.TricirclePlugin
-     [DEFAULT] service_plugins, "service plugins local Neutron server uses", tricircle.network.local_l3_plugin.TricircleL3Plugin
-     [client] auth_url, "keystone authorization url", http://$keystone_service_host:5000/v3
-     [client] identity_url, "keystone service url", http://$keystone_service_host:35357/v3
+     [DEFAULT] core_plugin, "core plugin local Neutron server uses", tricircle.network.local_plugin. TricirclePlugin
+     [DEFAULT] service_plugins, "service plugins local Neutron server uses", tricircle.network.local_l3_plugin. TricircleL3Plugin
+     [client] auth_url, "keystone authorization url", http://$keystone_service_host :5000/v3
+     [client] identity_url, "keystone service url", http://$keystone_service_host :35357/v3
      [client] auto_refresh_endpoint, "if set to True, endpoint will be automatically refreshed if timeout accessing", True
      [client] top_region_name, "name of central region which client needs to access", CentralRegion
      [client] admin_username, "username of admin account", admin
@@ -235,8 +235,51 @@ Installation with Local Neutron Server
      [client] admin_tenant, "project name of admin account", demo
      [client] admin_user_domain_name, "user domain name of admin account", Default
      [client] admin_tenant_domain_name, "project name of admin account", Default
-     [tricircle] real_core_plugin, "the core plugin the Tricircle local plugin invokes", neutron.plugins.ml2.plugin.Ml2Plugin
-     [tricircle] central_neutron_url, "central Neutron server url", http://$neutron_service_host:9696
+     [tricircle] real_core_plugin, "the core plugin the Tricircle local plugin invokes", neutron.plugins.ml2.plugin. Ml2Plugin
+     [tricircle] central_neutron_url, "central Neutron server url", http://$neutron_service_host :9696
 
   .. note:: Change keystone_service_host to the address of Keystone service,
      and neutron_service_host to the address of central Neutron service.
+
+  edit ml2_conf.ini
+
+  .. list-table::
+     :header-rows: 1
+
+     * - Option
+       - Description
+       - Example
+     * - [ml2] mechanism_drivers
+       - add l2population if vxlan network is used
+       - openvswitch,l2population
+     * - [agent] l2_population
+       - set to True if vxlan network is used
+       - True
+     * - [agent] tunnel_types
+       - set to vxlan if vxlan network is used
+       - vxlan
+     * - [ml2_type_vlan] network_vlan_ranges
+       - for a specific physical network, the vlan range should be the same with
+         tricircle.network_vlan_ranges option for central Neutron, configure this
+         option if vlan network is used
+       - bridge:2001:3000
+     * - [ml2_type_vxlan] vni_ranges
+       - should be the same with tricircle.vni_ranges option for central Neutron,
+         configure this option if vxlan network is used
+       - 1001:2000
+     * - [ml2_type_flat] flat_networks
+       - should be part of the tricircle.network_vlan_ranges option for central
+         Neutron, configure this option if flat network is used
+       - bridge
+     * - [ovs] bridge_mappings
+       - map the physical network to an ovs bridge
+       - bridge:br-bridge
+
+  .. note:: In tricircle.network_vlan_ranges option for central Neutron, all
+     the available physical networks in all pods and their vlan ranges should
+     be configured without duplication. It's possible that one local Neutron
+     doesn't contain some of the physical networks configured in
+     tricircle.network_vlan_ranges, in this case, users need to specify
+     availability zone hints when creating network or booting instances in the
+     correct pod, to ensure that the required physical network is available in
+     the target pod.
