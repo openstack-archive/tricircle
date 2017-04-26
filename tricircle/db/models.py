@@ -71,7 +71,7 @@ class ResourceRouting(core.ModelBase, core.DictBase, models.TimestampMixin):
     id = sql.Column(sql.BigInteger().with_variant(sql.Integer(), 'sqlite'),
                     primary_key=True, autoincrement=True)
     top_id = sql.Column('top_id', sql.String(length=127), nullable=False)
-    bottom_id = sql.Column('bottom_id', sql.String(length=36))
+    bottom_id = sql.Column('bottom_id', sql.String(length=36), index=True)
     pod_id = sql.Column('pod_id', sql.String(length=36),
                         sql.ForeignKey('pods.pod_id'),
                         nullable=False)
@@ -134,3 +134,16 @@ class ShadowAgent(core.ModelBase, core.DictBase):
     type = sql.Column('type', sql.String(length=36), nullable=False)
     # considering IPv6 address, set the length to 48
     tunnel_ip = sql.Column('tunnel_ip', sql.String(length=48), nullable=False)
+
+
+class RecycleResources(core.ModelBase, core.DictBase):
+    __tablename__ = 'recycle_resources'
+
+    attributes = ['resource_id', 'resource_type', 'project_id']
+
+    resource_id = sql.Column('resource_id',
+                             sql.String(length=36), primary_key=True)
+    resource_type = sql.Column('resource_type',
+                               sql.String(length=64), nullable=False)
+    project_id = sql.Column('project_id',
+                            sql.String(length=36), nullable=False, index=True)

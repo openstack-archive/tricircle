@@ -590,6 +590,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
         agent_state = helper.NetworkHelper.construct_agent_data(
             agent_type, agent_host, tunnel_ip)
         self.core_plugin.create_or_update_agent(context, agent_state)
+        driver = self.core_plugin.type_manager.drivers.get('vxlan')
+        if driver:
+            driver.obj.add_endpoint(tunnel_ip, agent_host)
 
     def _fill_agent_info_in_profile(self, context, port_id, host,
                                     profile_dict):

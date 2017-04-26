@@ -747,7 +747,8 @@ class TestAsyncJobController(API_FunctionalTest):
         # prepare the project id for job creation, currently job parameter
         # contains job type and job resource information.
         job_type = job['type']
-        if job_type == constants.JT_SEG_RULE_SETUP:
+        if job_type in (constants.JT_SEG_RULE_SETUP,
+                        constants.JT_RESOURCE_RECYCLE):
             project_id = job['resource']['project_id']
         else:
             project_id = uuidutils.generate_uuid()

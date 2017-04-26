@@ -809,6 +809,7 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'compute:None',
                              'binding:vif_type': 'ovs',
                              'binding:host_id': 'host1',
+                             'device_id': None,
                              'mac_address': 'fa:16:3e:d4:01:03',
                              'fixed_ips': [{'subnet_id': subnet1_id,
                                             'ip_address': '10.0.1.3'}]})
@@ -817,6 +818,7 @@ class XManagerTest(unittest.TestCase):
                              'device_owner': 'compute:None',
                              'binding:vif_type': 'ovs',
                              'binding:host_id': 'host2',
+                             'device_id': None,
                              'mac_address': 'fa:16:3e:d4:01:03',
                              'fixed_ips': [{'subnet_id': subnet1_id,
                                             'ip_address': '10.0.1.4'}]})

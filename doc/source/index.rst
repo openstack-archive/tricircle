@@ -19,6 +19,7 @@ Contents
    configuration
    networking-guide
    vlan-aware-vms-guide
+   service-function-chaining-guide
    api_v1
    contributing
 

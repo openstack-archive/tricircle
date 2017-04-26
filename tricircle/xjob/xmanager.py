@@ -19,6 +19,7 @@ import eventlet
 import netaddr
 import random
 import six
+import time
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -151,6 +152,9 @@ class XManager(PeriodicTasks):
             constants.JT_CONFIGURE_ROUTE: self.configure_route,
             constants.JT_ROUTER_SETUP: self.setup_bottom_router,
             constants.JT_PORT_DELETE: self.delete_server_port,
+            constants.JT_SFC_SYNC:
+                self.sync_service_function_chain,
+            constants.JT_RESOURCE_RECYCLE: self.recycle_resources,
             constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
             constants.JT_NETWORK_UPDATE: self.update_network,
             constants.JT_SUBNET_UPDATE: self.update_subnet,
@@ -1045,7 +1049,8 @@ class XManager(PeriodicTasks):
                               {'key': 'fields', 'comparator': 'eq',
                                'value': ['id', 'binding:vif_type',
                                          'binding:host_id', 'fixed_ips',
-                                         'device_owner', 'mac_address']}])
+                                         'device_owner', 'device_id',
+                                         'mac_address']}])
             LOG.debug('Shadow ports %s in pod %s %s',
                       b_sw_ports, target_pod_id, run_label)
             LOG.debug('Ports %s in pod %s %s',
@@ -1253,3 +1258,272 @@ class XManager(PeriodicTasks):
         except q_cli_exceptions.NotFound:
             LOG.error('trunk: %(trunk_id)s not found, pod name: %(name)s',
                       {'trunk_id': b_trunk_id, 'name': b_region_name})
+
+    def _delete_port_pair_by_ingress(self, ctx, b_client, ingress, project_id):
+        filters = [{'key': 'ingress',
+                    'comparator': 'eq',
+                    'value': ingress},
+                   {'key': 'project_id',
+                    'comparator': 'eq',
+                    'value': project_id}
+                   ]
+        pps = b_client.list_port_pairs(ctx, filters=filters)
+        if not pps:
+            return
+        self._delete_bottom_resource_by_id(
+            ctx, constants.RT_PORT_PAIR, pps[0]['id'],
+            b_client, project_id)
+
+    def _delete_flow_classifier_by_src_port(self, ctx, b_client,
+                                            port_id, project_id):
+        filters = [{'key': 'logical_source_port',
+                    'comparator': 'eq',
+                    'value': port_id},
+                   {'key': 'project_id',
+                    'comparator': 'eq',
+                    'value': project_id}
+                   ]
+        fcs = b_client.list_flow_classifiers(ctx, filters=filters)
+        if not fcs:
+            return
+        self._delete_bottom_resource_by_id(
+            ctx, constants.RT_FLOW_CLASSIFIER, fcs[0]['id'],
+            b_client, project_id)
+
+    def _delete_portchain_by_fc_id(self, ctx, b_client, fc_id, project_id):
+        filters = [{'key': 'project_id',
+                    'comparator': 'eq',
+                    'value': project_id}]
+        pcs = b_client.list_port_chains(ctx, filters=filters)
+        for pc in pcs:
+            if fc_id in pc['flow_classifiers']:
+                self._delete_bottom_resource_by_id(
+                    ctx, constants.RT_PORT_CHAIN, pc['id'],
+                    b_client, project_id)
+                return
+
+    def _clear_bottom_portpairgroup_portpairs(self, ctx, b_client,
+                                              pp_ids, project_id):
+        filters = [{'key': 'project_id',
+                    'comparator': 'eq',
+                    'value': project_id}]
+        ppgs = b_client.list_port_pair_groups(ctx, filters=filters)
+        for pp_id in pp_ids:
+            for ppg in ppgs:
+                if pp_id in ppg['port_pairs']:
+                    ppg_body = {'port_pair_group': {
+                        'port_pairs': []
+                    }}
+                    b_client.update_port_pair_groups(ctx, ppg['id'], ppg_body)
+                    break
+
+    def _delete_bottom_resource_by_id(self, ctx,
+                                      res_type, res_id, b_client, project_id):
+        try:
+            b_client.delete_resources(res_type, ctx, res_id)
+        except q_cli_exceptions.NotFound:
+            LOG.debug(('%(res_type)s: %(id)s not found, '
+                       'region name: %(name)s'),
+                      {'res_type': res_type,
+                       'id': res_id,
+                       'name': b_client.region_name})
+        except q_cli_exceptions.Conflict as e:
+            if constants.STR_IN_USE in e.message:
+                LOG.debug(('%(res_type)s: %(id)s in use, '
+                           'region name: %(name)s'),
+                          {'res_type': res_type,
+                           'id': res_id,
+                           'name': b_client.region_name})
+                if res_type == constants.RT_FLOW_CLASSIFIER:
+                    self._delete_portchain_by_fc_id(
+                        ctx, b_client, res_id, project_id)
+                    self._delete_bottom_resource_by_id(
+                        ctx, constants.RT_FLOW_CLASSIFIER,
+                        res_id, b_client, project_id)
+                # we are deleting the port pair, meaning that the port pair
+                # should be no longer used, so we remove it from
+                # its port pair group, if any.
+                elif res_type == constants.RT_PORT_PAIR:
+                    self._clear_bottom_portpairgroup_portpairs(
+                        ctx, b_client, [res_id], project_id)
+                    self._delete_bottom_resource_by_id(
+                        ctx, constants.RT_PORT_PAIR,
+                        res_id, b_client, project_id)
+                # conflict exception is not expected to be raised when
+                # deleting port pair group, because port pair group is only
+                # deleted during resource recycling, and we guarantee that
+                # its port chain will be deleted before.
+                # and, deleting port chain will not raise conflict exception
+                else:
+                    raise
+            else:
+                raise
+        db_api.delete_mappings_by_bottom_id(ctx, res_id)
+
+    @_job_handle(constants.JT_RESOURCE_RECYCLE)
+    def recycle_resources(self, ctx, payload):
+        project_id = payload[constants.JT_RESOURCE_RECYCLE]
+        filters = [{'key': 'project_id',
+                    'comparator': 'eq',
+                    'value': project_id}]
+        resources = db_api.list_recycle_resources(ctx, filters)
+        if not resources:
+            return
+        max_retries = 4
+        # recycle_resources is triggered at the end of the
+        # sync_service_function_chain function, need to consider the
+        # situation which recycle_resources has been run but
+        # sync_service_function_chain function has not ended.
+        filters = [{'key': 'type',
+                    'comparator': 'eq',
+                    'value': constants.JT_SFC_SYNC}]
+        for i in range(max_retries):
+            sync_sfc_job = db_api.list_jobs(ctx, filters)
+            if sync_sfc_job:
+                if i == max_retries - 1:
+                    return
+                time.sleep(5)
+
+        res_map = collections.defaultdict(list)
+        for res in resources:
+            res_map[res['resource_type']].append(res['resource_id'])
+
+        resource_types = [constants.RT_PORT_CHAIN,
+                          constants.RT_FLOW_CLASSIFIER,
+                          constants.RT_PORT_PAIR_GROUP,
+                          constants.RT_PORT_PAIR]
+
+        for res_type in resource_types:
+            for res_id in res_map[res_type]:
+                b_resources = db_api.get_bottom_mappings_by_top_id(
+                    ctx, res_id, res_type)
+                for b_pod, b_res_id in b_resources:
+                    b_client = self._get_client(b_pod['region_name'])
+                    self._delete_bottom_resource_by_id(
+                        ctx, res_type, b_res_id, b_client, ctx.project_id)
+                db_api.delete_recycle_resource(ctx, res_id)
+
+    def _prepare_sfc_bottom_element(self, ctx, project_id, b_pod, ele,
+                                    res_type, body, b_client, **kwargs):
+        max_retries = 2
+        for i in range(max_retries):
+            try:
+                _, b_res_id = self.helper.prepare_bottom_element(
+                    ctx, project_id, b_pod, ele, res_type, body)
+                return b_res_id
+            except q_cli_exceptions.BadRequest as e:
+                if i == max_retries - 1:
+                    raise
+                if (constants.STR_USED_BY not in e.message and
+                        constants.STR_CONFLICTS_WITH not in e.message):
+                    raise
+                if res_type == constants.RT_PORT_PAIR:
+                    self._delete_port_pair_by_ingress(
+                        ctx, b_client, kwargs['ingress'], project_id)
+                elif res_type == constants.RT_FLOW_CLASSIFIER:
+                    self._delete_flow_classifier_by_src_port(
+                        ctx, b_client, kwargs['logical_source_port'],
+                        project_id)
+                else:
+                    raise
+            except q_cli_exceptions.Conflict as e:
+                if i == max_retries - 1:
+                    raise
+                if constants.STR_IN_USE not in e.message:
+                    raise
+                if res_type == constants.RT_PORT_PAIR_GROUP:
+                    self._clear_bottom_portpairgroup_portpairs(
+                        ctx, b_client, kwargs['port_pairs'], project_id)
+                elif res_type == constants.RT_PORT_CHAIN:
+                    self._delete_portchain_by_fc_id(
+                        ctx, b_client, kwargs['fc_id'], project_id)
+                else:
+                    raise
+
+    @_job_handle(constants.JT_SFC_SYNC)
+    def sync_service_function_chain(self, ctx, payload):
+        (b_pod_id, t_port_chain_id, net_id) = payload[
+            constants.JT_SFC_SYNC].split('#')
+
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, net_id, constants.RT_NETWORK)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                self.xjob_handler.sync_service_function_chain(
+                    ctx, ctx.project_id, t_port_chain_id,
+                    net_id, b_pod['pod_id'])
+            return
+
+        # abbreviation, pp: port pair, ppg: port pair group,
+        # pc: port chain, fc: flow classifier
+        t_client = self._get_client()
+        t_pc = t_client.get_port_chains(ctx, t_port_chain_id)
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        region_name = b_pod['region_name']
+        b_client = self._get_client(region_name)
+        # delete action
+        if not t_pc:
+            self.xjob_handler.recycle_resources(ctx, ctx.project_id)
+            return
+
+        t_pps = {}
+        t_ppgs = []
+        for ppg_id in t_pc['port_pair_groups']:
+            ppg = t_client.get_port_pair_groups(ctx, ppg_id)
+            if not ppg:
+                LOG.error('port pair group: %(ppg_id)s not found, '
+                          'pod name: %(name)s', {'ppg_id': ppg_id,
+                                                 'name': region_name})
+                raise
+            t_ppgs.append(ppg)
+
+        for ppg in t_ppgs:
+            filters = [{'key': 'portpairgroup_id',
+                        'comparator': 'eq',
+                        'value': ppg['id']}]
+            pp = t_client.list_port_pairs(ctx, filters=filters)
+            if pp:
+                t_pps[ppg['id']] = pp
+        b_pp_ids = {}
+        for key, value in six.iteritems(t_pps):
+            b_pp_ids[key] = []
+            for pp in value:
+                pp_id = pp.pop('id')
+                b_pp_id = self._prepare_sfc_bottom_element(
+                    ctx, pp['project_id'], b_pod, {'id': pp_id},
+                    constants.RT_PORT_PAIR, {'port_pair': pp}, b_client,
+                    ingress=pp['ingress'])
+                b_pp_ids[key].append(b_pp_id)
+
+        b_ppg_ids = []
+        for ppg in t_ppgs:
+            ppg['port_pairs'] = b_pp_ids.get(ppg['id'], [])
+            ppg_id = ppg.pop('id')
+            ppg.pop('group_id')
+            b_ppg_id = self._prepare_sfc_bottom_element(
+                ctx, ppg['project_id'], b_pod, {'id': ppg_id},
+                constants.RT_PORT_PAIR_GROUP, {'port_pair_group': ppg},
+                b_client, port_pairs=ppg['port_pairs'])
+            b_ppg_ids.append(b_ppg_id)
+
+        b_fc_ids = []
+        for fc_id in t_pc['flow_classifiers']:
+            fc = t_client.get_flow_classifiers(ctx, fc_id)
+            if fc:
+                fc_id = fc.pop('id')
+                b_fc_id = self._prepare_sfc_bottom_element(
+                    ctx, ppg['project_id'], b_pod, {'id': fc_id},
+                    constants.RT_FLOW_CLASSIFIER, {'flow_classifier': fc},
+                    b_client, logical_source_port=fc['logical_source_port'])
+                b_fc_ids.append(b_fc_id)
+
+        t_pc.pop('id')
+        t_pc['port_pair_groups'] = b_ppg_ids
+        t_pc['flow_classifiers'] = b_fc_ids
+        self._prepare_sfc_bottom_element(
+            ctx, t_pc['project_id'], b_pod, {'id': t_port_chain_id},
+            constants.RT_PORT_CHAIN, {'port_chain': t_pc}, b_client,
+            fc_id=b_fc_ids[0])
+
+        self.xjob_handler.recycle_resources(ctx, t_pc['project_id'])

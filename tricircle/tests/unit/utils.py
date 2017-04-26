@@ -15,6 +15,7 @@
 
 import copy
 
+from oslo_utils import uuidutils
 import six
 from sqlalchemy.orm import attributes
 from sqlalchemy.orm import exc
@@ -50,7 +51,11 @@ class ResourceStore(object):
                       ('dnsnameservers', None),
                       ('trunks', 'trunk'),
                       ('subports', None),
-                      ('agents', 'agent')]
+                      ('agents', 'agent'),
+                      ('sfc_port_pairs', constants.RT_PORT_PAIR),
+                      ('sfc_port_pair_groups', constants.RT_PORT_PAIR_GROUP),
+                      ('sfc_port_chains', constants.RT_PORT_CHAIN),
+                      ('sfc_flow_classifiers', constants.RT_FLOW_CLASSIFIER)]
 
     def __init__(self):
         self.store_list = []
@@ -549,6 +554,8 @@ class FakeClient(object):
     def create_resources(self, _type, ctx, body):
         res_list = self._res_map[self.region_name][_type]
         res = dict(body[_type])
+        if 'id' not in res:
+            res['id'] = uuidutils.generate_uuid()
         res_list.append(res)
         return res
 
