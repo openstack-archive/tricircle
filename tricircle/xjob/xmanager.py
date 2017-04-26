@@ -305,13 +305,23 @@ class XManager(PeriodicTasks):
         router_body = {'router': {'name': t_router['id'],
                                   'distributed': is_distributed}}
         project_id = t_router['tenant_id']
+        q_ctx = None  # no need to pass neutron context when using client
+        is_local_router = self.helper.is_local_router(ctx, t_router)
+
+        if is_local_router:
+            # for local router, it's safe for us to get the first element as
+            # pod name
+            pod_name = self.helper.get_router_az_hints(t_router)[0]
+            if pod_name != b_pod['region_name']:
+                # now we allow to attach a cross-pod network to a local router,
+                # so if the pod of the local router is different from the pod
+                # of the bottom network, we do nothing.
+                return
 
         # create bottom router in target bottom pod
         _, b_router_id = self.helper.prepare_bottom_element(
             ctx, project_id, b_pod, t_router, constants.RT_ROUTER, router_body)
 
-        q_ctx = None  # no need to pass neutron context when using client
-        is_local_router = self.helper.is_local_router(ctx, t_router)
         if not is_local_router:
             # create top bridge port
             t_bridge_port_id = self.helper.get_bridge_interface(
@@ -360,7 +370,9 @@ class XManager(PeriodicTasks):
 
             # only consider ipv4 address currently
             t_subnet_id = t_port['fixed_ips'][0]['subnet_id']
+            t_port_ip = t_port['fixed_ips'][0]['ip_address']
             t_subnet = t_client.get_subnets(ctx, t_subnet_id)
+            is_default_gw = t_port_ip == t_subnet['gateway_ip']
 
             if CONF.enable_api_gateway:
                 (b_net_id,
@@ -370,12 +382,49 @@ class XManager(PeriodicTasks):
                 (b_net_id,
                  subnet_map) = (t_net['id'], {t_subnet['id']: t_subnet['id']})
 
-            # the gateway ip of bottom subnet is set to the ip of t_port, so
-            # we just attach the bottom subnet to the bottom router and neutron
-            # server in the bottom pod will create the interface for us, using
-            # the gateway ip.
-            b_client.action_routers(ctx, 'add_interface', b_router_id,
-                                    {'subnet_id': subnet_map[t_subnet_id]})
+            if is_local_router:
+                # if the attaching router is local router, we update the bottom
+                # subnet gateway ip to the interface ip
+                new_pools = self.helper.get_bottom_subnet_pools(t_subnet,
+                                                                t_port_ip)
+                b_client.update_subnets(ctx, t_subnet_id,
+                                        {'subnet': {
+                                            'gateway_ip': t_port_ip,
+                                            'allocation_pools': new_pools}})
+                b_client.action_routers(
+                    ctx, 'add_interface', b_router_id,
+                    {'subnet_id': subnet_map[t_subnet_id]})
+            else:
+                # the attaching router is not local router
+                if is_default_gw:
+                    # if top interface ip is equal to gateway ip of top subnet,
+                    # bottom subnet gateway is set to the ip of the reservered
+                    # gateway port, so we just attach the bottom subnet to the
+                    # bottom router and local neutron server will create the
+                    # interface for us, using the gateway ip.
+                    b_client.action_routers(
+                        ctx, 'add_interface', b_router_id,
+                        {'subnet_id': subnet_map[t_subnet_id]})
+                else:
+                    # if top interface ip is different from gateway ip of top
+                    # subnet, meaning that this interface is explicitly created
+                    # by users, then the subnet may be already attached to a
+                    # local router and its gateway ip is changed, so we need to
+                    # query the reservered gateway port to get its ip.
+                    gateway_port_name = constants.interface_port_name % (
+                        b_pod['region_name'], t_subnet['id'])
+                    gateway_port = t_client.list_ports(
+                        ctx, filters=[{'key': 'name',
+                                       'comparator': 'eq',
+                                       'value': gateway_port_name}])[0]
+                    b_port_body = self.helper.get_create_port_body(
+                        gateway_port['project_id'], gateway_port,
+                        {t_subnet_id: t_subnet_id}, b_net_id)
+                    b_port_body['port'][
+                        'device_owner'] = q_constants.DEVICE_OWNER_ROUTER_INTF
+                    b_port = b_client.create_ports(ctx, b_port_body)
+                    b_client.action_routers(ctx, 'add_interface', b_router_id,
+                                            {'port_id': b_port['id']})
 
         if not t_router['external_gateway_info']:
             return
@@ -560,6 +609,10 @@ class XManager(PeriodicTasks):
         router_ew_bridge_ip_map = {}
         router_ns_bridge_ip_map = {}
         router_ips_map = {}
+
+        pod_subnet_nexthop_map = {}  # {pod_name: {subnet_id: nexthop}
+        subnet_cidr_map = {}  # {subnet_id: cidr}
+
         for i, b_pod in enumerate(b_pods):
             is_ns_router = b_router_ids[i] == b_ns_router_id
             bottom_client = self._get_client(b_pod['region_name'])
@@ -575,6 +628,8 @@ class XManager(PeriodicTasks):
                                'comparator': 'eq',
                                'value': device_owner_filter}])
             router_ips_map[b_router_ids[i]] = {}
+            pod_subnet_nexthop_map[b_pod['region_name']] = {}
+
             for b_interface in b_interfaces:
                 ip = b_interface['fixed_ips'][0]['ip_address']
                 bridge_cidr = CONF.client.bridge_cidr
@@ -588,8 +643,18 @@ class XManager(PeriodicTasks):
                         router_ew_bridge_ip_map[b_router_ids[i]] = ip
                     continue
                 b_net_id = b_interface['network_id']
-                b_subnet = bottom_client.get_subnets(
-                    ctx, b_interface['fixed_ips'][0]['subnet_id'])
+                b_subnet_id = b_interface['fixed_ips'][0]['subnet_id']
+
+                b_subnet = bottom_client.get_subnets(ctx, b_subnet_id)
+                if b_subnet['gateway_ip'] != ip:
+                    # ip of the interface attached to the non local router is
+                    # different from the gateway ip, meaning that the interface
+                    # is for east-west traffic purpose, so we save necessary
+                    # information for next process
+                    pod_subnet_nexthop_map[
+                        b_pod['region_name']][b_subnet_id] = ip
+                    subnet_cidr_map[b_subnet_id] = b_subnet['cidr']
+
                 b_ports = bottom_client.list_ports(
                     ctx, filters=[{'key': 'network_id',
                                    'comparator': 'eq',
@@ -630,6 +695,20 @@ class XManager(PeriodicTasks):
                      'destination': constants.DEFAULT_DESTINATION})
             bottom_client.update_routers(
                 ctx, b_router_id, {'router': {'routes': extra_routes}})
+
+        # configure host routes for local network attached to local router
+        for (pod_name,
+             subnet_nexthop_map) in pod_subnet_nexthop_map.items():
+            for subnet_id, nexthop in subnet_nexthop_map.items():
+                host_routes = []
+                for _subnet_id, cidr in subnet_cidr_map.items():
+                    if _subnet_id in subnet_nexthop_map:
+                        continue
+                    host_routes.append({'destination': cidr,
+                                        'nexthop': nexthop})
+                bottom_client = self._get_client(pod_name)
+                bottom_client.update_subnets(
+                    ctx, subnet_id, {'subnet': {'host_routes': host_routes}})
 
         if not b_ns_router_id:
             # router for north-south networking not exist, skip extra routes

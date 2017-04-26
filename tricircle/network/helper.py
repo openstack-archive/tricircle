@@ -366,6 +366,8 @@ class NetworkHelper(object):
         t_gateway_ip = t_subnet['gateway_ip']
         new_pools = NetworkHelper._split_pools_by_bottom_gateway_ip(
             pools, b_gateway_ip)
+        if t_gateway_ip == b_gateway_ip:
+            return new_pools
         return NetworkHelper._merge_pools_by_top_gateway_ip(new_pools,
                                                             t_gateway_ip)
 
@@ -595,6 +597,42 @@ class NetworkHelper(object):
         }
         return body
 
+    def prepare_top_snat_port(self, t_ctx, q_ctx, project_id, t_net_id,
+                              t_subnet_id):
+        """Create top centralized snat port
+
+        :param t_ctx: tricircle context
+        :param q_ctx: neutron context
+        :param project_id: project id
+        :param t_net_id: top network id
+        :param t_subnet_id: top subnet id
+        :return: top centralized snat port
+        """
+        t_snat_name = t_constants.snat_port_name % t_subnet_id
+        t_snat_port_body = {
+            'port': {
+                'tenant_id': project_id,
+                'admin_state_up': True,
+                'network_id': t_net_id,
+                'name': t_snat_name,
+                'binding:profile': {},
+                'device_id': '',
+                'device_owner': constants.DEVICE_OWNER_ROUTER_SNAT,
+            }
+        }
+        if self.call_obj:
+            t_snat_port_body['port'].update(
+                {'mac_address': constants.ATTR_NOT_SPECIFIED,
+                 'fixed_ips': constants.ATTR_NOT_SPECIFIED})
+
+        # NOTE(zhiyuan) for one subnet in different pods, we just create one
+        # centralized snat port. though snat port in different pods will have
+        # the same IP, VM packets will only got to the local router namespace
+        _, t_snat_port_id = self.prepare_top_element(
+            t_ctx, q_ctx, project_id, db_api.get_top_pod(t_ctx),
+            {'id': t_snat_name}, t_constants.RT_PORT, t_snat_port_body)
+        return t_snat_port_id
+
     def prepare_top_dhcp_port(self, t_ctx, q_ctx, project_id, t_net_id,
                               t_subnet_id):
         """Create top dhcp port
@@ -707,6 +745,17 @@ class NetworkHelper(object):
             'security_group_id': sg_id}}
 
     @staticmethod
+    def convert_az2region(t_ctx, az_hints):
+        region_names = set()
+        for az_hint in az_hints:
+            pods = db_api.find_pods_by_az_or_region(t_ctx, az_hint)
+            if not pods:
+                continue
+            for pod in pods:
+                region_names.add(pod['region_name'])
+        return list(region_names)
+
+    @staticmethod
     def get_router_az_hints(router):
         # when called by api, availability_zone_hints included in
         # extra_attributes, but when called by xjob, it included in router
@@ -730,6 +779,18 @@ class NetworkHelper(object):
             return False
         router_az_hint = router_az_hints[0]
         return bool(db_api.get_pod_by_name(t_ctx, router_az_hint))
+
+    @staticmethod
+    def is_local_network(t_ctx, net):
+        if net[provider_net.NETWORK_TYPE] == t_constants.NT_LOCAL:
+            return True
+        net_az_hints = net.get(AZ_HINTS)
+        if not net_az_hints:
+            return False
+        if len(net_az_hints) > 1:
+            return False
+        net_az_hint = net_az_hints[0]
+        return bool(db_api.get_pod_by_name(t_ctx, net_az_hint))
 
     @staticmethod
     def get_agent_type_by_vif(vif_type):

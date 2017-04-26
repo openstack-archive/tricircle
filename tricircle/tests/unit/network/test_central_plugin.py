@@ -1042,6 +1042,23 @@ class FakeBaseXManager(xmanager.XManager):
     def _get_client(self, region_name=None):
         return FakeClient(region_name)
 
+    def setup_bottom_router(self, ctx, payload):
+        (b_pod_id,
+         t_router_id, t_net_id) = payload[constants.JT_ROUTER_SETUP].split('#')
+
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_net_id, constants.RT_NETWORK)
+            b_pods = [mapping[0] for mapping in mappings]
+            for b_pod in b_pods:
+                resource_id = '%s#%s#%s' % (b_pod['pod_id'],
+                                            t_router_id, t_net_id)
+                _payload = {constants.JT_ROUTER_SETUP: resource_id}
+                super(FakeBaseXManager,
+                      self).setup_bottom_router(ctx, _payload)
+        else:
+            super(FakeBaseXManager, self).setup_bottom_router(ctx, payload)
+
 
 class FakeXManager(FakeBaseXManager):
     def __init__(self, fake_plugin):
@@ -1919,6 +1936,7 @@ class PluginTest(unittest.TestCase,
                 'id': t_net_id,
                 'name': 'top_net_%d' % index,
                 'tenant_id': project_id,
+                'project_id': project_id,
                 'description': 'description',
                 'admin_state_up': False,
                 'shared': False,
@@ -1937,6 +1955,7 @@ class PluginTest(unittest.TestCase,
                 'ipv6_address_mode': '',
                 'ipv6_ra_mode': '',
                 'tenant_id': project_id,
+                'project_id': project_id,
                 'description': 'description',
                 'host_routes': [],
                 'dns_nameservers': []
@@ -1950,8 +1969,6 @@ class PluginTest(unittest.TestCase,
                                                      'comparator': 'eq',
                                                      'value': t_subnet_name}])
             t_subnet_id = t_subnets[0]['id']
-            # top and bottom ids are the same
-            return t_net_id, t_subnet_id, t_net_id, t_subnet_id
 
         b_net_id = t_net_id
         b_subnet_id = t_subnet_id
@@ -1959,6 +1976,7 @@ class PluginTest(unittest.TestCase,
             'id': b_net_id,
             'name': t_net_id,
             'tenant_id': project_id,
+            'project_id': project_id,
             'description': 'description',
             'admin_state_up': False,
             'shared': False,
@@ -1976,6 +1994,7 @@ class PluginTest(unittest.TestCase,
             'ipv6_address_mode': '',
             'ipv6_ra_mode': '',
             'tenant_id': project_id,
+            'project_id': project_id,
             'description': 'description',
             'host_routes': [],
             'dns_nameservers': []
@@ -2057,6 +2076,21 @@ class PluginTest(unittest.TestCase,
                               'resource_type': constants.RT_PORT})
         return t_port_id, b_port_id
 
+    def _prepare_router(self, project_id, router_az_hints=None):
+        t_router_id = uuidutils.generate_uuid()
+        t_router = {
+            'id': t_router_id,
+            'name': 'top_router',
+            'distributed': False,
+            'tenant_id': project_id,
+            'attached_ports': DotList(),
+            'extra_attributes': {
+                'availability_zone_hints': router_az_hints
+            }
+        }
+        TOP_ROUTERS.append(DotDict(t_router))
+        return t_router_id
+
     def _prepare_router_test(self, tenant_id, ctx, region_name, index,
                              router_az_hints=None, net_az_hints=None,
                              create_new_router=False,
@@ -2065,19 +2099,8 @@ class PluginTest(unittest.TestCase,
          b_subnet_id) = self._prepare_network_subnet(
             tenant_id, ctx, region_name, index, az_hints=net_az_hints,
             network_type=network_type)
-        t_router_id = uuidutils.generate_uuid()
-        t_router = {
-            'id': t_router_id,
-            'name': 'top_router',
-            'distributed': False,
-            'tenant_id': tenant_id,
-            'attached_ports': DotList(),
-            'extra_attributes': {
-                'availability_zone_hints': router_az_hints
-            }
-        }
         if create_new_router or len(TOP_ROUTERS) == 0:
-            TOP_ROUTERS.append(DotDict(t_router))
+            t_router_id = self._prepare_router(tenant_id, router_az_hints)
         else:
             t_router_id = TOP_ROUTERS[0]['id']
 
@@ -2565,9 +2588,12 @@ class PluginTest(unittest.TestCase,
             tenant_id, t_ctx, 'pod_1', 2, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
-        self.assertRaises(t_exceptions.RouterNetworkLocationMismatch,
-                          fake_plugin.validate_router_net_location_match,
-                          t_ctx, router, net)
+        is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
+        fake_plugin.validate_router_net_location_match(t_ctx, router, net)
+        # for supporting multi-gateway l3 mode, we allow attaching a network
+        # to a local router if the regions of the network include the region
+        # of the router
+        self.assertEqual(True, is_local_router)
 
         router_az_hints = '["az_name_1"]'
         net_az_hints = '["az_name_1", "pod_2"]'
@@ -2587,9 +2613,12 @@ class PluginTest(unittest.TestCase,
             tenant_id, t_ctx, 'pod_1', 4, router_az_hints, net_az_hints, True)
         router = fake_plugin._get_router(q_ctx, t_router_id)
         net = fake_plugin.get_network(q_ctx, t_net_id)
-        self.assertRaises(t_exceptions.RouterNetworkLocationMismatch,
-                          fake_plugin.validate_router_net_location_match,
-                          t_ctx, router, net)
+        is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
+        fake_plugin.validate_router_net_location_match(t_ctx, router, net)
+        # for supporting multi-gateway l3 mode, we allow attaching a network
+        # to a local router if the regions of the network include the region
+        # of the router
+        self.assertEqual(True, is_local_router)
 
         router_az_hints = None
         net_az_hints = '["pod_1", "az_name_2"]'
@@ -2854,6 +2883,156 @@ class PluginTest(unittest.TestCase,
         mock_remove.assert_called_with(
             t_ctx, b_router_id, {'port_id': b_interface_id})
         mock_rpc.assert_called_with(t_ctx, t_router_id)
+
+    def _prepare_interface_port(self, t_ctx, t_subnet_id, ip_suffix):
+        t_client = FakeClient()
+        t_subnet = t_client.get_subnets(t_ctx, t_subnet_id)
+        t_net = t_client.get_networks(t_ctx, t_subnet['network_id'])
+        t_port_id = uuidutils.generate_uuid()
+        t_port = {
+            'id': t_port_id,
+            'network_id': t_net['id'],
+            'device_id': '',
+            'device_owner': '',
+            'fixed_ips': [{'subnet_id': t_subnet['id'],
+                           'ip_address': '%s%d' % (
+                               t_subnet['cidr'][:-4], ip_suffix)}],
+            'mac_address': 'fa:16:3e:d4:%02x:%02x' % (
+                int(t_subnet['cidr'].split('.')[2]), ip_suffix),
+            'security_groups': [],
+            'tenant_id': t_subnet['tenant_id']
+        }
+        TOP_PORTS.append(DotDict(t_port))
+        return t_port_id
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(FakeClient, 'add_gateway_routers')
+    @patch.object(FakeBaseRPCAPI, 'configure_extra_routes')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_east_west_gw_router(self, mock_context, mock_rpc, mock_action):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        tenant_id = TEST_TENANT_ID
+
+        # prepare three networks, net1 in pod1, net2 in pod2, net3 is in both
+        # pod1 and pod2
+        (t_net1_id, t_subnet1_id, b_net1_id,
+         b_subnet1_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 1)
+        (t_net2_id, t_subnet2_id, b_net2_id,
+         b_subnet2_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_2', 2)
+        (t_net3_id, t_subnet3_id, b_net3_id,
+         b_subnet3_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 3)
+        self._prepare_network_subnet(tenant_id, t_ctx, 'pod_2', 3)
+        t_subnet_ids = [t_subnet1_id, t_subnet2_id, t_subnet3_id]
+        b_net_ids = [b_net1_id, b_net2_id, b_net3_id]
+
+        # prepare three routers, router1 and router2 are local routers
+        t_router1_id = self._prepare_router(tenant_id, ['pod_1'])
+        t_router2_id = self._prepare_router(tenant_id, ['pod_2'])
+        t_router3_id = self._prepare_router(tenant_id)
+        t_router_ids = [t_router1_id, t_router2_id, t_router3_id]
+
+        inf1_id = self._prepare_interface_port(t_ctx, t_subnet1_id, 5)
+        inf2_id = self._prepare_interface_port(t_ctx, t_subnet2_id, 5)
+        inf3_1_id = self._prepare_interface_port(t_ctx, t_subnet3_id, 5)
+        inf3_2_id = self._prepare_interface_port(t_ctx, t_subnet3_id, 6)
+
+        # attach router interface, net1 is attached to router1 and router3,
+        # default gateway is on router1; net2 is attached to router2 and
+        # router3, default gateway is on router2; net3 is attached to router1,
+        # router2 and router3
+        fake_plugin.add_router_interface(
+            q_ctx, t_router1_id, {'subnet_id': t_subnet1_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf1_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router2_id, {'subnet_id': t_subnet2_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf2_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router1_id, {'subnet_id': t_subnet3_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router2_id, {'port_id': inf3_1_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf3_2_id})
+
+        b_router_id_map = {}
+        for pod_idx, router_idx in [(1, 1), (2, 2), (1, 3), (2, 3)]:
+            b_router_id = db_api.get_bottom_id_by_top_id_region_name(
+                t_ctx, t_router_ids[router_idx - 1], 'pod_%d' % pod_idx,
+                constants.RT_ROUTER)
+            b_router_id_map[(pod_idx, router_idx)] = b_router_id
+
+        actual_ips_map = {}
+        for pod_idx, net_idx, router_idx in [
+                (1, 1, 1), (1, 1, 3), (1, 3, 1), (1, 3, 3),
+                (2, 2, 2), (2, 2, 3), (2, 3, 2), (2, 3, 3)]:
+            b_router_id = b_router_id_map[(pod_idx, router_idx)]
+            b_ports = BOTTOM1_PORTS if pod_idx == 1 else BOTTOM2_PORTS
+            b_infs = [
+                e for e in b_ports if e['device_id'] == b_router_id and (
+                    e['network_id'] == b_net_ids[net_idx - 1])]
+            inf_ip = b_infs[0]['fixed_ips'][0]['ip_address']
+            actual_ips_map[(pod_idx, net_idx, router_idx)] = inf_ip
+
+        t_infs_ip_map = {}
+        for pod_idx, subnet_idx in [(1, 1), (1, 3), (2, 2), (2, 3)]:
+            inf_name = 'interface_pod_%d_%s' % (pod_idx,
+                                                t_subnet_ids[subnet_idx - 1])
+            infs = [e for e in TOP_PORTS if e.get('name') == inf_name]
+            t_infs_ip_map[(pod_idx, subnet_idx)] = infs[0][
+                'fixed_ips'][0]['ip_address']
+
+        t_client = FakeClient()
+        t_subnet1 = t_client.get_subnets(t_ctx, t_subnet1_id)
+        t_subnet2 = t_client.get_subnets(t_ctx, t_subnet2_id)
+        t_subnet3 = t_client.get_subnets(t_ctx, t_subnet3_id)
+        inf3_1 = t_client.get_ports(t_ctx, inf3_1_id)
+
+        # tuple means (pod_idx, net_idx, router_idx)
+        # (1, 1, 1) net1 attached to router1, subnet gateway is used as the
+        #           interface ip
+        # (1, 1, 3) net1 attached to router3, reserved gateway for non-local
+        #           router is used as the interface ip
+        # (1, 3, 1) net3 attached to router1, top and bottom interface ips
+        #           are the same
+        # (1, 3, 3) net3 attached to router3 in pod1, reserved gateway for
+        #           non-local router is used as the interface ip
+        # (2, 2, 2) net2 attached to router2, subnet gateway is used as the
+        #           interface ip
+        # (2, 2, 3) net2 attached to router3, reserved gateway for non-local
+        #           router is used as the interface ip
+        # (2, 3, 2) net3 attached to router2, top and bottom interface ips
+        #           are the same
+        # (2, 3, 3) net3 attached to router3 in pod2, reserved gateway for
+        #           non-local router is used as the interface ip
+        expect_ips_map = {
+            (1, 1, 1): t_subnet1['gateway_ip'],
+            (1, 1, 3): t_infs_ip_map[(1, 1)],
+            (1, 3, 1): t_subnet3['gateway_ip'],
+            (1, 3, 3): t_infs_ip_map[(1, 3)],
+            (2, 2, 2): t_subnet2['gateway_ip'],
+            (2, 2, 3): t_infs_ip_map[(2, 2)],
+            (2, 3, 2): inf3_1['fixed_ips'][0]['ip_address'],
+            (2, 3, 3): t_infs_ip_map[(2, 3)]
+        }
+
+        for key in actual_ips_map:
+            self.assertEqual(expect_ips_map[key], actual_ips_map[key])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
