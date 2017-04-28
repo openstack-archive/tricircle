@@ -264,13 +264,17 @@ In pod2 in node2 for OpenStack RegionTwo,
 
    After update, restart Apache service first, and then placement API.
 
+   **This problem no longer exists after this patch:**
+
+   https://github.com/openstack-dev/devstack/commit/6ed53156b6198e69d59d1cf3a3497e96f5b7a870
+
 How to play
 ^^^^^^^^^^^
 
 - 1 After DevStack successfully starts, we need to create environment variables
   for the user (admin user as example in this guide). In DevStack folder ::
 
-    source openrc admin admin
+    source openrc admin demo
 
 - 2 Unset the region name environment variable, so that the command can be
   issued to specified region in following commands as needed ::

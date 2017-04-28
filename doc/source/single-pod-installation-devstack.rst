@@ -24,7 +24,7 @@ installing DevStack in virtual machine.
 - 4 After DevStack successfully starts, we need to create environment variables for
   the user (admin user as example in this document). In DevStack folder::
 
-      source openrc admin admin
+      source openrc admin demo
 
 - 5 Unset the region name environment variable, so that the command can be issued to
   specified region in following commands as needed::
