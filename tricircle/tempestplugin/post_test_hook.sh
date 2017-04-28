@@ -94,11 +94,7 @@ iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
 
 iniset $TEMPEST_CONF validation connect_method fixed
 
-
-# Run the Network Tempest tests
-cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
-sudo BASE=$BASE ./tempest_network.sh
-
-# Run the Scenario Tempest tests
-# cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
-# sudo BASE=$BASE ./tempest_scenario.sh
+if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then
+    cd $TRICIRCLE_TEMPEST_PLUGIN_DIR
+    sudo BASE=$BASE bash smoke_test.sh
+fi

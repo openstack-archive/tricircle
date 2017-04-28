@@ -64,10 +64,9 @@ function init_common_tricircle_conf {
 function init_local_neutron_conf {
 
     iniset $NEUTRON_CONF DEFAULT core_plugin tricircle.network.local_plugin.TricirclePlugin
-    iniset $NEUTRON_CONF DEFAULT service_plugins tricircle.network.local_l3_plugin.TricircleL3Plugin
 
-    iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST:5000/v3
-    iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST:35357/v3
+    iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST/identity/v3
+    iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST/identity_admin/v3
     iniset $NEUTRON_CONF client admin_username admin
     iniset $NEUTRON_CONF client admin_password $ADMIN_PASSWORD
     iniset $NEUTRON_CONF client admin_tenant demo
@@ -162,6 +161,7 @@ function configure_tricircle_api_wsgi {
 
     sudo cp $TRICIRCLE_API_APACHE_TEMPLATE $tricircle_api_apache_conf
     sudo sed -e "
+        s|%TRICIRCLE_BIN%|$tricircle_bin_dir|g;
         s|%PUBLICPORT%|$TRICIRCLE_API_PORT|g;
         s|%APACHE_NAME%|$APACHE_NAME|g;
         s|%PUBLICWSGI%|$tricircle_bin_dir/tricircle-api-wsgi|g;
