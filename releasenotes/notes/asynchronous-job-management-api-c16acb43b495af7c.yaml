@@ -1,0 +1,12 @@
+---
+features:
+  - |
+    Asynchronous job management API allows administrator
+    to perform CRUD operations on a job. For jobs in job
+    log, only list and show operations are allowed.
+
+    * Create a job
+    * List jobs
+    * Show job details
+    * Delete a job
+    * Redo a job
