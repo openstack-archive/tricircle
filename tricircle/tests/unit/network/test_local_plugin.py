@@ -159,6 +159,7 @@ class FakeContext(object):
     def __init__(self):
         self.session = FakeSession()
         self.auth_token = 'token'
+        self.project_id = ''
 
 
 class FakeClient(object):

@@ -2,7 +2,7 @@
 
 DEST=$BASE/new
 DEVSTACK_DIR=$DEST/devstack
-source $DEVSTACK_DIR/openrc admin demo
+source $DEVSTACK_DIR/openrc admin admin
 unset OS_REGION_NAME
 
 openstacktop="openstack --os-region-name CentralRegion"
@@ -92,7 +92,7 @@ if [ "$DATABASE_TYPE" == "mysql" ]; then
         full_count=$(echo $full_result | grep -o "[0-9]\{1,\}")
         if [ $full_count -ne 0 ]; then
             echo "Wait for job to finish"
-            sleep 5
+            sleep 10
         else
             break
         fi
@@ -114,7 +114,7 @@ else
         full_count=$(echo $full_result | grep -o "[0-9]\{1,\}")
         if [ $full_count -ne 0 ]; then
             echo "Wait for job to finish"
-            sleep 5
+            sleep 10
         else
             break
         fi

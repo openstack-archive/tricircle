@@ -259,6 +259,8 @@ class XManager(PeriodicTasks):
                   '%(job_type)s',
                   {'status': 'new' if is_new_job else 'failed',
                    'resource_id': resource_id, 'job_type': job_type})
+        # this is an admin context, we set the correct project id
+        ctx.tenant = project_id
         if not is_new_job:
             db_api.new_job(ctx, project_id, job_type, resource_id)
         self.job_handles[job_type](ctx, payload=payload)

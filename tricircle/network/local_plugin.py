@@ -269,7 +269,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         t_ctx = t_context.get_context_from_neutron_context(context)
         if self._skip_non_api_query(t_ctx):
             return b_networks
-        t_ctx.auth_token = client.Client.get_admin_token()
+        t_ctx.auth_token = client.Client.get_admin_token(context.project_id)
         raw_client = self.neutron_handle._get_client(t_ctx)
         params = self._construct_params(filters, sorts, limit, marker,
                                         page_reverse)

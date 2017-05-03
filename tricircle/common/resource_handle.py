@@ -13,8 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from keystoneclient.auth.identity import v3 as auth_identity
-from keystoneclient import session
+import keystoneauth1.identity.generic as auth_identity
+from keystoneauth1 import session
 
 from neutronclient.common import exceptions as q_exceptions
 from neutronclient.neutron import client as q_client
@@ -62,19 +62,23 @@ class ResourceHandle(object):
         self.endpoint_url = url
 
     @staticmethod
-    def get_keystone_session():
-        auth = auth_identity.Password(
-            auth_url=cfg.CONF.client.identity_url,
-            username=cfg.CONF.client.admin_username,
-            password=cfg.CONF.client.admin_password,
-            project_name=cfg.CONF.client.admin_tenant,
-            user_domain_name=cfg.CONF.client.admin_user_domain_name,
-            project_domain_name=cfg.CONF.client.admin_tenant_domain_name)
+    def get_keystone_session(project_id=None):
+        kwargs = {
+            'auth_url': cfg.CONF.client.auth_url,
+            'username': cfg.CONF.client.admin_username,
+            'password': cfg.CONF.client.admin_password,
+            'user_domain_name': cfg.CONF.client.admin_user_domain_name,
+            'project_domain_name': cfg.CONF.client.admin_tenant_domain_name}
+        if not project_id:
+            kwargs['project_name'] = cfg.CONF.client.admin_tenant
+        else:
+            kwargs['project_id'] = project_id
+        auth = auth_identity.Password(**kwargs)
         return session.Session(auth=auth)
 
     @staticmethod
-    def get_admin_token():
-        return ResourceHandle.get_keystone_session().get_token()
+    def get_admin_token(project_id=None):
+        return ResourceHandle.get_keystone_session(project_id).get_token()
 
 
 class NeutronResourceHandle(ResourceHandle):
@@ -91,7 +95,7 @@ class NeutronResourceHandle(ResourceHandle):
     def _get_client(self, cxt):
         token = cxt.auth_token
         if not token and cxt.is_admin:
-            token = self.get_admin_token()
+            token = self.get_admin_token(cxt.tenant)
         return q_client.Client('2.0',
                                token=token,
                                auth_url=self.auth_url,

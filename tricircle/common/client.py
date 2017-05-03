@@ -20,8 +20,8 @@ import six
 from six.moves import xrange
 import uuid
 
-from keystoneclient.auth import token_endpoint
-from keystoneclient import session
+import keystoneauth1.identity.generic as auth_identity
+from keystoneauth1 import session
 from keystoneclient.v3 import client as keystone_client
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -92,6 +92,7 @@ def _safe_operation(operation_name):
                 try:
                     service = instance.resource_service_map[resource]
                     instance._ensure_endpoint_set(context, service)
+                    instance._ensure_token_for_admin(context)
                     return func(*args, **kwargs)
                 except exceptions.EndpointNotAvailable as e:
                     if i == retries:
@@ -211,23 +212,23 @@ class Client(object):
                                 resource))
 
     @staticmethod
-    def _get_keystone_session():
-        return resource_handle.ResourceHandle.get_keystone_session()
+    def _get_keystone_session(project_id=None):
+        return resource_handle.ResourceHandle.get_keystone_session(project_id)
 
     @staticmethod
-    def get_admin_token():
-        return Client._get_admin_token()
+    def get_admin_token(project_id=None):
+        return Client._get_admin_token(project_id)
 
     @staticmethod
-    def _get_admin_token():
-        return Client._get_keystone_session().get_token()
+    def _get_admin_token(project_id=None):
+        return Client._get_keystone_session(project_id).get_token()
 
     def _get_admin_project_id(self):
         return self._get_keystone_session().get_project_id()
 
     def _get_endpoint_from_keystone(self, cxt):
-        auth = token_endpoint.Token(cfg.CONF.client.identity_url,
-                                    cxt.auth_token)
+        auth = auth_identity.Token(cfg.CONF.client.auth_url,
+                                   cxt.auth_token, tenant_id=cxt.tenant)
         sess = session.Session(auth=auth)
         cli = keystone_client.Client(session=sess)
 
@@ -292,8 +293,8 @@ class Client(object):
         :return: None
         """
         if is_internal:
-            admin_context = tricircle_context.Context()
-            admin_context.auth_token = self._get_admin_token()
+            admin_context = tricircle_context.get_admin_context()
+            self._ensure_token_for_admin(admin_context)
             endpoint_map = self._get_endpoint_from_keystone(admin_context)
         else:
             endpoint_map = self._get_endpoint_from_keystone(cxt)
@@ -362,8 +363,16 @@ class Client(object):
 
     def get_keystone_client_by_context(self, ctx):
         client_session = self._get_keystone_session()
-        return keystone_client.Client(auth_url=cfg.CONF.client.identity_url,
+        return keystone_client.Client(auth_url=cfg.CONF.client.auth_url,
                                       session=client_session)
+
+    def _ensure_token_for_admin(self, cxt):
+        if cxt.is_admin and not cxt.auth_token:
+            if cxt.tenant:
+                cxt.auth_token = self._get_admin_token(cxt.tenant)
+            else:
+                cxt.auth_token = self._get_admin_token()
+                cxt.tenant = self._get_admin_project_id()
 
     @_safe_operation('client')
     def get_native_client(self, resource, cxt):
@@ -375,10 +384,6 @@ class Client(object):
         :param cxt: resource type
         :return: client instance
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle._get_client(cxt)
@@ -401,10 +406,6 @@ class Client(object):
         :return: list of dict containing resources information
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         filters = filters or []
@@ -435,10 +436,6 @@ class Client(object):
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_create(cxt, resource, *args, **kwargs)
@@ -464,10 +461,6 @@ class Client(object):
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_update(cxt, resource, *args, **kwargs)
@@ -486,10 +479,6 @@ class Client(object):
         :return: None
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_delete(cxt, resource, resource_id)
@@ -508,10 +497,6 @@ class Client(object):
         :return: a dict containing resource information
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_get(cxt, resource, resource_id)
@@ -546,10 +531,6 @@ class Client(object):
         :return: None
         :raises: EndpointNotAvailable
         """
-        if cxt.is_admin and not cxt.auth_token:
-            cxt.auth_token = self._get_admin_token()
-            cxt.tenant = self._get_admin_project_id()
-
         service = self.resource_service_map[resource]
         handle = self.service_handle_map[service]
         return handle.handle_action(cxt, resource, action, *args, **kwargs)

@@ -255,6 +255,7 @@ class ClientTest(unittest.TestCase):
         api.delete_cached_endpoints(self.context, FAKE_SERVICE_ID)
 
         self.client._get_admin_token = mock.Mock()
+        self.client._get_admin_project_id = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
 
         self.client._get_endpoint_from_keystone.return_value = {}
@@ -294,6 +295,7 @@ class ClientTest(unittest.TestCase):
                                     update_dict)
 
         self.client._get_admin_token = mock.Mock()
+        self.client._get_admin_project_id = mock.Mock()
         self.client._get_endpoint_from_keystone = mock.Mock()
         self.client._get_endpoint_from_keystone.return_value = {}
         # retry but still endpoint not updated
