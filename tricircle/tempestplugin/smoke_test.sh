@@ -93,51 +93,22 @@ source $DEVSTACK_DIR/functions-common
 source $DEVSTACK_DIR/lib/database
 initialize_database_backends
 
-if [ "$DATABASE_TYPE" == "mysql" ]; then
-    for i in $(seq 1 11); do
-        if [ $i == 11 ]; then
-            # we check fail job at the end to give fail job a chance to redo
-            fail_result=$(mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$DATABASE_HOST -Dtricircle -e 'SELECT COUNT(*) FROM async_jobs WHERE status = "0_Fail"')
-            fail_count=$(echo $fail_result | grep -o "[0-9]\{1,\}")
-            if [ $fail_count -ne 0 ]; then
-                echo "Listing fail job"
-                mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$DATABASE_HOST -Dtricircle -e 'SELECT * FROM async_jobs WHERE status = "0_Fail";'
-                die $LINENO "Smoke test fails, $fail_count job fail"
-            fi
-            die $LINENO "Smoke test fails, exceed max wait time for job"
-        fi
-        full_result=$(mysql -u$DATABASE_USER -p$DATABASE_PASSWORD -h$DATABASE_HOST -Dtricircle -e 'SELECT COUNT(*) FROM async_jobs;')
-        full_count=$(echo $full_result | grep -o "[0-9]\{1,\}")
-        if [ $full_count -ne 0 ]; then
-            echo "Wait for job to finish"
-            sleep 10
-        else
-            break
-        fi
-    done
-else
-    for i in $(seq 1 11); do
-        if [ $i == 11 ]; then
-            # we check fail job at the end to give fail job a chance to redo
-            fail_result=$(psql -h$DATABASE_HOST -U$DATABASE_USER -dtricircle -c 'SELECT COUNT(*) FROM async_jobs WHERE status = "0_Fail"')
-            fail_count=$(echo $fail_result | grep -o "[0-9]\{1,\}")
-            if [ $fail_count -ne 0 ]; then
-                echo "Listing fail job"
-                psql -h$DATABASE_HOST -U$DATABASE_USER -dtricircle -c 'SELECT * FROM async_jobs WHERE status = "0_Fail";'
-                die $LINENO "Smoke test fails, $fail_count job fail"
-            fi
-            die $LINENO "Smoke test fails, exceed max wait time for job"
-        fi
-        full_result=$(psql -h$DATABASE_HOST -U$DATABASE_USER -dtricircle -c 'SELECT COUNT(*) FROM async_jobs;')
-        full_count=$(echo $full_result | grep -o "[0-9]\{1,\}")
-        if [ $full_count -ne 0 ]; then
-            echo "Wait for job to finish"
-            sleep 10
-        else
-            break
-        fi
-    done
-fi
+token=$(openstack token issue -c id -f value)
+for i in $(seq 1 11); do
+    if [ $i == 11 ]; then
+        echo "List fail jobs"
+        curl -X GET http://127.0.0.1:19999/v1.0/jobs?status=fail -H "Content-Type: application/json" -H "X-Auth-Token: $token"
+        die $LINENO "Smoke test fails, exceed max wait time for job"
+    fi
+    full_result=$(curl -X GET http://127.0.0.1:19999/v1.0/jobs -H "Content-Type: application/json" -H "X-Auth-Token: $token")
+    echo $full_result | python smoke_test_validation.py job 0
+    if [ $? != 0 ]; then
+        echo "Wait for job to finish"
+        sleep 10
+    else
+        break
+    fi
+done
 
 $openstackpod1 server list -f json | python smoke_test_validation.py server 1
 if [ $? != 0 ]; then
