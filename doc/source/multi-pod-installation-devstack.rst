@@ -83,6 +83,10 @@ for installing DevStack in bare metal server and
 `All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_
 for installing DevStack in virtual machine.
 
+If you want to experience cross OpenStack VxLAN network, please make sure
+compute nodes are routable to each other on data plane, and enable L2
+population mechanism driver in OpenStack RegionOne and OpenStack RegionTwo.
+
 
 Setup
 ^^^^^
