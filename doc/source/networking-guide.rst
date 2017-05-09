@@ -8,4 +8,4 @@ typical networking mode will be described.
 
 
 .. include:: ./networking-prerequisites.rst
-.. include:: ./networking-senarios.rst
+.. include:: ./networking-scenarios.rst
