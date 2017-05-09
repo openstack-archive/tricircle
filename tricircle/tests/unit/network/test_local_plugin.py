@@ -571,7 +571,7 @@ class PluginTest(unittest.TestCase):
                                           'host': 'fake_host',
                                           'device': 'compute:None'}}})
 
-        cfg.CONF.set_override('l2gw_tunnel_ip', '', 'tricircle')
+        cfg.CONF.set_override('l2gw_tunnel_ip', None, 'tricircle')
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
         self.plugin.update_port(self.context, port_id, update_body)
         # l2gw mode, but l2 gateway tunnel ip is not configured
