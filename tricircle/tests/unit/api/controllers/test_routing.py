@@ -253,14 +253,15 @@ class RoutingControllerTest(unittest.TestCase):
         routings = self.controller.get_all(**kw_filter2)
         self.assertEqual([], routings['routings'])
 
-        # apply an illegal filter and it won't take effect
+        # failure case, use an unsupported filter type
         kw_filter3 = {'resource': 'port'}
-        routings = self.controller.get_all(**kw_filter3)
-        actual = [(routing['top_id'], routing['pod_id'])
-                  for routing in routings['routings']]
-        expect = [('c7f641c9-8462-4007-84b2-3035d8cfb7a3', pod_id1),
-                  ('b669a2da-ca95-47db-a2a9-ba9e546d82ee', pod_id2)]
-        six.assertCountEqual(self, expect, actual)
+        res = self.controller.get_all(**kw_filter3)
+        self._validate_error_code(res, 400)
+
+        kw_filter4 = {'pod_id': pod_id1,
+                      'resource': 'port'}
+        res = self.controller.get_all(**kw_filter4)
+        self._validate_error_code(res, 400)
 
         # failure case, only admin can show all resource routings
         self.context.is_admin = False

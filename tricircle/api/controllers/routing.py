@@ -91,16 +91,21 @@ class RoutingController(rest.RestController):
         """Return a dictionary of query param filters from the request.
 
         :param params: the URI params coming from the wsgi layer
-        :return a dict of key/value filters
+        :return (flag, filters), flag indicates whether the filters are valid,
+        and the filters denote a list of key-value pairs.
         """
         filters = {}
-        for param in params:
-            if param in SUPPORTED_FILTERS:
+        unsupported_filters = {}
+        for filter_name in params:
+            if filter_name in SUPPORTED_FILTERS:
                 # map filter name
-                filter_name = param
-                filters[filter_name] = params.get(param)
+                filters[filter_name] = params.get(filter_name)
+            else:
+                unsupported_filters[filter_name] = params.get(filter_name)
 
-        return filters
+        if unsupported_filters:
+            return False, unsupported_filters
+        return True, filters
 
     @expose(generic=True, template='json')
     def get_all(self, **kwargs):
@@ -110,7 +115,14 @@ class RoutingController(rest.RestController):
             return utils.format_api_error(
                 403, _('Unauthorized to show all resource routings'))
 
-        filters = self._get_filters(kwargs)
+        is_valid_filter, filters = self._get_filters(kwargs)
+
+        if not is_valid_filter:
+            msg = (_('Unsupported filter type: %(filters)s') % {
+                'filters': ', '.join([filter_name for filter_name in filters])
+            })
+            return utils.format_api_error(400, msg)
+
         filters = [{'key': key,
                     'comparator': 'eq',
                     'value': value} for key, value in six.iteritems(filters)]
