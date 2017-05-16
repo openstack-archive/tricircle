@@ -867,11 +867,12 @@ class NetworkHelper(object):
             port_body[portbindings.VIF_TYPE] = portbindings.VIF_TYPE_OVS
             port_body[portbindings.VNIC_TYPE] = portbindings.VNIC_NORMAL
 
-    def _prepare_shadow_ports_with_retry(self, ctx, client, req_create_bodys):
+    @staticmethod
+    def prepare_ports_with_retry(ctx, client, req_create_bodys):
         create_body_map = dict(
             [(create_body['mac_address'],
               create_body) for create_body in req_create_bodys])
-        max_tries = 5
+        max_tries = 10
         conflict_port_ids = []
         for i in xrange(max_tries):
             create_bodys = list(create_body_map.values())
@@ -892,8 +893,13 @@ class NetworkHelper(object):
                         # rare case, we conflicted with an unrecognized mac
                         raise
                     conflict_port = create_body_map.pop(conflict_mac)
-                    conflict_port_ids.append(
-                        conflict_port['name'].split('_')[-1])
+                    if (conflict_port['device_owner'] ==
+                            t_constants.DEVICE_OWNER_SHADOW):
+                        conflict_port_ids.append(
+                            conflict_port['name'].split('_')[-1])
+                    elif (conflict_port['device_owner'] ==
+                            t_constants.DEVICE_OWNER_SUBPORT):
+                        conflict_port_ids.append(conflict_port['device_id'])
                 else:
                     # the exception no longer contains mac information
                     raise
@@ -933,7 +939,7 @@ class NetworkHelper(object):
         ret_port_ids = []
         client = self._get_client(target_pod['region_name'])
         while cursor < len(full_create_bodys):
-            ret_port_ids.extend(self._prepare_shadow_ports_with_retry(
+            ret_port_ids.extend(self.prepare_ports_with_retry(
                 ctx, client,
                 full_create_bodys[cursor: cursor + max_bulk_size]))
             cursor += max_bulk_size
@@ -979,3 +985,38 @@ class NetworkHelper(object):
                 continue
             processed_pod_set.add(region_name)
             yield pod, bottom_res_id
+
+    @staticmethod
+    def extract_resource_routing_entries(port):
+        entries = []
+        if not port:
+            return entries
+        for ip in port['fixed_ips']:
+            entries.append((ip['subnet_id'], ip['subnet_id'],
+                            t_constants.RT_SUBNET))
+        entries.append((port['network_id'], port['network_id'],
+                        t_constants.RT_NETWORK))
+        entries.append((port['id'], port['id'],
+                        t_constants.RT_PORT))
+        if port['security_groups']:
+            for sg_id in port['security_groups']:
+                entries.append((sg_id, sg_id, t_constants.RT_SG))
+        return entries
+
+    @staticmethod
+    def ensure_resource_mapping(t_ctx, project_id, pod, entries):
+        """Ensure resource mapping
+
+        :param t_ctx: tricircle context
+        :param project_id: project id
+        :param pod: bottom pod
+        :param entries: a list of (top_id, bottom_id, resource_type) tuples.
+        :return: None
+        """
+        for top_id, btm_id, resource_type in entries:
+            if db_api.get_bottom_id_by_top_id_region_name(
+                    t_ctx, top_id, pod['region_name'], resource_type):
+                continue
+            db_api.create_resource_mapping(t_ctx, top_id, btm_id,
+                                           pod['pod_id'], project_id,
+                                           resource_type)

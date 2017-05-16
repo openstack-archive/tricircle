@@ -70,7 +70,9 @@ client_opts = [
                choices=['p2p', 'l2gw', 'noop'],
                help='Cross-pod VxLAN networking support mode'),
     cfg.IntOpt('max_shadow_port_bulk_size', default=100,
-               help='max bulk size to create shadow ports')
+               help='max bulk size to create shadow ports'),
+    cfg.IntOpt('max_trunk_subports_bulk_size', default=100,
+               help='max bulk size to create trunk subports')
 ]
 client_opt_group = cfg.OptGroup('client')
 cfg.CONF.register_group(client_opt_group)

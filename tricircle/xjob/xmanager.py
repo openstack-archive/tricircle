@@ -31,6 +31,7 @@ import neutronclient.common.exceptions as q_cli_exceptions
 
 from tricircle.common import client
 from tricircle.common import constants
+import tricircle.common.context as t_context
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
 import tricircle.network.exceptions as t_network_exc
@@ -153,7 +154,8 @@ class XManager(PeriodicTasks):
             constants.JT_SEG_RULE_SETUP: self.configure_security_group_rules,
             constants.JT_NETWORK_UPDATE: self.update_network,
             constants.JT_SUBNET_UPDATE: self.update_subnet,
-            constants.JT_SHADOW_PORT_SETUP: self.setup_shadow_ports}
+            constants.JT_SHADOW_PORT_SETUP: self.setup_shadow_ports,
+            constants.JT_TRUNK_SYNC: self.sync_trunk}
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -1114,3 +1116,136 @@ class XManager(PeriodicTasks):
         for pod_id in sync_pod_list:
             self.xjob_handler.setup_shadow_ports(ctx, project_id,
                                                  pod_id, t_net_id)
+
+    def _get_bottom_need_created_subports(self, ctx, t_ctx, project_id,
+                                          trunk_id, add_subport_ids):
+        t_client = self._get_client()
+        need_created_ports = []
+        port_filters = [{'key': 'device_id',
+                        'comparator': 'eq',
+                         'value': trunk_id},
+                        {'key': 'device_owner',
+                         'comparator': 'eq',
+                         'value': constants.DEVICE_OWNER_SUBPORT}
+                        ]
+        trunk_subports = t_client.list_ports(ctx, filters=port_filters)
+        map_filters = [{'key': 'resource_type',
+                        'comparator': 'eq',
+                        'value': constants.RT_PORT},
+                       {'key': 'project_id',
+                        'comparator': 'eq',
+                        'value': project_id}]
+
+        port_mappings = db_api.list_resource_routings(t_ctx, map_filters)
+        mapping_port_ids = [port['top_id'] for port in port_mappings]
+        pop_attrs = ['status', 'tags', 'updated_at',
+                     'created_at', 'revision_number', 'id']
+        for port in trunk_subports:
+            if (port['id'] in add_subport_ids
+                    and port['id'] not in mapping_port_ids):
+                port['device_id'] = port['id']
+                # pop attributes which not allowed in POST
+                for attr in pop_attrs:
+                    port.pop(attr, None)
+                need_created_ports.append(port)
+
+        return need_created_ports
+
+    def _create_trunk_subport_mapping(self, t_ctx, project_id, pod, ports):
+        entries = []
+        for port in ports:
+            port['id'] = port['device_id']
+            entries.extend(self.helper.extract_resource_routing_entries(port))
+        self.helper.ensure_resource_mapping(t_ctx, project_id, pod, entries)
+
+    def _create_bottom_trunk_subports(self, ctx, target_pod,
+                                      full_create_bodys, max_bulk_size):
+        cursor = 0
+        ret_port_ids = []
+        b_client = self._get_client(target_pod['region_name'])
+        while cursor < len(full_create_bodys):
+            ret_port_ids.extend(self.helper.prepare_ports_with_retry(
+                ctx, b_client,
+                full_create_bodys[cursor: cursor + max_bulk_size]))
+            cursor += max_bulk_size
+        return ret_port_ids
+
+    @_job_handle(constants.JT_TRUNK_SYNC)
+    def sync_trunk(self, ctx, payload):
+        b_pod_id, t_trunk_id = payload[constants.JT_TRUNK_SYNC].split('#')
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_region_name = b_pod['region_name']
+        b_client = self._get_client(region_name=b_region_name)
+        b_trunk_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_trunk_id, b_region_name, constants.RT_TRUNK)
+        if not b_trunk_id:
+            return
+        t_client = self._get_client()
+        t_trunk = t_client.get_trunks(ctx, t_trunk_id)
+        # delete trunk action
+        if not t_trunk:
+            b_client.delete_trunks(ctx, b_trunk_id)
+            db_api.delete_mappings_by_top_id(ctx, t_trunk_id)
+            return
+
+        # update trunk action
+        b_trunk = b_client.get_trunks(ctx, b_trunk_id)
+
+        if not b_trunk:
+            LOG.error('trunk: %(trunk_id)s not found, pod name: %(name)s',
+                      {'trunk_id': b_trunk_id, 'name': b_region_name})
+            return
+
+        body = {
+            'trunk':
+                {'description': t_trunk['description'],
+                 'admin_state_up': t_trunk['admin_state_up']}
+        }
+
+        t_subports = set(
+            [(subport['port_id'],
+              subport['segmentation_id']) for subport in t_trunk['sub_ports']])
+        b_subports = set(
+            [(subport['port_id'],
+              subport['segmentation_id']) for subport in b_trunk['sub_ports']])
+        add_subports = t_subports - b_subports
+        del_subports = b_subports - t_subports
+
+        add_subport_bodies = [
+            {'port_id': subport[0],
+             'segmentation_type': 'vlan',
+             'segmentation_id': subport[1]} for subport in add_subports]
+
+        del_subport_bodies = [
+            {'port_id': subport[0]} for subport in del_subports]
+
+        try:
+            b_client.update_trunks(ctx, b_trunk_id, body)
+            # must first delete subports, then add subports, otherwise it
+            # will lead to the addition of existing subports
+            if del_subport_bodies:
+                b_client.action_trunks(ctx, 'remove_subports', b_trunk_id,
+                                       {'sub_ports': del_subport_bodies})
+
+            # create bottom ports bulk
+            if add_subport_bodies:
+                project_id = t_trunk['project_id']
+                t_ctx = t_context.get_context_from_neutron_context(ctx)
+                max_bulk_size = CONF.client.max_trunk_subports_bulk_size
+                add_subport_ids = [
+                    subport['port_id'] for subport in add_subport_bodies]
+                need_created_ports = self._get_bottom_need_created_subports(
+                    ctx, t_ctx, project_id, t_trunk_id, add_subport_ids)
+                if need_created_ports:
+                    self._create_bottom_trunk_subports(
+                        ctx, b_pod, need_created_ports, max_bulk_size)
+                    self._create_trunk_subport_mapping(
+                        ctx, project_id, b_pod, need_created_ports)
+                    self.xjob_handler.configure_security_group_rules(
+                        t_ctx, project_id)
+
+                b_client.action_trunks(ctx, 'add_subports', b_trunk_id,
+                                       {'sub_ports': add_subport_bodies})
+        except q_cli_exceptions.NotFound:
+            LOG.error('trunk: %(trunk_id)s not found, pod name: %(name)s',
+                      {'trunk_id': b_trunk_id, 'name': b_region_name})

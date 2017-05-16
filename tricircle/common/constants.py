@@ -26,6 +26,7 @@ RT_SD_NETWORK = 'shadow_network'
 RT_SUBNET = 'subnet'
 RT_SD_SUBNET = 'shadow_subnet'
 RT_PORT = 'port'
+RT_TRUNK = 'trunk'
 RT_SD_PORT = 'shadow_port'
 RT_ROUTER = 'router'
 RT_NS_ROUTER = 'ns_router'
@@ -87,7 +88,9 @@ PROFILE_HOST = 'host'
 PROFILE_AGENT_TYPE = 'type'
 PROFILE_TUNNEL_IP = 'tunnel_ip'
 PROFILE_FORCE_UP = 'force_up'
+PROFILE_LOCAL_TRUNK_ID = 'local_trunk_id'
 DEVICE_OWNER_SHADOW = 'compute:shadow'
+DEVICE_OWNER_SUBPORT = 'trunk:subport'
 
 # job type
 JT_CONFIGURE_ROUTE = 'configure_route'
@@ -97,6 +100,7 @@ JT_SEG_RULE_SETUP = 'seg_rule_setup'
 JT_NETWORK_UPDATE = 'update_network'
 JT_SUBNET_UPDATE = 'subnet_update'
 JT_SHADOW_PORT_SETUP = 'shadow_port_setup'
+JT_TRUNK_SYNC = 'trunk_sync'
 
 # network type
 NT_LOCAL = 'local'
@@ -123,6 +127,8 @@ job_resource_map = {
     JT_SEG_RULE_SETUP: [(None, "project_id")],
     JT_NETWORK_UPDATE: [(None, "pod_id"),
                         (RT_NETWORK, "network_id")],
+    JT_TRUNK_SYNC: [(None, "pod_id"),
+                    (RT_TRUNK, "trunk_id")],
     JT_SUBNET_UPDATE: [(None, "pod_id"),
                        (RT_SUBNET, "subnet_id")],
     JT_SHADOW_PORT_SETUP: [(None, "pod_id"),
@@ -148,6 +154,7 @@ job_handles = {
     JT_SEG_RULE_SETUP: "configure_security_group_rules",
     JT_NETWORK_UPDATE: "update_network",
     JT_SUBNET_UPDATE: "update_subnet",
+    JT_TRUNK_SYNC: "sync_trunk",
     JT_SHADOW_PORT_SETUP: "setup_shadow_ports"
 }
 
@@ -161,5 +168,6 @@ job_primary_resource_map = {
     JT_SEG_RULE_SETUP: (None, "project_id"),
     JT_NETWORK_UPDATE: (RT_NETWORK, "network_id"),
     JT_SUBNET_UPDATE: (RT_SUBNET, "subnet_id"),
+    JT_TRUNK_SYNC: (RT_TRUNK, "trunk_id"),
     JT_SHADOW_PORT_SETUP: (RT_NETWORK, "network_id")
 }

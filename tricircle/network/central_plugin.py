@@ -25,6 +25,7 @@ from oslo_log import log
 
 from neutron.api.v2 import attributes
 from neutron.callbacks import events
+from neutron.callbacks import exceptions as callbacks_exc
 from neutron.callbacks import registry
 from neutron.callbacks import resources
 import neutron.common.exceptions as ml2_exceptions
@@ -52,6 +53,7 @@ from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
 from neutron_lib import constants
 from neutron_lib import exceptions
+from neutron_lib.plugins import directory
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
@@ -606,23 +608,28 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     t_ctx, sg_id, sg_id, bottom_pod['pod_id'], t_ctx.tenant,
                     t_constants.RT_SG)
 
-    @staticmethod
-    def _create_mapping_for_vm_port(t_ctx, port_body, pod):
-        entries = [(ip['subnet_id'],
-                    t_constants.RT_SUBNET) for ip in port_body['fixed_ips']]
-        entries.append((port_body['network_id'], t_constants.RT_NETWORK))
-        entries.append((port_body['id'], t_constants.RT_PORT))
-        if port_body['security_groups']:
-            for sg_id in port_body['security_groups']:
-                entries.append((sg_id, t_constants.RT_SG))
+    def _create_mapping_for_vm_port(self, t_ctx, port_body, pod):
+        entries = self.helper.extract_resource_routing_entries(port_body)
+        self.helper.ensure_resource_mapping(t_ctx, port_body['project_id'],
+                                            pod, entries)
 
-        for resource_id, resource_type in entries:
-            if db_api.get_bottom_id_by_top_id_region_name(
-                    t_ctx, resource_id, pod['region_name'], resource_type):
-                continue
-            db_api.create_resource_mapping(
-                t_ctx, resource_id, resource_id, pod['pod_id'],
-                port_body['tenant_id'], resource_type)
+    def _process_trunk_port(self, ctx, t_ctx, port_body, pod, profile_dict):
+        trunk_plugin = directory.get_plugin('trunk')
+        trunk_details = port_body.get('trunk_details')
+        if trunk_plugin and trunk_details:
+            t_trunk_id = trunk_details['trunk_id']
+            b_trunk_id = profile_dict.get(
+                t_constants.PROFILE_LOCAL_TRUNK_ID)
+            entries = [(t_trunk_id, b_trunk_id, t_constants.RT_TRUNK)]
+            trunk_plugin.update_subports_device_id(
+                ctx, trunk_details, t_trunk_id,
+                t_constants.DEVICE_OWNER_SUBPORT)
+            t_trunk = trunk_plugin.get_trunk(ctx, t_trunk_id)
+            self.helper.ensure_resource_mapping(t_ctx, t_trunk['project_id'],
+                                                pod, entries)
+            if trunk_details['sub_ports']:
+                self.xjob_handler.sync_trunk(t_ctx, t_trunk['project_id'],
+                                             t_trunk_id, pod['pod_id'])
 
     def _trigger_router_xjob_for_vm_port(self, context, port_body, pod):
         interfaces = super(TricirclePlugin, self).get_ports(
@@ -689,6 +696,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # entries, trigger xjob and configure security group rules for
                 # instance port
                 self._create_mapping_for_vm_port(t_ctx, res, pod)
+                self._process_trunk_port(context, t_ctx,
+                                         res, pod, profile_dict)
                 # only trigger setup_bottom_router job
                 self._trigger_router_xjob_for_vm_port(context, res, pod)
                 self.xjob_handler.configure_security_group_rules(
@@ -750,6 +759,25 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._log_update_port_sensitive_attrs(port_id, port)
         return res
 
+    def _pre_delete_port(self, context, port_id, port_check):
+        """Do some preliminary operations before deleting the port."""
+        LOG.debug("Deleting port %s", port_id)
+        try:
+            # notify interested parties of imminent port deletion;
+            # a failure here prevents the operation from happening
+            kwargs = {
+                'context': context,
+                'port_id': port_id,
+                'port_check': port_check
+            }
+            registry.notify(
+                resources.PORT, events.BEFORE_DELETE, self, **kwargs)
+        except callbacks_exc.CallbackFailure as e:
+            # NOTE(xiulin): preserve old check's behavior
+            if len(e.errors) == 1:
+                raise e.errors[0].error
+            raise exceptions.ServicePortInUse(port_id=port_id, reason=e)
+
     def delete_port(self, context, port_id, l3_port_check=True):
         t_ctx = t_context.get_context_from_neutron_context(context)
         port = super(TricirclePlugin, self).get_port(context, port_id)
@@ -765,6 +793,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # delete the corresponding local ports. to avoid infinite api calls,
         # we use a "delete_server_port" job to delete the local ports.
         if port.get('device_owner') not in NON_VM_PORT_TYPES:
+            self._pre_delete_port(context, port_id, False)
             try:
                 # since we don't create resource routing entries for shadow
                 # ports, we traverse pods where the network is located to
@@ -875,6 +904,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         else:
             ret.extend(self._get_ports_from_db_with_number(
                 context, number - len(ret), ret[-1]['id'], top_bottom_map))
+            return ret
 
     def _get_ports_from_top_with_number(self, context,
                                         number, last_port_id, top_bottom_map,
@@ -1006,6 +1036,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # receives list request with "id" filter, it will query central
         # Neutron server and try to create the port. Here we introduce a
         # special handle for "id" filter
+
+        trunk_plugin = directory.get_plugin('trunk')
+        if trunk_plugin:
+            res = trunk_plugin.get_trunk_subports(context, filters)
+            if res is not None:
+                return res
+
         if not filters or 'id' not in filters:
             # if filter is empty or "id" is not in the filter, no special
             # handle is required

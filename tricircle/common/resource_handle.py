@@ -90,7 +90,8 @@ class NeutronResourceHandle(ResourceHandle):
         'router': LIST | CREATE | DELETE | ACTION | GET | UPDATE,
         'security_group': LIST | CREATE | GET,
         'security_group_rule': LIST | CREATE | DELETE,
-        'floatingip': LIST | CREATE | UPDATE | DELETE}
+        'floatingip': LIST | CREATE | UPDATE | DELETE,
+        'trunk': LIST | CREATE | UPDATE | GET | DELETE | ACTION}
 
     def _get_client(self, cxt):
         token = cxt.auth_token
@@ -165,8 +166,10 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_action(self, cxt, resource, action, *args, **kwargs):
         try:
             client = self._get_client(cxt)
-            return getattr(client, '%s_%s' % (action, resource))(*args,
-                                                                 **kwargs)
+            func_name = '%s_%s' % (action, resource)
+            if not hasattr(client, func_name):
+                func_name = '%s_%s' % (resource, action)
+            return getattr(client, func_name)(*args, **kwargs)
         except q_exceptions.ConnectionFailed:
             self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(

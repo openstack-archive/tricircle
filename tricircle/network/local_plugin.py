@@ -23,6 +23,7 @@ from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
+from neutron_lib.plugins import directory
 
 from neutron.common import utils
 from neutron.extensions import availability_zone as az_ext
@@ -71,6 +72,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             cfg.CONF.client.auth_url)
         self.neutron_handle.endpoint_url = \
             cfg.CONF.tricircle.central_neutron_url
+        self.on_trunk_create = {}
 
     def start_rpc_listeners(self):
         return self.core_plugin.start_rpc_listeners()
@@ -436,15 +438,25 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
     def create_port_bulk(self, context, ports):
         # NOTE(zhiyuan) currently this bulk operation is only for shadow port
-        # creation optimization
+        # and trunk subports creation optimization
         for port in ports['ports']:
             port_body = port['port']
-            self._create_shadow_agent(context, port_body)
             self.get_network(context, port_body['network_id'])
-            port_body['id'] = port_body['name'].split('_')[-1]
-            helper.NetworkHelper.fill_binding_info(port_body)
-            # clear binding profile set by xmanager
-            port_body[portbindings.PROFILE] = {}
+            if port_body['device_owner'] == t_constants.DEVICE_OWNER_SHADOW:
+                port_body['id'] = port_body['name'].split('_')[-1]
+                self._create_shadow_agent(context, port_body)
+                helper.NetworkHelper.fill_binding_info(port_body)
+                # clear binding profile set by xmanager
+                port_body[portbindings.PROFILE] = {}
+            elif (port_body['device_owner'] ==
+                    t_constants.DEVICE_OWNER_SUBPORT):
+                port_body['id'] = port_body['device_id']
+                # need set port's device_id to empty, otherwise will raise
+                # a exception because the device_id is bound to a device when
+                # the trunk add this port as a subport
+                port_body['device_owner'] = ''
+                port_body['device_id'] = ''
+
         return self.core_plugin.create_port_bulk(context, ports)
 
     def create_port(self, context, port):
@@ -611,16 +623,71 @@ class TricirclePlugin(plugin.Ml2Plugin):
             self._fill_agent_info_in_profile(
                 context, _id, port['port'][portbindings.HOST_ID],
                 update_dict[portbindings.PROFILE])
+
+            if directory.get_plugin('trunk'):
+                trunk_details = b_port.get('trunk_details')
+                if trunk_details:
+                    update_dict['binding:profile'].update({
+                        t_constants.PROFILE_LOCAL_TRUNK_ID:
+                            trunk_details['trunk_id']})
+
             t_ctx = t_context.get_context_from_neutron_context(context)
             self.neutron_handle.handle_update(t_ctx, 'port', _id,
                                               {'port': update_dict})
         return b_port
 
+    def _start_trunk_create(self, context):
+        if context.request_id:
+            LOG.debug('trunk create start for ' + context.request_id)
+            self.on_trunk_create[context.request_id] = True
+
+    def _end_trunk_create(self, context):
+        if context.request_id:
+            LOG.debug('trunk create end for ' + context.request_id)
+            self.on_trunk_create.pop(context.request_id, None)
+
+    def _in_trunk_create(self, context):
+        if context.request_id:
+            return context.request_id in self.on_trunk_create
+        return False
+
+    def _create_trunk(self, context, t_ctx, port_id):
+        trunk_plugin = directory.get_plugin('trunk')
+        if not trunk_plugin:
+            return
+        b_trunks = trunk_plugin.get_trunks(
+            context, filters={'port_id': [port_id]})
+        if b_trunks:
+            return
+        t_trunks = self.neutron_handle.handle_list(
+            t_ctx, 'trunk', [{'key': 'port_id',
+                              'comparator': 'eq',
+                              'value': port_id}])
+        if not t_trunks:
+            return
+        t_trunk = t_trunks[0]
+        # sub_ports will be created in xjob, so set it to empty here
+        t_trunk['sub_ports'] = []
+        trunk_plugin.create_trunk(context, {'trunk': t_trunk})
+
+    def _ensure_trunk(self, context, t_ctx, port_id):
+        # avoid recursive calls: _ensure_trunk will call create_trunk,
+        # create_trunk will call get_port, and get_port will call
+        # _ensure_trunk again
+        if not self._in_trunk_create(context):
+            self._start_trunk_create(context)
+            try:
+                self._create_trunk(context, t_ctx, port_id)
+            except Exception:
+                raise
+            finally:
+                self._end_trunk_create(context)
+
     def get_port(self, context, _id, fields=None):
+        t_ctx = t_context.get_context_from_neutron_context(context)
         try:
             b_port = self.core_plugin.get_port(context, _id, fields)
         except q_exceptions.NotFound:
-            t_ctx = t_context.get_context_from_neutron_context(context)
             if self._skip_non_api_query(t_ctx):
                 raise q_exceptions.PortNotFound(port_id=_id)
             t_port = self.neutron_handle.handle_get(t_ctx, 'port', _id)
@@ -630,6 +697,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
             self._adapt_port_body_for_call(t_port)
             self._handle_security_group(t_ctx, context, t_port)
             b_port = self.core_plugin.create_port(context, {'port': t_port})
+
+        self._ensure_trunk(context, t_ctx, _id)
         return self._fields(b_port, fields)
 
     def get_ports(self, context, filters=None, fields=None, sorts=None,
