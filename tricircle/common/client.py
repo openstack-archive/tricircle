@@ -97,6 +97,7 @@ def _safe_operation(operation_name):
                     instance._ensure_token_for_admin(context)
                     return func(*args, **kwargs)
                 except exceptions.EndpointNotAvailable as e:
+                    instance._unset_endpoint(service)
                     if i == retries:
                         raise
                     if cfg.CONF.client.auto_refresh_endpoint:
@@ -262,6 +263,10 @@ class Client(object):
             return self._get_config_with_retry(cxt,
                                                filters, pod, service, False)
         return conf_list
+
+    def _unset_endpoint(self, service):
+        handle = self.service_handle_map[service]
+        handle.clear_endpoint_url()
 
     def _ensure_endpoint_set(self, cxt, service):
         handle = self.service_handle_map[service]
