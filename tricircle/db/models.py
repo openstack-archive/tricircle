@@ -127,7 +127,7 @@ class ShadowAgent(core.ModelBase, core.DictBase):
     attributes = ['id', 'pod_id', 'host', 'type', 'tunnel_ip']
 
     id = sql.Column('id', sql.String(length=36), primary_key=True)
-    pod_id = sql.Column('pod_id', sql.String(length=64),
+    pod_id = sql.Column('pod_id', sql.String(length=36),
                         sql.ForeignKey('pods.pod_id'),
                         nullable=False)
     host = sql.Column('host', sql.String(length=255), nullable=False)
