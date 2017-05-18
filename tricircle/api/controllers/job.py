@@ -202,8 +202,9 @@ class AsyncJobController(rest.RestController):
         is_valid_filter, filters = self._get_filters(kwargs)
 
         if not is_valid_filter:
-            msg = (_('Unsupported filter type: %(filter)s') %
-                   {'filter': [filter_name for filter_name in filters]})
+            msg = (_('Unsupported filter type: %(filters)s') % {
+                'filters': ', '.join([filter_name for filter_name in filters])
+            })
             return utils.format_api_error(400, msg)
 
         filters = [{'key': key,
