@@ -240,8 +240,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     @staticmethod
     def _fill_provider_info(from_net, to_net):
-        provider_attrs = ('provider:network_type', 'provider:segmentation_id',
-                          'provider:physical_network')
+        provider_attrs = provider_net.ATTRIBUTES
         for provider_attr in provider_attrs:
             if validators.is_attr_set(from_net.get(provider_attr)):
                 to_net[provider_attr] = from_net[provider_attr]

@@ -283,13 +283,13 @@ class NetworkHelper(object):
                 'admin_state_up': True
             }
         }
-        network_type = network.get('provider:network_type')
+        network_type = network.get(provider_net.NETWORK_TYPE)
         if network_type == t_constants.NT_VLAN:
-            body['network']['provider:network_type'] = 'vlan'
-            body['network']['provider:physical_network'] = network[
-                'provider:physical_network']
-            body['network']['provider:segmentation_id'] = network[
-                'provider:segmentation_id']
+            body['network'][provider_net.NETWORK_TYPE] = 'vlan'
+            body['network'][provider_net.PHYSICAL_NETWORK] = network[
+                provider_net.PHYSICAL_NETWORK]
+            body['network'][provider_net.SEGMENTATION_ID] = network[
+                provider_net.SEGMENTATION_ID]
         return body
 
     @staticmethod
@@ -471,7 +471,7 @@ class NetworkHelper(object):
         """
         # network
         net_body = self.get_create_network_body(project_id, t_net)
-        if net_body['network'].get('provider:network_type'):
+        if net_body['network'].get(provider_net.NETWORK_TYPE):
             # if network type specified, we need to switch to admin account
             admin_context = t_context.get_admin_context()
 
