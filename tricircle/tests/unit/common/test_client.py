@@ -118,7 +118,6 @@ class FakeResHandle(resource_handle.ResourceHandle):
             return cli.list_fake_res(
                 resource_handle._transform_filters(filters))
         except FakeException:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
 
     def handle_create(self, cxt, resource, name):
@@ -126,7 +125,6 @@ class FakeResHandle(resource_handle.ResourceHandle):
             cli = self._get_client(cxt)
             return cli.create_fake_res(name)
         except FakeException:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
 
     def handle_delete(self, cxt, resource, name):
@@ -134,7 +132,6 @@ class FakeResHandle(resource_handle.ResourceHandle):
             cli = self._get_client(cxt)
             cli.delete_fake_res(name)
         except FakeException:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
 
     def handle_action(self, cxt, resource, action, name, rename):
@@ -142,7 +139,6 @@ class FakeResHandle(resource_handle.ResourceHandle):
             cli = self._get_client(cxt)
             cli.action_fake_res(name, rename)
         except FakeException:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(FAKE_TYPE, cli.endpoint)
 
 
@@ -361,6 +357,16 @@ class ClientTest(unittest.TestCase):
                               group='client')
         url = self.client.get_endpoint(self.context, FAKE_SITE_ID, FAKE_TYPE)
         self.assertEqual(url, FAKE_URL)
+
+    @patch.object(FakeClient, 'list_fake_res')
+    def test_resource_handle_endpoint_unavailable(self, mock_list):
+        handle = FakeResHandle(None)
+        handle.endpoint_url = FAKE_URL
+        mock_list.side_effect = FakeException
+        self.assertRaises(exceptions.EndpointNotAvailable,
+                          handle.handle_list, self.context, FAKE_RESOURCE, [])
+        # endpont_url will not be set to None
+        self.assertIsNotNone(handle.endpoint_url)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

@@ -58,6 +58,9 @@ class ResourceHandle(object):
     def is_endpoint_url_set(self):
         return self.endpoint_url is not None
 
+    def clear_endpoint_url(self):
+        self.endpoint_url = None
+
     def update_endpoint_url(self, url):
         self.endpoint_url = url
 
@@ -111,7 +114,6 @@ class NeutronResourceHandle(ResourceHandle):
             return [res for res in getattr(
                 client, 'list_%s' % collection)(**search_opts)[collection]]
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
 
@@ -125,7 +127,6 @@ class NeutronResourceHandle(ResourceHandle):
             else:
                 return ret['%ss' % resource]
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
 
@@ -135,7 +136,6 @@ class NeutronResourceHandle(ResourceHandle):
             return getattr(client, 'update_%s' % resource)(
                 *args, **kwargs)[resource]
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
 
@@ -144,7 +144,6 @@ class NeutronResourceHandle(ResourceHandle):
             client = self._get_client(cxt)
             return getattr(client, 'show_%s' % resource)(resource_id)[resource]
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
         except q_exceptions.NotFound:
@@ -156,7 +155,6 @@ class NeutronResourceHandle(ResourceHandle):
             client = self._get_client(cxt)
             return getattr(client, 'delete_%s' % resource)(resource_id)
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
         except q_exceptions.NotFound:
@@ -171,7 +169,6 @@ class NeutronResourceHandle(ResourceHandle):
                 func_name = '%s_%s' % (resource, action)
             return getattr(client, func_name)(*args, **kwargs)
         except q_exceptions.ConnectionFailed:
-            self.endpoint_url = None
             raise exceptions.EndpointNotAvailable(
                 'neutron', client.httpclient.endpoint_url)
 
