@@ -1733,10 +1733,35 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return return_info
 
     def create_floatingip(self, context, floatingip):
-        # create bottom fip when associating fixed ip
-        return super(TricirclePlugin, self).create_floatingip(
-            context, floatingip,
-            initial_status=constants.FLOATINGIP_STATUS_DOWN)
+        fip = None
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        try:
+            fip = super(TricirclePlugin, self).create_floatingip(
+                context, floatingip,
+                initial_status=constants.FLOATINGIP_STATUS_DOWN)
+            if fip['router_id'] and fip['port_id']:
+                mappings = db_api.get_bottom_mappings_by_top_id(
+                    t_ctx, fip['port_id'], t_constants.RT_PORT)
+                if not mappings:
+                    # mapping does not exist, meaning that the bottom port has
+                    # not been created, we just return and defer the work to
+                    # setup bottom floating ip until vm creation
+                    return
+
+                int_net_pod, b_int_port_id = mappings[0]
+                int_port = self.get_port(context, fip['port_id'])
+                net_id = int_port['network_id']
+                router = self._get_router(context, fip['router_id'])
+                self.xjob_handler.setup_bottom_router(
+                    t_ctx, router['tenant_id'], net_id,
+                    fip['router_id'], int_net_pod['pod_id'])
+            return fip
+        except Exception:
+            if fip:
+                # if we fail to register the job, delete the fip
+                super(TricirclePlugin, self).delete_floatingip(context,
+                                                               fip['id'])
+            raise
 
     def remove_router_interface(self, context, router_id, interface_info):
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -1875,8 +1900,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             t_ctx, int_port_id, t_constants.RT_PORT)
         if not mappings:
             # mapping does not exist, meaning that the bottom port has not
-            # been created, we just return and leave the work to setup bottom
-            # floating ip to nova api gateway
+            # been created, we just return and defer the work to setup bottom
+            # floating ip until vm creation
             return
 
         int_net_pod, b_int_port_id = mappings[0]

@@ -29,7 +29,8 @@ echo create router
 router_id=$($openstacktop router create router -c id -f value)
 
 echo attach router to external network
-$openstacktop router set --external-gateway ext-net router
+$openstacktop router set --external-gateway ext-net \
+    --fixed-ip subnet=ext-subnet,ip-address=163.3.124.10 router
 
 echo create network1
 $openstacktop network create net1
@@ -52,7 +53,7 @@ echo attach subnet1 to router
 $openstacktop router add subnet router subnet1
 
 echo associate floating ip to port1
-$openstacktop floating ip create --port $port1_id ext-net -c id -f value
+$openstacktop floating ip create --port $port1_id --floating-ip-address 163.3.124.15 ext-net -c id -f value
 
 image1_id=$($openstackpod1 image list -c ID -f value)
 
@@ -60,15 +61,18 @@ echo create server1
 $openstackpod1 server create --flavor 1 --image $image1_id --nic port-id=$port1_id vm1
 
 echo create network2
-net2_id=$($openstacktop network create net2 -c id -f value)
+$openstacktop network create net2
 
 echo create subnet2
 $openstacktop subnet create --subnet-range 10.0.2.0/24 --network net2 subnet2
 
+echo create port2
+port2_id=$($openstacktop port create --network net2 port2 -c id -f value)
+
 image2_id=$($openstackpod2 image list -c ID -f value)
 
 echo create server2
-$openstackpod2 server create --flavor 1 --image $image2_id --nic net-id=$net2_id vm2
+$openstackpod2 server create --flavor 1 --image $image2_id --nic port-id=$port2_id vm2
 
 echo attach subnet2 to router
 $openstacktop router add subnet router subnet2
@@ -82,6 +86,11 @@ $openstacktop subnet create --subnet-range 10.0.4.0/24 --network net4 \
 
 echo create server3
 $openstackpod1 server create --flavor 1 --image $image1_id --nic net-id=$net4_id vm3
+
+sleep 10
+
+echo associate floating ip to port2
+$openstacktop floating ip create --port $port2_id --floating-ip-address 163.3.124.20 ext-net -c id -f value
 
 sleep 20
 
@@ -170,4 +179,8 @@ fi
 $openstackpod2 router show $router_id -c routes -f json | python smoke_test_validation.py router 2
 if [ $? != 0 ]; then
     die $LINENO "Smoke test fails, error in router of RegionTwo"
+fi
+$openstackpod2 floating ip list -f json | python smoke_test_validation.py fip 2
+if [ $? != 0 ]; then
+    die $LINENO "Smoke test fails, error in fip of RegionTwo"
 fi

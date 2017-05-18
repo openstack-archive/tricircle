@@ -48,7 +48,9 @@ CONDITIONS = {
           'router': [
               {'routes': ContainedString(
                   "destination='0.0.0.0/0', gateway='100.0.0.1'")},
-              {'routes': ContainedString("destination='10.0.1")}]}
+              {'routes': ContainedString("destination='10.0.1")}],
+          'fip': [{'Floating IP Address': '163.3.124.15'},
+                  {'Floating IP Address': '163.3.124.20'}]}
 }
 
 

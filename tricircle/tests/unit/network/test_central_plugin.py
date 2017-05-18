@@ -478,31 +478,39 @@ class FakeClient(test_utils.FakeClient):
         pass
 
 
+def update_floatingip_dict(fip_dict, update_dict):
+    if not update_dict.get('port_id'):
+        update_dict['fixed_port_id'] = None
+        update_dict['fixed_ip_address'] = None
+        update_dict['router_id'] = None
+        fip_dict.update(update_dict)
+        return fip_dict
+    for port in TOP_PORTS:
+        if port['id'] != update_dict['port_id']:
+            continue
+        update_dict['fixed_port_id'] = port['id']
+        update_dict[
+            'fixed_ip_address'] = port['fixed_ips'][0]['ip_address']
+        for router_port in TOP_ROUTERPORTS:
+            for _port in TOP_PORTS:
+                if _port['id'] != router_port['port_id']:
+                    continue
+                if _port['network_id'] == port['network_id']:
+                    update_dict['router_id'] = router_port['router_id']
+
+    fip_dict.update(update_dict)
+    return fip_dict
+
+
 def update_floatingip(self, context, _id, floatingip):
     for fip in TOP_FLOATINGIPS:
         if fip['id'] != _id:
             continue
-        update_dict = floatingip['floatingip']
-        if not floatingip['floatingip']['port_id']:
-            update_dict['fixed_port_id'] = None
-            update_dict['fixed_ip_address'] = None
-            update_dict['router_id'] = None
-            fip.update(update_dict)
-            return
-        for port in TOP_PORTS:
-            if port['id'] != floatingip['floatingip']['port_id']:
-                continue
-            update_dict['fixed_port_id'] = port['id']
-            update_dict[
-                'fixed_ip_address'] = port['fixed_ips'][0]['ip_address']
-            for router_port in TOP_ROUTERPORTS:
-                for _port in TOP_PORTS:
-                    if _port['id'] != router_port['port_id']:
-                        continue
-                    if _port['network_id'] == port['network_id']:
-                        update_dict['router_id'] = router_port['router_id']
+        update_floatingip_dict(fip, floatingip['floatingip'])
 
-        fip.update(update_dict)
+
+def _update_fip_assoc(self, context, fip, floatingip_db, external_port):
+    return update_floatingip_dict(floatingip_db, fip)
 
 
 class FakeBaseXManager(xmanager.XManager):
@@ -2934,6 +2942,44 @@ class PluginTest(unittest.TestCase,
             core.create_resource(t_ctx, models.ResourceRouting, route)
 
         return t_port_id, b_port_id, fip, e_net
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_update_fip_assoc',
+                  new=_update_fip_assoc)
+    @patch.object(FakeClient, 'create_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_floatingip(self, mock_context, mock_create):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         _, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                             fake_plugin)
+        # in _prepare_associate_floatingip_test, we have created an empty fip,
+        # but here we just ignore it and create a new fip by specifying fix ip
+        # at the same time
+        fip_body = {'floating_network_id': e_net['id'],
+                    'port_id': t_port_id,
+                    'tenant_id': TEST_TENANT_ID}
+        fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
+        b_ext_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, e_net['id'], 'pod_2', constants.RT_NETWORK)
+        calls = [mock.call(t_ctx,
+                           {'floatingip': {
+                               'floating_network_id': b_ext_net_id,
+                               'floating_ip_address': fip[
+                                   'floating_ip_address'],
+                               'port_id': b_port_id}})]
+        mock_create.assert_has_calls(calls)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
