@@ -59,30 +59,29 @@ class PodsController(rest.RestController):
         dc_name = pod.get('dc_name', '').strip()
         az_name = pod.get('az_name', '').strip()
         _uuid = uuidutils.generate_uuid()
+        top_region_name = self._get_top_region(context)
 
-        if az_name == '' and region_name == '':
-            return Response(_('Valid region_name is required for top region'),
-                            422)
+        if az_name == '':
+            if region_name == '':
+                return Response(
+                    _('Valid region_name is required for top region'),
+                    422)
 
-        if az_name != '' and region_name == '':
-            return Response(_('Valid region_name is required for pod'), 422)
-
-        if pod.get('az_name') is None:
-            if self._get_top_region(context) != '':
+            if top_region_name != '':
                 return Response(_('Top region already exists'), 409)
+            # to create the top region, make the pod_az_name to null value
+            pod_az_name = ''
 
-        # if az_name is not null, then the pod region name should not
-        # be same as that the top region
         if az_name != '':
-            if (self._get_top_region(context) == region_name and
-               region_name != ''):
+            if region_name == '':
+                return Response(
+                    _('Valid region_name is required for pod'), 422)
+            # region_name != ''
+            # then the pod region name should not be same as the top region
+            if top_region_name == region_name:
                 return Response(
                     _('Pod region name duplicated with the top region name'),
                     409)
-
-        # to create the top region, make the pod_az_name to null value
-        if az_name == '':
-            pod_az_name = ''
 
         try:
             with context.session.begin():
