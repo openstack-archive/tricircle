@@ -819,6 +819,7 @@ class XManager(PeriodicTasks):
                     ctx, [{'key': 'tenant_id', 'comparator': 'eq',
                            'value': project_id}])
                 bridge_ip_net = netaddr.IPNetwork(CONF.client.bridge_cidr)
+                subnet_cidr_set = set()
                 for subnet in subnets:
                     ip_net = netaddr.IPNetwork(subnet['cidr'])
                     if ip_net in bridge_ip_net:
@@ -827,6 +828,9 @@ class XManager(PeriodicTasks):
                     # Tricircle has not supported IPv6 well yet,
                     # so we ignore seg rules temporarily.
                     if subnet['ip_version'] == q_constants.IP_VERSION_4:
+                        if subnet['cidr'] in subnet_cidr_set:
+                            continue
+                        subnet_cidr_set.add(subnet['cidr'])
                         new_b_rules.append(
                             self._construct_bottom_rule(t_rule, '',
                                                         subnet['cidr']))

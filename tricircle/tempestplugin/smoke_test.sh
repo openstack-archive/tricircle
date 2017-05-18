@@ -35,7 +35,15 @@ echo create network1
 $openstacktop network create net1
 
 echo create subnet1
-$openstacktop subnet create --subnet-range 10.0.1.0/24 --network net1 subnet1
+$openstacktop subnet create --subnet-range 10.0.1.0/24 --network net1 \
+    --allocation-pool start=10.0.1.10,end=10.0.1.90 subnet1
+
+echo create network3
+$openstacktop network create net3
+
+echo create subnet3 that has same CIDR with subnet1
+$openstacktop subnet create --subnet-range 10.0.1.0/24 --network net3 \
+    --allocation-pool start=10.0.1.110,end=10.0.1.190 subnet3
 
 echo create port1
 port1_id=$($openstacktop port create --network net1 port1 -c id -f value)

@@ -698,6 +698,94 @@ class XManagerTest(unittest.TestCase):
                                 'security_group_id': sg_id}]})]
         mock_create.assert_has_calls(calls)
 
+    @patch.object(FakeClient, 'delete_security_group_rules')
+    @patch.object(FakeClient, 'create_security_group_rules')
+    def test_configure_security_group_rules_duplicated_cidr(self, mock_create,
+                                                            mock_delete):
+        project_id = uuidutils.generate_uuid()
+        sg_id = uuidutils.generate_uuid()
+        sg_rule_id_1 = uuidutils.generate_uuid()
+        sg_rule_id_2 = uuidutils.generate_uuid()
+
+        sg = {'id': sg_id,
+              'tenant_id': project_id,
+              'name': 'default',
+              'security_group_rules': [{
+                  'id': sg_rule_id_1,
+                  'remote_group_id': sg_id,
+                  'direction': 'ingress',
+                  'remote_ip_prefix': None,
+                  'protocol': None,
+                  'ethertype': 'IPv4',
+                  'port_range_max': -1,
+                  'port_range_min': -1,
+                  'security_group_id': sg_id},
+                  {'id': sg_rule_id_2,
+                   'remote_group_id': None,
+                   'direction': 'engress',
+                   'remote_ip_prefix': None,
+                   'protocol': None,
+                   'ethertype': 'IPv4',
+                   'port_range_max': -1,
+                   'port_range_min': -1,
+                   'security_group_id': sg_id}]}
+        RES_MAP['top']['security_group'].append(sg)
+
+        for i in xrange(1, 3):
+            pod_dict = {'pod_id': 'pod_id_%d' % i,
+                        'region_name': 'pod_%d' % i,
+                        'az_name': 'az_name_%d' % i}
+            db_api.create_pod(self.context, pod_dict)
+
+            network = {'id': 'network_%d_id' % i,
+                       'tenant_id': project_id}
+            # we create two subnets with identical cidr but different
+            # allocation pools
+            subnet = {'id': 'subnet_%d_id' % i,
+                      'network_id': network['id'],
+                      'cidr': '10.0.1.0/24',
+                      'gateway_ip': '10.0.1.%d' % i,
+                      'tenant_id': project_id,
+                      'allocation_pools': {'start': '10.0.1.%d' % 10 * i,
+                                           'end': '10.0.1.%d' % (10 * i + 9)},
+                      'ip_version': q_constants.IP_VERSION_4}
+            RES_MAP['top']['network'].append(network)
+            RES_MAP['top']['subnet'].append(subnet)
+
+            region_name = 'pod_%d' % i
+            RES_MAP[region_name]['security_group'].append(sg)
+            route = {'top_id': sg_id, 'bottom_id': sg_id,
+                     'pod_id': pod_dict['pod_id'],
+                     'resource_type': 'security_group'}
+            with self.context.session.begin():
+                core.create_resource(self.context, models.ResourceRouting,
+                                     route)
+
+        db_api.new_job(self.context, project_id, constants.JT_SEG_RULE_SETUP,
+                       project_id)
+        self.xmanager.configure_security_group_rules(
+            self.context, payload={constants.JT_SEG_RULE_SETUP: project_id})
+
+        calls = [mock.call(self.context, sg_rule_id_1)]
+        mock_delete.assert_has_calls(calls)
+        call_rules_id = [
+            call_arg[0][1] for call_arg in mock_delete.call_args_list]
+        # bottom security group already has sg_rule_id_2, so this rule will
+        # not be deleted
+        self.assertNotIn(sg_rule_id_2, call_rules_id)
+
+        calls = [mock.call(self.context,
+                           {'security_group_rules': [
+                               {'remote_group_id': None,
+                                'direction': 'ingress',
+                                'remote_ip_prefix': '10.0.1.0/24',
+                                'protocol': None,
+                                'ethertype': 'IPv4',
+                                'port_range_max': -1,
+                                'port_range_min': -1,
+                                'security_group_id': sg_id}]})]
+        mock_create.assert_has_calls(calls)
+
     @patch.object(helper.NetworkHelper, '_get_client', new=fake_get_client)
     @patch.object(FakeXJobAPI, 'setup_shadow_ports')
     def test_setup_shadow_ports(self, mock_setup):
