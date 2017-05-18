@@ -73,6 +73,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         self.neutron_handle.endpoint_url = \
             cfg.CONF.tricircle.central_neutron_url
         self.on_trunk_create = {}
+        self.on_subnet_delete = {}
 
     def start_rpc_listeners(self):
         return self.core_plugin.start_rpc_listeners()
@@ -85,6 +86,22 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
     def rpc_state_report_workers_supported(self):
         return self.core_plugin.rpc_state_report_workers_supported()
+
+    def _start_subnet_delete(self, context):
+        if context.request_id:
+            LOG.debug('subnet delete start for ' + context.request_id)
+            self.on_subnet_delete[context.request_id] = True
+
+    def _end_subnet_delete(self, context):
+        if context.request_id:
+            LOG.debug('subnet delete end for ' + context.request_id)
+            self.on_subnet_delete.pop(context.request_id, None)
+
+    def _in_subnet_delete(self, context):
+        if context.request_id:
+            LOG.debug('check subnet delete state for ' + context.request_id)
+            return context.request_id in self.on_subnet_delete
+        return False
 
     @staticmethod
     def _adapt_network_body(network):
@@ -230,8 +247,13 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def get_network(self, context, _id, fields=None):
         try:
             b_network = self.core_plugin.get_network(context, _id)
-            subnet_ids = self._ensure_subnet(context, b_network, False)
+            if not self._in_subnet_delete(context):
+                subnet_ids = self._ensure_subnet(context, b_network, False)
+            else:
+                subnet_ids = []
         except q_exceptions.NotFound:
+            if self._in_subnet_delete(context):
+                raise
             t_ctx = t_context.get_context_from_neutron_context(context)
             if self._skip_non_api_query(t_ctx):
                 raise q_exceptions.NetworkNotFound(net_id=_id)
@@ -385,6 +407,15 @@ class TricirclePlugin(plugin.Ml2Plugin):
                     self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
                 b_subnets.append(self._fields(b_subnet, fields))
         return b_subnets
+
+    def delete_subnet(self, context, _id):
+        self._start_subnet_delete(context)
+        try:
+            self.core_plugin.delete_subnet(context, _id)
+        except Exception:
+            raise
+        finally:
+            self._end_subnet_delete(context)
 
     def update_subnet(self, context, _id, subnet):
         """update bottom subnet
