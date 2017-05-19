@@ -37,3 +37,8 @@ TRICIRCLE_XJOB_CONF=$TRICIRCLE_CONF_DIR/xjob.conf
 TRICIRCLE_AUTH_CACHE_DIR=${TRICIRCLE_AUTH_CACHE_DIR:-/var/cache/tricircle}
 
 export PYTHONPATH=$PYTHONPATH:$TRICIRCLE_DIR
+
+# Set up default directories for client
+GITREPO["python-tricircleclient"]=${TRICIRCLE_PYTHONCLIENT_REPO:-${GIT_BASE}/openstack/python-tricircleclient.git}
+GITBRANCH["python-tricircleclient"]=${TRICIRCLE_PYTHONCLIENT_BRANCH:-master}
+GITDIR["python-tricircleclient"]=$DEST/python-tricircleclient
