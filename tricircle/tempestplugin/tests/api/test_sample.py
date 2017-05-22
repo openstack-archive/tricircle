@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from tempest import test
+from tempest.lib import decorators
 from tricircle.tempestplugin.tests.api import base
 
 
@@ -23,7 +23,7 @@ class TestTricircleSample(base.BaseTricircleTest):
     def resource_setup(cls):
         super(TestTricircleSample, cls).resource_setup()
 
-    @test.attr(type="smoke")
+    @decorators.attr(type="smoke")
     def test_sample(self):
         self.assertEqual('Tricircle Sample Test!', 'Tricircle Sample Test!')
 
