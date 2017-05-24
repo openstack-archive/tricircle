@@ -42,6 +42,9 @@ ML2_L3_PLUGIN=tricircle.network.local_l3_plugin.TricircleL3Plugin
 # Specify port for central Neutron server
 # TRICIRCLE_NEUTRON_PORT=20001
 
+# Set to True to integrate Tricircle with Nova cell v2(experiment)
+# TRICIRCLE_DEPLOY_WITH_CELL=True
+
 TRICIRCLE_START_SERVICES=False
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
