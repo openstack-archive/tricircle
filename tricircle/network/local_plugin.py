@@ -342,10 +342,14 @@ class TricirclePlugin(plugin.Ml2Plugin):
         return b_subnet
 
     def _create_bottom_subnet(self, t_ctx, q_ctx, t_subnet):
-        gateway_port = self._ensure_gateway_port(t_ctx, t_subnet)
+        if t_subnet['gateway_ip']:
+            gateway_port = self._ensure_gateway_port(t_ctx, t_subnet)
+            b_gateway_ip = gateway_port['fixed_ips'][0]['ip_address']
+        else:
+            b_gateway_ip = None
         subnet_body = helper.NetworkHelper.get_create_subnet_body(
-            gateway_port['tenant_id'], t_subnet, t_subnet['network_id'],
-            gateway_port['fixed_ips'][0]['ip_address'])['subnet']
+            t_subnet['tenant_id'], t_subnet, t_subnet['network_id'],
+            b_gateway_ip)['subnet']
         t_subnet['gateway_ip'] = subnet_body['gateway_ip']
         t_subnet['allocation_pools'] = subnet_body['allocation_pools']
 

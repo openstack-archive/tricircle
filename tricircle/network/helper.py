@@ -364,6 +364,9 @@ class NetworkHelper(object):
         """
         pools = t_subnet['allocation_pools']
         t_gateway_ip = t_subnet['gateway_ip']
+        if not t_gateway_ip:
+            # gateway is None, so we don't need to split allocation pools
+            return pools
         new_pools = NetworkHelper._split_pools_by_bottom_gateway_ip(
             pools, b_gateway_ip)
         if t_gateway_ip == b_gateway_ip:

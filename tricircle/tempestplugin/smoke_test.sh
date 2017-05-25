@@ -73,6 +73,16 @@ $openstackpod2 server create --flavor 1 --image $image2_id --nic net-id=$net2_id
 echo attach subnet2 to router
 $openstacktop router add subnet router subnet2
 
+echo create network4
+net4_id=$($openstacktop network create net4 -c id -f value)
+
+echo create subnet4 that has no gateway
+$openstacktop subnet create --subnet-range 10.0.4.0/24 --network net4 \
+    --gateway None subnet4
+
+echo create server3
+$openstackpod1 server create --flavor 1 --image $image1_id --nic net-id=$net4_id vm3
+
 sleep 20
 
 TOP_DIR=$DEVSTACK_DIR
