@@ -363,6 +363,7 @@ class FakeClient(object):
                         'ip_address': ip}
 
     def create_resources(self, _type, ctx, body):
+        self._get_connection()
         if _type == 'port':
             res_list = self._res_map[self.region_name][_type]
             subnet_ips_map = {}
@@ -3292,9 +3293,10 @@ class PluginTest(unittest.TestCase,
                   new=fake_make_router_dict)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(FakeClient, '_get_connection')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_unset_gateway(self, mock_context, mock_action):
+    def test_unset_gateway(self, mock_context, mock_action, mock_connect):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -3339,21 +3341,40 @@ class PluginTest(unittest.TestCase,
         }
 
         TOP_ROUTERS.append(DotDict(t_router))
-        # first add router gateway
-        fake_plugin.update_router(
-            q_ctx, t_router_id,
-            {'router': {'external_gateway_info': {
+        add_gw_body = {
+            'router': {'external_gateway_info': {
                 'network_id': t_net_id,
                 'enable_snat': False,
                 'external_fixed_ips': [{'subnet_id': t_subnet_id,
-                                        'ip_address': '100.64.0.5'}]}}})
+                                        'ip_address': '100.64.0.5'}]}}}
+        del_gw_body = {'router': {'external_gateway_info': {}}}
+
+        # exception case, central router has been updated but local router has
+        # not been created
+        mock_connect.side_effect = q_exceptions.ConnectionFailed
+        mock_action.side_effect = q_exceptions.ConnectionFailed
+        self.assertRaises(q_exceptions.ConnectionFailed,
+                          fake_plugin.update_router, q_ctx, t_router_id,
+                          copy.deepcopy(add_gw_body))
+        mappings = db_api.get_bottom_mappings_by_top_id(t_ctx, t_router_id,
+                                                        constants.RT_NS_ROUTER)
+        self.assertEqual(0, len(mappings))
+        # local router is not created, but we can still remove gateway. local
+        # router is not touched, otherwise we will meet an exception here
+        # because mock_action is assigned a side effect
+        fake_plugin.update_router(q_ctx, t_router_id,
+                                  copy.deepcopy(del_gw_body))
+
+        # normal case
+        mock_connect.side_effect = None
+        mock_action.side_effect = None
+        # first add router gateway
+        fake_plugin.update_router(q_ctx, t_router_id, add_gw_body)
         _, b_ns_router_id = db_api.get_bottom_mappings_by_top_id(
             t_ctx, t_router_id, constants.RT_NS_ROUTER)[0]
 
         # then remove router gateway
-        fake_plugin.update_router(
-            q_ctx, t_router_id,
-            {'router': {'external_gateway_info': {}}})
+        fake_plugin.update_router(q_ctx, t_router_id, del_gw_body)
         mock_action.assert_called_with(t_ctx, 'remove_gateway', b_ns_router_id)
 
     def _prepare_associate_floatingip_test(self, t_ctx, q_ctx, fake_plugin,

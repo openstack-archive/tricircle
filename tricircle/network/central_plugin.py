@@ -1553,6 +1553,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             t_constants.RT_ROUTER if is_local_router
             else t_constants.RT_NS_ROUTER)
 
+        if not b_router_id:
+            # local router doesn't exist, skip local gateway deletion
+            return
+
         b_client = self._get_client(region_name)
         b_client.action_routers(t_ctx, 'remove_gateway', b_router_id)
 
