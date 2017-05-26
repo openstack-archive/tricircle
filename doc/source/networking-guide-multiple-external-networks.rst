@@ -118,22 +118,24 @@ Create router R1.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion router-create R1
-    +-----------------------+--------------------------------------+
-    | Field                 | Value                                |
-    +-----------------------+--------------------------------------+
-    | admin_state_up        | True                                 |
-    | created_at            | 2017-01-12T07:04:13Z                 |
-    | description           |                                      |
-    | external_gateway_info |                                      |
-    | id                    | 063de74b-d962-4fc2-96d9-87e2cb35c082 |
-    | name                  | R1                                   |
-    | project_id            | 532890c765604609a8d2ef6fc8e5f6ef     |
-    | revision_number       | 1                                    |
-    | status                | ACTIVE                               |
-    | tenant_id             | 532890c765604609a8d2ef6fc8e5f6ef     |
-    | updated_at            | 2017-01-12T07:04:13Z                 |
-    +-----------------------+--------------------------------------+
+    $ neutron --os-region-name=CentralRegion router-create --availability-zone-hint RegionOne R1
+    +-------------------------+--------------------------------------+
+    | Field                   | Value                                |
+    +-------------------------+--------------------------------------+
+    | admin_state_up          | True                                 |
+    | availability_zone_hints | RegionOne                            |
+    | availability_zones      |                                      |
+    | created_at              | 2017-01-12T07:04:13Z                 |
+    | description             |                                      |
+    | external_gateway_info   |                                      |
+    | id                      | 063de74b-d962-4fc2-96d9-87e2cb35c082 |
+    | name                    | R1                                   |
+    | project_id              | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | revision_number         | 1                                    |
+    | status                  | ACTIVE                               |
+    | tenant_id               | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | updated_at              | 2017-01-12T07:04:13Z                 |
+    +-------------------------+--------------------------------------+
 
 Set the router gateway to ext-net1 for R1.
 
@@ -165,12 +167,12 @@ RegionOne as the value of availability-zone-hint.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create --availability-zone-hint az1 net1
+    $ neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionOne net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   | az1                                  |
+    | availability_zone_hints   | RegionOne                            |
     | id                        | de4fda27-e4f7-4448-80f6-79ee5ea2478b |
     | name                      | net1                                 |
     | project_id                | 532890c765604609a8d2ef6fc8e5f6ef     |
@@ -586,22 +588,24 @@ Create router R2 which will work in RegionTwo.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion router-create R2
-    +-----------------------+--------------------------------------+
-    | Field                 | Value                                |
-    +-----------------------+--------------------------------------+
-    | admin_state_up        | True                                 |
-    | created_at            | 2017-01-12T07:19:23Z                 |
-    | description           |                                      |
-    | external_gateway_info |                                      |
-    | id                    | 8a8571db-e3ba-4b78-98ca-13d4dc1a4fb0 |
-    | name                  | R2                                   |
-    | project_id            | 532890c765604609a8d2ef6fc8e5f6ef     |
-    | revision_number       | 1                                    |
-    | status                | ACTIVE                               |
-    | tenant_id             | 532890c765604609a8d2ef6fc8e5f6ef     |
-    | updated_at            | 2017-01-12T07:19:23Z                 |
-    +-----------------------+--------------------------------------+
+    $ neutron --os-region-name=CentralRegion router-create --availability-zone-hint RegionTwo R2
+    +-------------------------+--------------------------------------+
+    | Field                   | Value                                |
+    +-------------------------+--------------------------------------+
+    | admin_state_up          | True                                 |
+    | availability_zone_hints | RegionTwo                            |
+    | availability_zones      |                                      |
+    | created_at              | 2017-01-12T07:19:23Z                 |
+    | description             |                                      |
+    | external_gateway_info   |                                      |
+    | id                      | 8a8571db-e3ba-4b78-98ca-13d4dc1a4fb0 |
+    | name                    | R2                                   |
+    | project_id              | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | revision_number         | 1                                    |
+    | status                  | ACTIVE                               |
+    | tenant_id               | 532890c765604609a8d2ef6fc8e5f6ef     |
+    | updated_at              | 2017-01-12T07:19:23Z                 |
+    +-------------------------+--------------------------------------+
 
 Set the router gateway to ext-net2 for R2.
 
@@ -633,16 +637,16 @@ Check router R2.
     +-----------------------+------------------------------------------------------------------------------------------------------------+
 
 
-Create net2 in az2.
+Create net2 in RegionTwo.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create --availability-zone-hint az2 net2
+    $ neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionTwo net2
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   | az2                                  |
+    | availability_zone_hints   | RegionTwo                            |
     | id                        | 71b06c5d-2eb8-4ef4-a978-c5c98874811b |
     | name                      | net2                                 |
     | project_id                | 532890c765604609a8d2ef6fc8e5f6ef     |
