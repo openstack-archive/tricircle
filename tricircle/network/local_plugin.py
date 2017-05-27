@@ -44,6 +44,9 @@ from tricircle.network import helper
 tricircle_opts = [
     cfg.StrOpt('real_core_plugin', help=_('The core plugin the Tricircle '
                                           'local plugin will invoke.')),
+    cfg.StrOpt('local_region_name',
+               help=_('Region the local Neutron belongs to, has high priority '
+                      'than nova.region_name')),
     cfg.StrOpt('central_neutron_url', help=_('Central Neutron server url')),
     cfg.IPOpt('l2gw_tunnel_ip', help=_('Tunnel IP of L2 gateway, need to set '
                                        'when client.cross_pod_vxlan_mode is '
@@ -154,6 +157,13 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def _skip_non_api_query(context):
         return not context.auth_token
 
+    @staticmethod
+    def _get_neutron_region():
+        region_name = cfg.CONF.tricircle.local_region_name
+        if not region_name:
+            region_name = cfg.CONF.nova.region_name
+        return region_name
+
     def _ensure_network_subnet(self, context, port):
         network_id = port['network_id']
         # get_network will create bottom network if it doesn't exist, also
@@ -202,7 +212,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         self.core_plugin.create_port(q_ctx, dhcp_port_body)
 
     def _ensure_gateway_port(self, t_ctx, t_subnet):
-        region_name = cfg.CONF.nova.region_name
+        region_name = self._get_neutron_region()
         gateway_port_name = t_constants.interface_port_name % (region_name,
                                                                t_subnet['id'])
         gateway_port_body = {
@@ -306,7 +316,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             missing_networks = [network for network in t_networks if (
                 network['id'] in missing_id_set)]
             for network in missing_networks:
-                region_name = cfg.CONF.nova.region_name
+                region_name = self._get_neutron_region()
                 located = self._is_network_located_in_region(network,
                                                              region_name)
                 if not located:
@@ -647,7 +657,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 portbindings.VNIC_TYPE] = q_constants.ATTR_NOT_SPECIFIED
         b_port = self.core_plugin.update_port(context, _id, port)
         if self._need_top_update(b_port, port['port']):
-            region_name = cfg.CONF.nova.region_name
+            region_name = self._get_neutron_region()
             update_dict = {portbindings.PROFILE: {
                 t_constants.PROFILE_REGION: region_name,
                 t_constants.PROFILE_DEVICE: b_port['device_owner']}}

@@ -62,10 +62,18 @@ function init_common_tricircle_conf {
     iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
 }
 
+function init_local_nova_conf {
+    iniset $NOVA_CONF glance api_servers http://$KEYSTONE_SERVICE_HOST:9292
+    iniset $NOVA_CONF placement os_region_name $CENTRAL_REGION_NAME
+}
+
 # common config-file configuration for local Neutron(s)
 function init_local_neutron_conf {
 
     iniset $NEUTRON_CONF DEFAULT core_plugin tricircle.network.local_plugin.TricirclePlugin
+    if [[ "$TRICIRCLE_DEPLOY_WITH_CELL" == "True" ]]; then
+        iniset $NEUTRON_CONF nova region_name $CENTRAL_REGION_NAME
+    fi
 
     iniset $NEUTRON_CONF client auth_url http://$KEYSTONE_SERVICE_HOST/identity
     iniset $NEUTRON_CONF client identity_url http://$KEYSTONE_SERVICE_HOST/identity/v3
@@ -76,6 +84,7 @@ function init_local_neutron_conf {
     iniset $NEUTRON_CONF client top_pod_name $CENTRAL_REGION_NAME
 
     iniset $NEUTRON_CONF tricircle real_core_plugin neutron.plugins.ml2.plugin.Ml2Plugin
+    iniset $NEUTRON_CONF tricircle local_region_name $REGION_NAME
     iniset $NEUTRON_CONF tricircle central_neutron_url http://$KEYSTONE_SERVICE_HOST:$TRICIRCLE_NEUTRON_PORT
 }
 
@@ -211,6 +220,36 @@ function configure_tricircle_xjob {
     fi
 }
 
+function start_central_nova_server {
+    local local_region=$1
+    local central_region=$2
+    local central_neutron_port=$3
+
+    # reconfigure central neutron server to use our own central plugin
+    echo "Configuring Nova API for Tricircle to work with cell V2"
+
+    cp $NOVA_CONF $NOVA_CONF.0
+    iniset $NOVA_CONF.0 neutron region_name $central_region
+    iniset $NOVA_CONF.0 neutron url "$Q_PROTOCOL://$SERVICE_HOST:$central_neutron_port"
+
+    nova_endpoint_id=$(openstack endpoint list --service compute --interface public --region $local_region -c ID -f value)
+    openstack endpoint set --region $central_region $nova_endpoint_id
+    nova_legacy_endpoint_id=$(openstack endpoint list --service compute_legacy --interface public --region $local_region -c ID -f value)
+    openstack endpoint set --region $central_region $nova_legacy_endpoint_id
+    image_endpoint_id=$(openstack endpoint list --service image --interface public --region $local_region -c ID -f value)
+    openstack endpoint set --region $central_region $image_endpoint_id
+    place_endpoint_id=$(openstack endpoint list --service placement --interface public --region $local_region -c ID -f value)
+    openstack endpoint set --region $central_region $place_endpoint_id
+
+    stop_process n-api
+    # remove previous failure flag file since we are going to restart service
+    rm -f "$SERVICE_DIR/$SCREEN_NAME"/n-api.failure
+    sleep 20
+    run_process n-api "$NOVA_BIN_DIR/nova-api --config-file $NOVA_CONF.0"
+
+    restart_apache_server
+}
+
 function start_central_neutron_server {
     local server_index=0
     local region_name=$1
@@ -324,6 +363,11 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
     # update the local neutron.conf after the central Neutron has started
     init_local_neutron_conf
 
+    if [[ "$TRICIRCLE_DEPLOY_WITH_CELL" == "True" ]]; then
+        # update the local nova.conf
+        init_local_nova_conf
+    fi
+
     # add default bridges br-vlan, br-ext if needed, ovs-vsctl
     # is just being installed before this stage
     add_default_bridges
@@ -346,6 +390,10 @@ elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
             start_tricircle_api_wsgi
         else
             run_process t-api "$TRICIRCLE_BIN_DIR/tricircle-api --config-file $TRICIRCLE_API_CONF"
+        fi
+
+        if [[ "$TRICIRCLE_DEPLOY_WITH_CELL" == "True" && "$TRICIRCLE_START_SERVICES" == "True" ]]; then
+            start_central_nova_server $REGION_NAME $CENTRAL_REGION_NAME $TRICIRCLE_NEUTRON_PORT
         fi
     fi
 
