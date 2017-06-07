@@ -219,7 +219,7 @@ class ClientTest(unittest.TestCase):
         resource = self.client.create_resources(FAKE_RESOURCE, self.context,
                                                 'res3')
         # create_resources returns None by default
-        self.assertEqual(resource, None)
+        self.assertIsNone(resource)
 
     def test_resource_not_supported(self):
         # no such resource
