@@ -30,8 +30,10 @@ class ContainedString(object):
 
 
 CONDITIONS = {
-    '1': {'server': [{'Name': 'vm1', 'Status': 'ACTIVE'}],
-          'subnet': [{'Subnet': '100.0.0.0/24'}, {'Subnet': '10.0.1.0/24'}],
+    '1': {'server': [{'Name': 'vm1', 'Status': 'ACTIVE'},
+                     {'Name': 'vm3', 'Status': 'ACTIVE'}],
+          'subnet': [{'Subnet': '100.0.0.0/24'}, {'Subnet': '10.0.1.0/24'},
+                     {'Subnet': '10.0.4.0/24'}],
           'router_port': [{'Fixed IP Addresses': ContainedString('10.0.1')},
                           {'Fixed IP Addresses': ContainedString('100.0.0')}],
           'router': [

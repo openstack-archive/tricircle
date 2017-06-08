@@ -337,15 +337,23 @@ class PluginTest(unittest.TestCase):
         def ip_to_digit(ip):
             return int(ip[ip.rindex('.') + 1:])
 
-        pool_range = list(range(ip_to_digit(t_gateway_ip),
-                                ip_to_digit(pool['end']) + 1))
-        # we include the top gateway ip in the bottom ip allocation pool
-        b_pool_range1 = list(range(ip_to_digit(b_pools[0]['start']),
-                                   ip_to_digit(b_pools[0]['end']) + 1))
-        b_pool_range2 = list(range(ip_to_digit(b_pools[1]['start']),
-                                   ip_to_digit(b_pools[1]['end']) + 1))
-        b_pool_range = b_pool_range1 + [
-            ip_to_digit(b_gateway_ip)] + b_pool_range2
+        if t_gateway_ip:
+            pool_range = list(range(ip_to_digit(t_gateway_ip),
+                                    ip_to_digit(pool['end']) + 1))
+            # we include the top gateway ip in the bottom ip allocation pool
+            b_pool_range1 = list(range(ip_to_digit(b_pools[0]['start']),
+                                       ip_to_digit(b_pools[0]['end']) + 1))
+            b_pool_range2 = list(range(ip_to_digit(b_pools[1]['start']),
+                                       ip_to_digit(b_pools[1]['end']) + 1))
+            b_pool_range = b_pool_range1 + [
+                ip_to_digit(b_gateway_ip)] + b_pool_range2
+        else:
+            self.assertIsNone(t_gateway_ip)
+            self.assertIsNone(b_gateway_ip)
+            pool_range = list(range(ip_to_digit(pool['start']),
+                                    ip_to_digit(pool['end'])))
+            b_pool_range = list(range(ip_to_digit(b_pools[0]['start']),
+                                      ip_to_digit(b_pools[0]['end'])))
         port.pop('name')
         b_port.pop('name')
         self.assertDictEqual(net, b_net)
@@ -374,6 +382,12 @@ class PluginTest(unittest.TestCase):
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
+        self._validate(t_net, t_subnet, t_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_get_network_no_gateway(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        update_resource('subnet', True, t_subnet['id'], {'gateway_ip': None})
         self._validate(t_net, t_subnet, t_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
