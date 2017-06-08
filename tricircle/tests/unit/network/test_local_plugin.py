@@ -33,35 +33,33 @@ from tricircle.common import constants
 import tricircle.common.context as t_context
 from tricircle.network import helper
 import tricircle.network.local_plugin as plugin
+import tricircle.tests.unit.utils as test_utils
 
 
-TOP_NETS = []
-TOP_SUBNETS = []
-TOP_PORTS = []
-TOP_SGS = []
-TOP_TRUNKS = []
-BOTTOM_NETS = []
-BOTTOM_SUBNETS = []
-BOTTOM_PORTS = []
-BOTTOM_SGS = []
-BOTTOM_AGENTS = []
-RES_LIST = [TOP_NETS, TOP_SUBNETS, TOP_PORTS, TOP_SGS, TOP_TRUNKS,
-            BOTTOM_NETS, BOTTOM_SUBNETS, BOTTOM_PORTS, BOTTOM_SGS,
-            BOTTOM_AGENTS]
-RES_MAP = {'network': {True: TOP_NETS, False: BOTTOM_NETS},
-           'subnet': {True: TOP_SUBNETS, False: BOTTOM_SUBNETS},
-           'port': {True: TOP_PORTS, False: BOTTOM_PORTS},
-           'security_group': {True: TOP_SGS, False: BOTTOM_SGS},
-           'agent': {True: [], False: BOTTOM_AGENTS},
-           'trunk': {True: TOP_TRUNKS, False: []}}
+_resource_store = test_utils.get_resource_store()
+TOP_NETS = _resource_store.TOP_NETWORKS
+TOP_SUBNETS = _resource_store.TOP_SUBNETS
+TOP_PORTS = _resource_store.TOP_PORTS
+TOP_SGS = _resource_store.TOP_SECURITYGROUPS
+TOP_TRUNKS = _resource_store.TOP_TRUNKS
+BOTTOM_NETS = _resource_store.BOTTOM1_NETWORKS
+BOTTOM_SUBNETS = _resource_store.BOTTOM1_SUBNETS
+BOTTOM_PORTS = _resource_store.BOTTOM1_PORTS
+BOTTOM_SGS = _resource_store.BOTTOM1_SECURITYGROUPS
+BOTTOM_AGENTS = _resource_store.BOTTOM1_AGENTS
+
+
+def get_resource_list(_type, is_top):
+    pod = 'top' if is_top else 'pod_1'
+    return _resource_store.pod_store_map[pod][_type]
 
 
 def create_resource(_type, is_top, body):
-    RES_MAP[_type][is_top].append(body)
+    get_resource_list(_type, is_top).append(body)
 
 
 def update_resource(_type, is_top, resource_id, body):
-    for resource in RES_MAP[_type][is_top]:
+    for resource in get_resource_list(_type, is_top):
         if resource['id'] == resource_id:
             resource.update(body)
             return copy.deepcopy(resource)
@@ -69,17 +67,19 @@ def update_resource(_type, is_top, resource_id, body):
 
 
 def get_resource(_type, is_top, resource_id):
-    for resource in RES_MAP[_type][is_top]:
+    for resource in get_resource_list(_type, is_top):
         if resource['id'] == resource_id:
             return copy.deepcopy(resource)
     raise q_exceptions.NotFound()
 
 
 def list_resource(_type, is_top, filters=None):
+    resource_list = get_resource_list(_type, is_top)
     if not filters:
-        return [copy.deepcopy(resource) for resource in RES_MAP[_type][is_top]]
+        return [copy.deepcopy(resource) for resource in get_resource_list(
+            _type, is_top)]
     ret = []
-    for resource in RES_MAP[_type][is_top]:
+    for resource in resource_list:
         pick = True
         for key, value in six.iteritems(filters):
             if resource.get(key) not in value:
@@ -88,10 +88,6 @@ def list_resource(_type, is_top, filters=None):
         if pick:
             ret.append(copy.deepcopy(resource))
     return ret
-
-
-def delete_resource(_type, is_top, body):
-    RES_MAP[_type][is_top].append(body)
 
 
 class FakeCorePlugin(object):
@@ -147,21 +143,9 @@ class FakeCorePlugin(object):
         pass
 
 
-class FakeSession(object):
-    class WithWrapper(object):
-        def __enter__(self):
-            pass
-
-        def __exit__(self, type, value, traceback):
-            pass
-
-    def begin(self, subtransactions=True):
-        return FakeSession.WithWrapper()
-
-
 class FakeContext(object):
     def __init__(self):
-        self.session = FakeSession()
+        self.session = test_utils.FakeSession()
         self.auth_token = 'token'
         self.project_id = ''
         self.request_id = 'req-' + uuidutils.generate_uuid()
@@ -694,5 +678,4 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(b_port['device_owner'], 'network:dhcp')
 
     def tearDown(self):
-        for res in RES_LIST:
-            del res[:]
+        test_utils.get_resource_store().clean()

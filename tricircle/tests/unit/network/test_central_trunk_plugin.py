@@ -14,22 +14,16 @@
 #    under the License.
 
 
-import copy
 from mock import patch
 import six
 import unittest
 
 from six.moves import xrange
-from sqlalchemy.orm import attributes
-from sqlalchemy.orm import exc
-from sqlalchemy.sql import elements
-from sqlalchemy.sql import expression
 
 import neutron.conf.common as q_config
 from neutron.db import db_base_plugin_v2
 from neutron.plugins.common import utils
 from neutron_lib.api.definitions import portbindings
-import neutron_lib.context as q_context
 from neutron_lib.plugins import directory
 
 from oslo_config import cfg
@@ -44,47 +38,21 @@ from tricircle.db import models
 from tricircle.network import central_plugin
 import tricircle.network.central_trunk_plugin as trunk_plugin
 from tricircle.network import helper
+import tricircle.tests.unit.utils as test_utils
 from tricircle.xjob import xmanager
 
 
-TOP_TRUNKS = []
-TOP_SUBPORTS = []
-TOP_PORTS = []
-BOTTOM1_TRUNKS = []
-BOTTOM2_TRUNKS = []
-BOTTOM1_SUBPORTS = []
-BOTTOM2_SUBPORTS = []
-BOTTOM1_PORTS = []
-BOTTOM2_PORTS = []
-RES_LIST = [TOP_TRUNKS, TOP_SUBPORTS, TOP_PORTS,
-            BOTTOM1_TRUNKS, BOTTOM2_TRUNKS, BOTTOM1_PORTS, BOTTOM2_PORTS,
-            BOTTOM1_SUBPORTS, BOTTOM2_SUBPORTS]
-RES_MAP = {'trunks': TOP_TRUNKS, 'subports': TOP_SUBPORTS, 'ports': TOP_PORTS}
-TEST_TENANT_ID = 'test_tenant_id'
-
-
-class DotDict(dict):
-    def __init__(self, normal_dict=None):
-        if normal_dict:
-            for key, value in six.iteritems(normal_dict):
-                self[key] = value
-
-    def __getattr__(self, item):
-        return self.get(item)
-
-    def __copy__(self):
-        return DotDict(self)
-
-    def bump_revision(self):
-        pass
-
-    def save(self, session=None):
-        pass
-
-
-class DotList(list):
-    def all(self):
-        return self
+_resource_store = test_utils.get_resource_store()
+TOP_TRUNKS = _resource_store.TOP_TRUNKS
+TOP_SUBPORTS = _resource_store.TOP_SUBPORTS
+TOP_PORTS = _resource_store.TOP_PORTS
+BOTTOM1_TRUNKS = _resource_store.BOTTOM1_TRUNKS
+BOTTOM2_TRUNKS = _resource_store.BOTTOM2_TRUNKS
+BOTTOM1_SUBPORTS = _resource_store.BOTTOM1_SUBPORTS
+BOTTOM2_SUBPORTS = _resource_store.BOTTOM2_SUBPORTS
+BOTTOM1_PORTS = _resource_store.BOTTOM1_PORTS
+BOTTOM2_PORTS = _resource_store.BOTTOM2_PORTS
+TEST_TENANT_ID = test_utils.TEST_TENANT_ID
 
 
 class FakeBaseXManager(xmanager.XManager):
@@ -120,155 +88,27 @@ class FakeRPCAPI(FakeBaseRPCAPI):
         self.xmanager = FakeXManager(fake_plugin)
 
 
-class FakeNeutronClient(object):
-
-    _res_map = {'top': {'trunk': TOP_TRUNKS},
-                'pod_1': {'trunk': BOTTOM1_TRUNKS},
-                'pod_2': {'trunk': BOTTOM2_TRUNKS}}
-
-    def __init__(self, region_name):
-        self.region_name = region_name
-        self.trunks_path = ''
-
-    def _get(self, params=None):
-        trunk_list = self._res_map[self.region_name]['trunk']
-        return_list = []
-
-        if not params:
-            return {'trunks': trunk_list}
-
-        params_copy = copy.deepcopy(params)
-        limit = params_copy.pop('limit', None)
-        marker = params_copy.pop('marker', None)
-
-        if params_copy:
-            for trunk in trunk_list:
-                is_selected = True
-                for key, value in six.iteritems(params_copy):
-                    if (key not in trunk
-                        or not trunk[key]
-                            or trunk[key] not in value):
-                        is_selected = False
-                        break
-                if is_selected:
-                    return_list.append(trunk)
-        else:
-            return_list = trunk_list
-
-        if marker:
-            sorted_list = sorted(return_list, key=lambda x: x['id'])
-            for i, trunk in enumerate(sorted_list):
-                if trunk['id'] == marker:
-                    return_list = sorted_list[i + 1:]
-
-        if limit:
-            sorted_list = sorted(return_list, key=lambda x: x['id'])
-            if limit > len(sorted_list):
-                last_index = len(sorted_list)
-            else:
-                last_index = limit
-            return_list = sorted_list[0: last_index]
-
-        return {'trunks': return_list}
-
-    def get(self, path, params=None):
-        if self.region_name in ['pod_1', 'pod_2', 'top']:
-            res_list = self._get(params)['trunks']
-            return_list = []
-            for res in res_list:
-                if self.region_name != 'top':
-                    res = copy.copy(res)
-                return_list.append(res)
-            return {'trunks': return_list}
-        else:
-            raise Exception()
+class FakeNeutronClient(test_utils.FakeNeutronClient):
+    _resource = 'trunk'
+    trunks_path = ''
 
 
-class FakeClient(object):
-
-    _res_map = {'top': RES_MAP,
-                'pod_1': {'trunk': BOTTOM1_TRUNKS, 'port': BOTTOM1_PORTS},
-                'pod_2': {'trunk': BOTTOM2_TRUNKS}}
-
+class FakeClient(test_utils.FakeClient):
     def __init__(self, region_name=None):
-        if not region_name:
-            self.region_name = 'top'
-        else:
-            self.region_name = region_name
+        super(FakeClient, self).__init__(region_name)
         self.client = FakeNeutronClient(self.region_name)
 
     def get_native_client(self, resource, ctx):
         return self.client
 
-    def create_resources(self, _type, ctx, body):
-        res_list = self._res_map[self.region_name][_type]
-        res = dict(body[_type])
-        res_list.append(res)
-        return res
-
-    def list_resources(self, _type, ctx, filters=None):
-        if self.region_name == 'top':
-            res_list = self._res_map[self.region_name][_type + 's']
-        else:
-            res_list = self._res_map[self.region_name][_type]
-        ret_list = []
-        for res in res_list:
-            is_selected = True
-            for _filter in filters:
-                if _filter['key'] not in res:
-                    is_selected = False
-                    break
-                if _filter['value'] != res[_filter['key']]:
-                    is_selected = False
-                    break
-            if is_selected:
-                ret_list.append(res)
-        return ret_list
-
-    def delete_resources(self, _type, ctx, _id):
-        index = -1
-        if self.region_name == 'top':
-            res_list = self._res_map[self.region_name][_type + 's']
-        else:
-            res_list = self._res_map[self.region_name][_type]
-        for i, res in enumerate(res_list):
-            if res['id'] == _id:
-                index = i
-        if index != -1:
-            del res_list[index]
-
     def get_trunks(self, ctx, trunk_id):
-        res = self.list_resources('trunk', ctx,
-                                  [{'key': 'id',
-                                    'comparator': 'eq',
-                                    'value': trunk_id}])
-        if res:
-            return res[0]
-        return res
+        return self.get_resource(constants.RT_TRUNK, ctx, trunk_id)
 
     def update_trunks(self, context, trunk_id, trunk):
-        trunk_data = trunk[constants.RT_TRUNK]
-        if self.region_name == 'pod_1':
-            btm_trunks = BOTTOM1_TRUNKS
-        else:
-            btm_trunks = BOTTOM2_TRUNKS
-
-        for trunk in btm_trunks:
-            if trunk['id'] == trunk_id:
-                for key in trunk_data:
-                    trunk[key] = trunk_data[key]
-                return
+        self.update_resources(constants.RT_TRUNK, context, trunk_id, trunk)
 
     def delete_trunks(self, context, trunk_id):
-        if self.region_name == 'pod_1':
-            btm_trunks = BOTTOM1_TRUNKS
-        else:
-            btm_trunks = BOTTOM2_TRUNKS
-
-        for trunk in btm_trunks:
-            if trunk['id'] == trunk_id:
-                btm_trunks.remove(trunk)
-                return
+        self.delete_resources(constants.RT_TRUNK, context, trunk_id)
 
     def action_trunks(self, ctx, action, resource_id, body):
         if self.region_name == 'pod_1':
@@ -327,211 +167,20 @@ class FakeClient(object):
         return self.create_resources('port', ctx, body)
 
 
-class FakeNeutronContext(q_context.Context):
-    def __init__(self):
-        self._session = None
-        self.is_admin = True
-        self.is_advsvc = False
-        self.tenant_id = TEST_TENANT_ID
-
-    @property
-    def session(self):
-        if not self._session:
-            self._session = FakeSession()
-        return self._session
-
-    def elevated(self):
-        return self
+class FakeNeutronContext(test_utils.FakeNeutronContext):
+    def session_class(self):
+        return FakeSession
 
 
-def delete_model(res_list, model_obj, key=None):
-    if not res_list:
-        return
-    if not key:
-        key = 'id'
-    if key not in res_list[0]:
-        return
-    index = -1
-    for i, res in enumerate(res_list):
-        if res[key] == model_obj[key]:
-            index = i
-            break
-    if index != -1:
-        del res_list[index]
-        return
-
-
-class FakeQuery(object):
-    def __init__(self, records, table):
-        self.records = records
-        self.table = table
-        self.index = 0
-
-    def _handle_pagination_by_id(self, record_id):
-        for i, record in enumerate(self.records):
-            if record['id'] == record_id:
-                if i + 1 < len(self.records):
-                    return FakeQuery(self.records[i + 1:], self.table)
-                else:
-                    return FakeQuery([], self.table)
-        return FakeQuery([], self.table)
-
-    def _handle_filter(self, keys, values):
-        filtered_list = []
-        for record in self.records:
-            selected = True
-            for i, key in enumerate(keys):
-                if key not in record or record[key] != values[i]:
-                    selected = False
-                    break
-            if selected:
-                filtered_list.append(record)
-        return FakeQuery(filtered_list, self.table)
-
-    def filter(self, *criteria):
-        _filter = []
-        keys = []
-        values = []
-        for e in criteria:
-            if isinstance(e, expression.BooleanClauseList):
-                e = e.clauses[0]
-            if not hasattr(e, 'right') and isinstance(e, elements.False_):
-                # filter is a single False value, set key to a 'INVALID_FIELD'
-                # then no records will be returned
-                keys.append('INVALID_FIELD')
-                values.append(False)
-            elif hasattr(e, 'right') and not isinstance(e.right,
-                                                        elements.Null):
-                _filter.append(e)
-        if not _filter:
-            if not keys:
-                return FakeQuery(self.records, self.table)
-            else:
-                return self._handle_filter(keys, values)
-        if hasattr(_filter[0].right, 'value'):
-            keys.extend([f.left.name for f in _filter])
-            values.extend([f.right.value for f in _filter])
-        else:
-            keys.extend([f.expression.left.name for f in _filter])
-            values.extend(
-                [f.expression.right.element.clauses[0].value for f in _filter])
-        if _filter[0].expression.operator.__name__ == 'lt':
-            return self._handle_pagination_by_id(values[0])
-        else:
-            return self._handle_filter(keys, values)
-
-    def filter_by(self, **kwargs):
-        filtered_list = []
-        for record in self.records:
-            selected = True
-            for key, value in six.iteritems(kwargs):
-                if key not in record or record[key] != value:
-                    selected = False
-                    break
-            if selected:
-                filtered_list.append(record)
-        return FakeQuery(filtered_list, self.table)
-
-    def delete(self, synchronize_session=False):
-        for model_obj in self.records:
-            delete_model(RES_MAP[self.table], model_obj)
-
-    def order_by(self, func):
-        self.records.sort(key=lambda x: x['id'])
-        return FakeQuery(self.records, self.table)
-
-    def enable_eagerloads(self, value):
-        return FakeQuery(self.records, self.table)
-
-    def limit(self, limit):
-        return FakeQuery(self.records[:limit], self.table)
-
-    def next(self):
-        if self.index >= len(self.records):
-            raise StopIteration
-        self.index += 1
-        return self.records[self.index - 1]
-
-    __next__ = next
-
-    def one(self):
-        if len(self.records) == 0:
-            raise exc.NoResultFound()
-        return self.records[0]
-
-    def first(self):
-        if len(self.records) == 0:
-            return None
-        else:
-            return self.records[0]
-
-    def update(self, values):
-        for record in self.records:
-            for key, value in six.iteritems(values):
-                record[key] = value
-        return len(self.records)
-
-    def all(self):
-        return self.records
-
-    def count(self):
-        return len(self.records)
-
-    def __iter__(self):
-        return self
-
-
-class FakeSession(object):
-    class WithWrapper(object):
-        def __enter__(self):
-            pass
-
-        def __exit__(self, type, value, traceback):
-            pass
-
-    def __init__(self):
-        self.info = {}
-
-    def __getattr__(self, field):
-        def dummy_method(*args, **kwargs):
-            pass
-
-        return dummy_method
-
-    @property
-    def is_active(self):
-        return True
-
-    def begin(self, subtransactions=False, nested=True):
-        return FakeSession.WithWrapper()
-
-    def begin_nested(self):
-        return FakeSession.WithWrapper()
-
-    def query(self, model):
-        if isinstance(model, attributes.InstrumentedAttribute):
-            model = model.class_
-        if model.__tablename__ not in RES_MAP:
-            return FakeQuery([], model.__tablename__)
-        return FakeQuery(RES_MAP[model.__tablename__],
-                         model.__tablename__)
-
-    def add(self, model_obj):
-        if model_obj.__tablename__ not in RES_MAP:
-            return
-        model_dict = DotDict(model_obj._as_dict())
-        if 'project_id' in model_dict:
-            model_dict['tenant_id'] = model_dict['project_id']
-
+class FakeSession(test_utils.FakeSession):
+    def add_hook(self, model_obj, model_dict):
         if model_obj.__tablename__ == 'subports':
             for top_trunk in TOP_TRUNKS:
                 if top_trunk['id'] == model_dict['trunk_id']:
                     top_trunk['sub_ports'].append(model_dict)
 
-        RES_MAP[model_obj.__tablename__].append(model_dict)
-
     def delete_top_subport(self, port_id):
-        for res_list in RES_MAP.values():
+        for res_list in self.resource_store.store_map.values():
             for res in res_list:
                 sub_ports = res.get('sub_ports')
                 if sub_ports:
@@ -539,13 +188,10 @@ class FakeSession(object):
                         if sub_port['port_id'] == port_id:
                             sub_ports.remove(sub_port)
 
-    def delete(self, model_obj):
-        key = None
+    def delete_hook(self, model_obj):
         if model_obj.get('segmentation_type'):
-            key = 'port_id'
             self.delete_top_subport(model_obj['port_id'])
-        for res_list in RES_MAP.values():
-            delete_model(res_list, model_obj, key)
+            return 'port_id'
 
 
 class FakePlugin(trunk_plugin.TricircleTrunkPlugin):
@@ -641,7 +287,7 @@ class PluginTest(unittest.TestCase):
             'network_id': t_net_id,
             'fixed_ips': [{'subnet_id': t_subnet_id}]
         }
-        TOP_PORTS.append(DotDict(t_port))
+        TOP_PORTS.append(test_utils.DotDict(t_port))
 
         if create_bottom:
             b_port = {
@@ -665,9 +311,9 @@ class PluginTest(unittest.TestCase):
                 'fixed_ips': [{'subnet_id': t_subnet_id}]
             }
             if pod_name == 'pod_1':
-                BOTTOM1_PORTS.append(DotDict(b_port))
+                BOTTOM1_PORTS.append(test_utils.DotDict(b_port))
             else:
-                BOTTOM2_PORTS.append(DotDict(b_port))
+                BOTTOM2_PORTS.append(test_utils.DotDict(b_port))
 
             pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
             core.create_resource(ctx, models.ResourceRouting,
@@ -704,8 +350,8 @@ class PluginTest(unittest.TestCase):
             'project_id': project_id,
             'sub_ports': [t_subport]
         }
-        TOP_TRUNKS.append(DotDict(t_trunk))
-        TOP_SUBPORTS.append(DotDict(t_subport))
+        TOP_TRUNKS.append(test_utils.DotDict(t_trunk))
+        TOP_SUBPORTS.append(test_utils.DotDict(t_subport))
 
         b_trunk = None
         if is_create_bottom:
@@ -728,11 +374,11 @@ class PluginTest(unittest.TestCase):
             }
 
             if pod_name == 'pod_1':
-                BOTTOM1_SUBPORTS.append(DotDict(t_subport))
-                BOTTOM1_TRUNKS.append(DotDict(b_trunk))
+                BOTTOM1_SUBPORTS.append(test_utils.DotDict(t_subport))
+                BOTTOM1_TRUNKS.append(test_utils.DotDict(b_trunk))
             else:
-                BOTTOM2_SUBPORTS.append(DotDict(t_subport))
-                BOTTOM2_TRUNKS.append(DotDict(b_trunk))
+                BOTTOM2_SUBPORTS.append(test_utils.DotDict(t_subport))
+                BOTTOM2_TRUNKS.append(test_utils.DotDict(b_trunk))
 
             pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
             core.create_resource(ctx, models.ResourceRouting,
@@ -1028,7 +674,6 @@ class PluginTest(unittest.TestCase):
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
-        for res in RES_LIST:
-            del res[:]
+        test_utils.get_resource_store().clean()
         cfg.CONF.unregister_opts(q_config.core_opts)
         xmanager.IN_TEST = False

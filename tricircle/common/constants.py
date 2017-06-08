@@ -31,6 +31,7 @@ RT_SD_PORT = 'shadow_port'
 RT_ROUTER = 'router'
 RT_NS_ROUTER = 'ns_router'
 RT_SG = 'security_group'
+RT_FIP = 'floatingip'
 
 REAL_SHADOW_TYPE_MAP = {
     RT_NETWORK: RT_SD_NETWORK,
