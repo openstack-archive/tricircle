@@ -250,7 +250,7 @@ class AsyncJobController(rest.RestController):
         """Return a dictionary of query param filters from the request.
 
         :param params: the URI params coming from the wsgi layer
-        :return (flag, filters), flag indicates whether the filters are valid,
+        :return: (flag, filters), flag indicates whether the filters are valid,
         and the filters denote a list of key-value pairs.
         """
         filters = {}
