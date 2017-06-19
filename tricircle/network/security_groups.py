@@ -42,7 +42,7 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
     def _compare_rule(rule1, rule2):
         for key in ('direction', 'remote_ip_prefix', 'protocol', 'ethertype',
                     'port_range_max', 'port_range_min'):
-            if rule1[key] != rule2[key]:
+            if rule1[key] != rule2[key] and str(rule1[key]) != str(rule2[key]):
                 return False
         return True
 

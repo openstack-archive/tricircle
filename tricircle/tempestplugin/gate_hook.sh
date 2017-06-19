@@ -30,7 +30,7 @@ function _setup_tricircle_multinode {
     SUBNODE_IP=$(head -n1 /etc/nodepool/sub_nodes_private)
 
     export OVERRIDE_ENABLED_SERVICES="c-api,c-bak,c-sch,c-vol,cinder,"
-    export OVERRIDE_ENABLED_SERVICES+="g-api,g-reg,horizon,key,"
+    export OVERRIDE_ENABLED_SERVICES+="g-api,g-reg,key,"
     export OVERRIDE_ENABLED_SERVICES+="n-api,n-cauth,n-cond,n-cpu,n-crt,"
     export OVERRIDE_ENABLED_SERVICES+="n-novnc,n-obj,n-sch,"
     export OVERRIDE_ENABLED_SERVICES+="placement-api,placement-client,"

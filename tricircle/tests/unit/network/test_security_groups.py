@@ -28,6 +28,7 @@ class TricircleSecurityGroupTestMixin(object):
         return {'security_group_id': sg_id,
                 'id': _id,
                 'tenant_id': project_id,
+                'project_id': project_id,
                 'remote_group_id': remote_group,
                 'direction': 'ingress',
                 'remote_ip_prefix': ip_prefix,
