@@ -17,6 +17,7 @@ import six
 
 import pecan
 
+from oslo_config import cfg
 from oslo_utils import uuidutils
 
 from tricircle.common import constants as cons
@@ -165,3 +166,18 @@ def format_nova_error(code, message, error_type=None):
 
 def format_cinder_error(code, message, error_type=None):
     return format_error(code, message, error_type)
+
+
+def get_pagination_limit(_limit):
+    """Return page size limitation.
+
+    :param _limit: page size from the client.
+    :return limit: limit sets the page size. If the client requests a limit
+    beyond the maximum limit in configuration or sets invalid value,
+    then the maximum limit will be used. If client doesn't set page limit,
+    maximum pagination limit will be used to control the page size.
+    """
+    max_limit = cfg.CONF.pagination_max_limit
+    limit = min(_limit, max_limit) if _limit > 0 else max_limit
+
+    return limit

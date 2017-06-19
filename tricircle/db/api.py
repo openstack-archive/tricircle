@@ -112,9 +112,24 @@ def create_resource_mapping(context, top_id, bottom_id, pod_id, project_id,
         context.session.close()
 
 
-def list_resource_routings(context, filters=None, sorts=None):
+def list_resource_routings(context, filters=None, limit=None, marker=None,
+                           sorts=None):
+    """Return a list of limited number of resource routings
+
+    :param context:
+    :param filters: list of filter dict with key 'key', 'comparator', 'value'
+    :param limit: an integer that limits the maximum number of items
+                  returned in a single response
+    :param marker: id of the last item in the previous list
+    :param sorts: a list of (sort_key, sort_dir) pair,
+                  for example, [('id', 'desc')]
+    :return: a list of limited number of items
+    """
     with context.session.begin():
-        return core.query_resource(context, models.ResourceRouting,
+        return core.paginate_query(context, models.ResourceRouting,
+                                   limit,
+                                   models.ResourceRouting(
+                                       id=marker) if marker else None,
                                    filters or [], sorts or [])
 
 

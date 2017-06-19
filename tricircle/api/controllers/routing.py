@@ -13,7 +13,6 @@
 import pecan
 from pecan import expose
 from pecan import rest
-import six
 
 from oslo_log import log as logging
 
@@ -115,21 +114,86 @@ class RoutingController(rest.RestController):
             return utils.format_api_error(
                 403, _('Unauthorized to show all resource routings'))
 
-        is_valid_filter, filters = self._get_filters(kwargs)
-
-        if not is_valid_filter:
-            msg = (_('Unsupported filter type: %(filters)s') % {
-                'filters': ', '.join([filter_name for filter_name in filters])
-            })
-            return utils.format_api_error(400, msg)
-
-        filters = [{'key': key,
-                    'comparator': 'eq',
-                    'value': value} for key, value in six.iteritems(filters)]
+        # default value -1 means no pagination, then maximum pagination
+        # limit from configuration will be used.
+        _limit = kwargs.pop('limit', -1)
 
         try:
-            return {'routings': db_api.list_resource_routings(context,
-                                                              filters)}
+            limit = int(_limit)
+            limit = utils.get_pagination_limit(limit)
+        except ValueError as e:
+            LOG.exception('Failed to convert pagination limit to an integer: '
+                          '%(exception)s ', {'exception': e})
+            msg = (_("Limit should be an integer or a valid literal "
+                     "for int() rather than '%s'") % _limit)
+            return utils.format_api_error(400, msg)
+
+        marker = kwargs.pop('marker', None)
+        if marker is not None:
+            try:
+                marker = int(marker)
+                try:
+                    # we throw an exception if a marker with
+                    # invalid ID is specified.
+                    db_api.get_resource_routing(context, marker)
+                except t_exceptions.ResourceNotFound:
+                    return utils.format_api_error(
+                        400, _('Marker %s is an invalid ID') % marker)
+            except ValueError as e:
+                LOG.exception('Failed to convert page marker to an integer: '
+                              '%(exception)s ', {'exception': e})
+                msg = (_("Marker should be an integer or a valid literal "
+                         "for int() rather than '%s'") % marker)
+                return utils.format_api_error(400, msg)
+
+        if kwargs:
+            is_valid_filter, filters = self._get_filters(kwargs)
+
+            if not is_valid_filter:
+                msg = (_('Unsupported filter type: %(filters)s') % {
+                    'filters': ', '.join(
+                        [filter_name for filter_name in filters])
+                })
+                return utils.format_api_error(400, msg)
+
+            if 'id' in filters:
+                try:
+                    # resource routing id is an integer.
+                    filters['id'] = int(filters['id'])
+                except ValueError as e:
+                    LOG.exception('Failed to convert routing id to an integer:'
+                                  ' %(exception)s ', {'exception': e})
+                    msg = (_("Id should be an integer or a valid literal "
+                             "for int() rather than '%s'") % filters['id'])
+                    return utils.format_api_error(400, msg)
+
+            expand_filters = [{'key': filter_name, 'comparator': 'eq',
+                               'value': filters[filter_name]}
+                              for filter_name in filters]
+        else:
+            expand_filters = None
+
+        try:
+            routings = db_api.list_resource_routings(context, expand_filters,
+                                                     limit, marker,
+                                                     sorts=[('id', 'desc')])
+            links = []
+            if len(routings) >= limit:
+                marker = routings[-1]['id']
+                # if we reach the first element, then no elements in next page,
+                # so link to next page won't be provided.
+                if marker != 1:
+                    base = constants.ROUTING_PATH
+                    link = "%s?limit=%s&marker=%s" % (base, limit, marker)
+
+                    links.append({"rel": "next",
+                                  "href": link})
+
+            result = {}
+            result["routings"] = routings
+            if links:
+                result["routings_links"] = links
+            return result
         except Exception as e:
             LOG.exception('Failed to show all resource routings: '
                           '%(exception)s ', {'exception': e})

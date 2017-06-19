@@ -189,3 +189,6 @@ job_primary_resource_map = {
     JT_SFC_SYNC: (RT_PORT_CHAIN, "portchain_id"),
     JT_RESOURCE_RECYCLE: (None, "project_id")
 }
+
+# resource routing request path
+ROUTING_PATH = '/v1.0/routings'

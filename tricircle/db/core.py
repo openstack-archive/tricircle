@@ -13,21 +13,22 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-import threading
-
 import sqlalchemy as sql
 from sqlalchemy.ext import declarative
 from sqlalchemy.inspection import inspect
-
+import threading
 
 from oslo_config import cfg
 import oslo_db.options as db_options
 import oslo_db.sqlalchemy.session as db_session
+from oslo_db.sqlalchemy import utils as sa_utils
+from oslo_log import log as logging
 from oslo_utils import strutils
 
 from tricircle.common import exceptions
 
+
+LOG = logging.getLogger(__name__)
 
 db_opts = [
     cfg.StrOpt('tricircle_db_connection',
@@ -85,6 +86,36 @@ def _get_resource(context, model, pk_value):
     if not res_obj:
         raise exceptions.ResourceNotFound(model, pk_value)
     return res_obj
+
+
+def paginate_query(context, model, limit, marker_obj, filters, sorts):
+    """Returns a query with sorting / pagination / filtering criteria added.
+
+    :param context:
+    :param model:
+    :param limit: the maximum number of items returned in a single page
+    :param marker_obj: data model instance that has the same fields as
+                       keys in sorts. All its value(s) are from the last item
+                       of the previous page; we returns the next
+                       results after this item.
+    :param filters: list of filter dict with key 'key', 'comparator', 'value'
+    :param sorts: a list of (sort_key, sort_dir) pair,
+                  for example, [('id', 'desc')]
+    :return: the query with sorting/pagination/filtering added
+    """
+    query = context.session.query(model)
+    query = _filter_query(model, query, filters)
+
+    sort_keys = []
+    sort_dirs = []
+    for sort_key, sort_dir in sorts:
+        sort_keys.append(sort_key)
+        sort_dirs.append(sort_dir)
+
+    query = sa_utils.paginate_query(query, model, limit, marker=marker_obj,
+                                    sort_keys=sort_keys, sort_dirs=sort_dirs)
+
+    return [obj.to_dict() for obj in query]
 
 
 def create_resource(context, model, res_dict):
