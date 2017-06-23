@@ -6,14 +6,14 @@ Background
 ==========
 
 One of the key value we would like to achieve via the Tricircle project is to
-provide networking automation functionality across several OpenStack instances.
+provide networking automation functionality across several Neutron servers.
 Each OpenStack instance runs its own Nova and Neutron services but shares the
 same Keystone service or uses federated Keystone, which is a multi-region
 deployment mode. With networking automation, virtual machines or bare metals
 booted in different OpenStack instances can inter-communicate via layer2 or
 layer3 network.
 
-Considering the cross OpenStack layer2 network case, if Neutron service in each
+Considering the cross Neutron layer2 network case, if Neutron service in each
 OpenStack instance allocates ip address independently, the same ip address
 could be assigned to virtual machines in different OpenStack instances, thus ip
 address conflict could occur. One straightforward solution to this problem is
@@ -45,7 +45,7 @@ Local Plugin
 For connecting central and local Neutron servers, Neutron plugin is again a
 good place for us to build the bridge. We can write our own plugin, the
 Tricircle local Neutron plugin(abbr: "local plugin") to trigger the cross
-OpenStack networking automation in local Neutron server. During virtual machine
+Neutron networking automation in local Neutron server. During virtual machine
 booting, local Nova server will interact with local Neutron server to query
 network or create port, which will trigger local plugin to retrieve data from
 central Neutron server and create necessary network resources according to the
@@ -112,7 +112,7 @@ Neutron server with region name in the request body. In Keystone, we register
 services inside one OpenStack instance as one unique region, so we can use
 region name to identify one OpenStack instance. After receiving the request,
 central Neutron server is informed that one virtual machine port is correctly
-setup in one OpenStack instance, so it starts the cross OpenStack networking
+setup in one OpenStack instance, so it starts the cross Neutron networking
 automation process, like security group rule population, tunnel setup for
 layer2 communication and route setup for layer3 communication, which are done
 by making Neutron API call to each local Neutron server.
@@ -179,7 +179,7 @@ one dhcp agent is scheduled, it will use this port other than create a new one.
 Gateway Port Handle
 -------------------
 
-If cross OpenStack layer2 networking is enabled in one network, we need to
+If cross Neutron layer2 networking is enabled in one network, we need to
 allocate one gateway ip for that network in each OpenStack instance. The reason
 is that we want layer3 routing to be finished locally in each OpenStack
 instance. If all the OpenStack instances have the same gateway ip, packets sent

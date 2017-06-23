@@ -11,12 +11,12 @@ server, only one pod(one pod means one OpenStack instance) is running. Network
 is created with the default network type: local. Local type network will be only
 presented in one pod. If a local type network is already hosting virtual machines
 in one pod, you can not use it to boot virtual machine in another pod. That is
-to say, local type network doesn't support cross-pod l2 networking.
+to say, local type network doesn't support cross-Neutron l2 networking.
 
-With multi-pod installation of the Tricircle, you can try out cross-pod l2
-networking and cross-pod l3 networking features.
+With multi-pod installation of the Tricircle, you can try out cross-Neutron l2
+networking and cross-Neutron l3 networking features.
 
-To support cross-pod l2 networking, we have added both VLAN and VxLAN
+To support cross-Neutron l2 networking, we have added both VLAN and VxLAN
 network type to the Tricircle. When a VLAN type network created via the
 central Neutron server is used to boot virtual machines in different pods, local
 Neutron server in each pod will create a VLAN type network with the same VLAN
@@ -28,16 +28,16 @@ configured with the same VxLAN allocation pool, so local Neutron server in each
 pod can create a VxLAN type network with the same VxLAN ID as is allocated by
 the central Neutron server.
 
-Cross-pod l3 networking is supported in two ways in the Tricircle. If two
+Cross-Neutron l3 networking is supported in two ways in the Tricircle. If two
 networks connected to the router are of local type, we utilize a shared
-VLAN or VxLAN network to achieve cross-pod l3 networking. When a subnet is
+VLAN or VxLAN network to achieve cross-Neutron l3 networking. When a subnet is
 attached to a router via the central Neutron server, the Tricircle not only
 creates corresponding subnet and router in the pod, but also creates a "bridge"
 network. Both tenant network and "bridge" network are attached to the router.
 Each tenant will have one allocated VLAN or VxLAN ID, which is shared by the
-tenant's "bridge" networks across pods. The CIDRs of "bridge" networks for one
+tenant's "bridge" networks across Neutron servers. The CIDRs of "bridge" networks for one
 tenant are also the same, so the router interfaces in "bridge" networks across
-different pods can communicate with each other. By adding an extra route as
+different Neutron servers can communicate with each other. By adding an extra route as
 following::
 
   destination: CIDR of tenant network in another pod
@@ -51,7 +51,7 @@ attaches a subnet to a router via the central Neutron server and the job is
 finished asynchronously.
 
 If one of the network connected to the router is not local type, meaning that
-cross-pod l2 networking is supported in this network(like VLAN type), and
+cross-Neutron l2 networking is supported in this network(like VLAN type), and
 the l2 network can be stretched into current pod, packets sent to the virtual
 machine in this network will not pass through the "bridge" network. Instead,
 packets first go to router, then are directly forwarded to the target virtual
@@ -83,7 +83,7 @@ for installing DevStack in bare metal server and
 `All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_
 for installing DevStack in virtual machine.
 
-If you want to experience cross OpenStack VxLAN network, please make sure
+If you want to experience cross Neutron VxLAN network, please make sure
 compute nodes are routable to each other on data plane, and enable L2
 population mechanism driver in OpenStack RegionOne and OpenStack RegionTwo.
 

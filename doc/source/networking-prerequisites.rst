@@ -104,7 +104,7 @@ instance in another region to this network. The local network could be VLAN
 or VxLAN or GRE network by default, it's up to your local Neutron's
 configuration.
 
-If you want to create a L2 network across multiple Neutron, then you
+If you want to create a L2 network across multiple Neutron servers, then you
 have to speficy --provider-network-type vlan in network creation
 command for vlan network type, or --provider-network-type vxlan for vxlan
 network type. Both vlan and vxlan network type could work as the bridge

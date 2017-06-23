@@ -1,6 +1,6 @@
-======================================
-Cross pod L2 networking in Tricircle
-======================================
+========================================
+Cross Neutron L2 networking in Tricircle
+========================================
 
 Background
 ==========
@@ -23,7 +23,7 @@ The Tricircle has the following components:
 
 Nova API-GW provides the functionality to trigger automatic networking creation
 when new VMs are being provisioned. Neutron Tricircle plug-in is the
-functionality to create cross OpenStack L2/L3 networking for new VMs. After the
+functionality to create cross Neutron L2/L3 networking for new VMs. After the
 binding of tenant-id and pod finished in the Tricircle, Cinder API-GW and Nova
 API-GW will pass the cinder api or nova api request to appropriate bottom
 OpenStack instance.
@@ -66,8 +66,8 @@ spread out into multiple bottom OpenStack instances in one AZ or multiple AZs.
   OpenStack may not be enough, then a new OpenStack instance has to be added
   to the cloud. But the tenant still wants to add new VMs into same network.
 
-* Cross OpenStack network service chaining. Service chaining is based on
-  the port-pairs. Leveraging the cross pod L2 networking capability which
+* Cross Neutron network service chaining. Service chaining is based on
+  the port-pairs. Leveraging the cross Neutron L2 networking capability which
   is provided by the Tricircle, the chaining could also be done by across sites.
   For example, vRouter1 in pod1, but vRouter2 in pod2, these two VMs could be
   chained.
@@ -80,7 +80,7 @@ spread out into multiple bottom OpenStack instances in one AZ or multiple AZs.
   beat among application components (directly or via replicated database
   services, or via private designed message format). When this kind of
   applications are distributedly deployed into multiple OpenStack instances,
-  cross OpenStack L2 networking is needed to support heart beat
+  cross Neutron L2 networking is needed to support heart beat
   or state replication.
 
 * When a tenant's VMs are provisioned in different OpenStack instances, there
@@ -88,18 +88,18 @@ spread out into multiple bottom OpenStack instances in one AZ or multiple AZs.
   visible to the tenant, and isolation is needed. If the traffic goes through
   N-S (North-South) via tenant level VPN, overhead is too much, and the
   orchestration for multiple site to site VPN connection is also complicated.
-  Therefore cross OpenStack L2 networking to bridge the tenant's routers in
-  different OpenStack instances can provide more light weight isolation.
+  Therefore cross Neutron L2 networking to bridge the tenant's routers in
+  different Neutron servers can provide more light weight isolation.
 
 * In hybrid cloud, there is cross L2 networking requirement between the
-  private OpenStack and the public OpenStack. Cross pod L2 networking will
+  private OpenStack and the public OpenStack. Cross Neutron L2 networking will
   help the VMs migration in this case and it's not necessary to change the
   IP/MAC/Security Group configuration during VM migration.
 
 The spec[5] is to explain how one AZ can support more than one pod, and how
 to schedule a proper pod during VM or Volume creation.
 
-And this spec is to deal with the cross OpenStack L2 networking automation in
+And this spec is to deal with the cross Neutron L2 networking automation in
 the Tricircle.
 
 The simplest way to spread out L2 networking to multiple OpenStack instances
@@ -107,13 +107,13 @@ is to use same VLAN. But there is a lot of limitations: (1) A number of VLAN
 segment is limited, (2) the VLAN network itself is not good to spread out
 multiple sites, although you can use some gateways to do the same thing.
 
-So flexible tenant level L2 networking across multiple OpenStack instances in
+So flexible tenant level L2 networking across multiple Neutron servers in
 one site or in multiple sites is needed.
 
 Proposed Change
 ===============
 
-Cross pod L2 networking can be divided into three categories,
+Cross Neutron L2 networking can be divided into three categories,
 ``VLAN``, ``Shared VxLAN`` and ``Mixed VLAN/VxLAN``.
 
 * VLAN
@@ -144,21 +144,21 @@ There is another network type called “Local Network”. For “Local Network�
 the network will be only presented in one bottom OpenStack instance. And the
 network won't be presented in different bottom OpenStack instances. If a VM
 in another pod tries to attach to the “Local Network”, it should be failed.
-This use case is quite useful for the scenario in which cross pod L2
+This use case is quite useful for the scenario in which cross Neutron L2
 networking is not required, and one AZ will not include more than bottom
 OpenStack instance.
 
-Cross pod L2 networking will be able to be established dynamically during
+Cross Neutron L2 networking will be able to be established dynamically during
 tenant's VM is being provisioned.
 
 There is assumption here that only one type of L2 networking will work in one
 cloud deployment.
 
 
-A Cross Pod L2 Networking Creation
-------------------------------------
+A Cross Neutron L2 Networking Creation
+--------------------------------------
 
-A cross pod L2 networking creation will be able to be done with the az_hint
+A cross Neutron L2 networking creation will be able to be done with the az_hint
 attribute of the network. If az_hint includes one AZ or more AZs, the network
 will be presented only in this AZ or these AZs, if no AZ in az_hint, it means
 that the network can be extended to any bottom OpenStack.
@@ -171,12 +171,12 @@ so that the external network will be only created in one specified pod per AZ.
  is out of scope of this spec.*
 
 Pluggable L2 networking framework is proposed to deal with three types of
-L2 cross pod networking, and it should be compatible with the
+L2 cross Neutron networking, and it should be compatible with the
 ``Local Network``.
 
 1. Type Driver under Tricircle Plugin in Neutron API server
 
-* Type driver to distinguish different type of cross pod L2 networking. So
+* Type driver to distinguish different type of cross Neutron L2 networking. So
   the Tricircle plugin need to load type driver according to the configuration.
   The Tricircle can reuse the type driver of ML2 with update.
 
@@ -229,7 +229,7 @@ Tricircle plugin needs to support multi-segment network extension[4].
 For Shared VxLAN or Mixed VLAN/VxLAN L2 network type, L2GW driver will utilize the
 multi-segment network extension in Neutron API server to build the L2 network in the
 Tricircle. Each network in the bottom OpenStack instance will be a segment for the
-whole cross pod L2 networking in the Tricircle.
+whole cross Neutron L2 networking in the Tricircle.
 
 After the network in the bottom OpenStack instance was created successfully, Nova
 API-GW will call Neutron server API to update the network in the Tricircle with a
@@ -292,7 +292,7 @@ Implementation
 
 **Local Network Implementation**
 
-For Local Network, L2GW is not required. In this scenario, no cross pod L2/L3
+For Local Network, L2GW is not required. In this scenario, no cross Neutron L2/L3
 networking is required.
 
 A user creates network ``Net1`` with single AZ1 in az_hint, the Tricircle plugin
@@ -311,10 +311,10 @@ local_network type network and it is limited to present in ``POD1`` in AZ1 only.
 
 **VLAN Implementation**
 
-For VLAN, L2GW is not required. This is the most simplest cross pod
+For VLAN, L2GW is not required. This is the most simplest cross Neutron
 L2 networking for limited scenario. For example, with a small number of
 networks, all VLANs are extended through physical gateway to support cross
-site VLAN networking, or all pods under same core switch with same visible
+Neutron VLAN networking, or all Neutron servers under same core switch with same visible
 VLAN ranges that supported by the core switch are connected by the core
 switch.
 
@@ -359,7 +359,7 @@ send network creation massage to ``POD2``, network creation message includes
 get by ``POD2``.
 
 The Tricircle plugin detects that the network includes more than one segment
-network, calls L2GW driver to start async job for cross pod networking for
+network, calls L2GW driver to start async job for cross Neutron networking for
 ``Net1``. The L2GW driver will create L2GW1 in ``POD1`` and L2GW2 in ``POD2``. In
 ``POD1``, L2GW1 will connect the local ``Net1`` and create L2GW remote connection
 to L2GW2, then populate the information of MAC/IP which resides in L2GW1. In
@@ -376,8 +376,8 @@ resides in the same pod.
 
 **Mixed VLAN/VxLAN**
 
-To achieve cross pod L2 networking, L2GW will be used to connect L2 network in
-different pods, using L2GW should work for Shared VxLAN and Mixed VLAN/VxLAN
+To achieve cross Neutron L2 networking, L2GW will be used to connect L2 network
+in different Neutron servers, using L2GW should work for Shared VxLAN and Mixed VLAN/VxLAN
 scenario.
 
 When L2GW connected with local network in the same OpenStack instance, no
@@ -421,7 +421,7 @@ and queries the network information including segment and network type,
 updates this new segment to the ``Net1`` in Tricircle ``Neutron API Server``.
 
 The Tricircle plugin detects that the ``Net1`` includes more than one network
-segments, calls L2GW driver to start async job for cross pod networking for
+segments, calls L2GW driver to start async job for cross Neutron networking for
 ``Net1``. The L2GW driver will create L2GW1 in ``POD1`` and L2GW2 in ``POD2``. In
 ``POD1``, L2GW1 will connect the local ``Net1`` and create L2GW remote connection
 to L2GW2, then populate information of MAC/IP which resides in ``POD2`` in L2GW1.
@@ -439,7 +439,7 @@ not resides in the same pod.
 
 **L3 bridge network**
 
-Current implementation without cross pod L2 networking.
+Current implementation without cross Neutron L2 networking.
 
 * A special bridge network is created and connected to the routers in
   different bottom OpenStack instances. We configure the extra routes of the routers
@@ -460,13 +460,13 @@ Difference between L2 networking for tenant's VM and for L3 bridging network.
   top layer to avoid IP/mac collision if they are allocated separately in
   bottom pods.
 
-After cross pod L2 networking is introduced, the L3 bridge network should
+After cross Neutron L2 networking is introduced, the L3 bridge network should
 be updated too.
 
 L3 bridge network N-S (North-South):
 
-* For each tenant, one cross pod N-S bridge network should be created for router
-  N-S inter-connection. Just replace the current VLAN N-S bridge network
+* For each tenant, one cross Neutron N-S bridge network should be created for
+  router N-S inter-connection. Just replace the current VLAN N-S bridge network
   to corresponding Shared VxLAN or Mixed VLAN/VxLAN.
 
 L3 bridge network E-W (East-West):
@@ -478,11 +478,12 @@ L3 bridge network E-W (East-West):
   network, then no bridge network is needed.
 
 * For example, (Net1, Router1) in ``Pod1``,  (Net2, Router1) in ``Pod2``, if
-  ``Net1`` is a cross pod L2 network, and can be expanded to Pod2, then will just
-  expand ``Net1`` to Pod2. After the ``Net1`` expansion ( just like cross pod L2 networking
-  to spread one network in multiple pods ), it’ll look like (Net1, Router1)
-  in ``Pod1``, (Net1, Net2, Router1) in ``Pod2``, In ``Pod2``, no VM in ``Net1``, only for
-  E-W traffic. Now the E-W traffic will look like this:
+  ``Net1`` is a cross Neutron L2 network, and can be expanded to Pod2, then
+  will just expand ``Net1`` to Pod2. After the ``Net1`` expansion ( just like
+  cross Neutron L2 networking to spread one network in multiple Neutron servers ), it’ll
+  look like (Net1, Router1) in ``Pod1``, (Net1, Net2, Router1) in ``Pod2``, In
+  ``Pod2``, no VM in ``Net1``, only for E-W traffic. Now the E-W traffic will
+  look like this:
 
 from Net2 to Net1:
 
@@ -497,12 +498,12 @@ to the L2GW implementation. With the inbound traffic through L2GW, the inbound
 traffic to the VM will not be impacted by the VM migration from one host to
 another.
 
-If ``Net2`` is a cross pod L2 network, and can be expanded to ``Pod1`` too, then will
-just expand ``Net2`` to ``Pod1``. After the ``Net2`` expansion(just like cross pod L2
-networking to spread one network in multiple pods ), it’ll look like (Net2,
-Net1, Router1) in ``Pod1``,  (Net1, Net2, Router1) in ``Pod2``, In ``Pod1``, no VM in
-Net2, only for E-W traffic. Now the E-W traffic will look like this:
-from ``Net1`` to ``Net2``:
+If ``Net2`` is a cross Neutron L2 network, and can be expanded to ``Pod1`` too,
+then will just expand ``Net2`` to ``Pod1``. After the ``Net2`` expansion(just
+like cross Neutron L2 networking to spread one network in multiple Neutron servers ), it’ll
+look like (Net2, Net1, Router1) in ``Pod1``,  (Net1, Net2, Router1) in ``Pod2``,
+In ``Pod1``, no VM in Net2, only for E-W traffic. Now the E-W traffic will look
+like this: from ``Net1`` to ``Net2``:
 
 Net1 in Pod1 -> Router1 in Pod1 -> Net2 in Pod1 -> L2GW in Pod1 ---> L2GW in
 Pod2 -> Net2 in Pod2.
@@ -513,7 +514,7 @@ to delete the network and create again.
 
 If the network can’t be expanded, then E-W bridge network is needed. For
 example, Net1(AZ1, AZ2,AZ3), Router1; Net2(AZ4, AZ5, AZ6), Router1.
-Then a cross pod L2 bridge network has to be established:
+Then a cross Neutron L2 bridge network has to be established:
 
 Net1(AZ1, AZ2, AZ3), Router1 --> E-W bridge network ---> Router1,
 Net2(AZ4, AZ5, AZ6).

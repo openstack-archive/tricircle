@@ -141,7 +141,7 @@ Create net1 which will work as the L2 network across RegionOne and RegionTwo.
 
 .. code-block:: console
 
-    If net1 is vlan based cross-OpenStack L2 network
+    If net1 is vlan based cross-Neutron L2 network
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network bridge --availability-zone-hint az1 --availability-zone-hint az2 net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
@@ -162,7 +162,7 @@ Create net1 which will work as the L2 network across RegionOne and RegionTwo.
     | tenant_id                 | ce444c8be6da447bb412db7d30cd7023     |
     +---------------------------+--------------------------------------+
 
-    If net1 is vxlan based cross-OpenStack L2 network
+    If net1 is vxlan based cross-Neutron L2 network
     $ neutron --os-region-name=CentralRegion net-create --provider:network_type vxlan --availability-zone-hint az1 --availability-zone-hint az2 net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |

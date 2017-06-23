@@ -5,8 +5,8 @@ Layer-3 Networking and Combined Bridge Network
 Background
 ==========
 
-To achieve cross-OpenStack layer-3 networking, we utilize a bridge network to
-connect networks in each OpenStack cloud, as shown below:
+To achieve cross-Neutron layer-3 networking, we utilize a bridge network to
+connect networks in each Neutron server, as shown below:
 
 East-West networking::
 
@@ -265,7 +265,7 @@ control.
 Discussion
 ==========
 
-The implementation of DVR does bring some restrictions to our cross-OpenStack
+The implementation of DVR does bring some restrictions to our cross-Neutron
 layer-2 and layer-3 networking, resulting in the limitation of the above two
 proposals. In the first proposal, if the real external network is deployed with
 internal networks in the same OpenStack cloud, one extra router is needed in
@@ -275,7 +275,7 @@ other is legacy mode. The limitation of the second proposal is that the router
 is non-DVR mode, so east-west and north-south traffic are all go through the
 router namespace in the network node.
 
-Also, cross-OpenStack layer-2 networking can not work with DVR because of
+Also, cross-Neutron layer-2 networking can not work with DVR because of
 source MAC replacement. Considering the following topology::
 
   +----------------------------------------------+       +-------------------------------+
@@ -290,7 +290,7 @@ source MAC replacement. Considering the following topology::
 
   Fig 6
 
-net2 supports cross-OpenStack layer-2 networking, so instances in net2 can be
+net2 supports cross-Neutron layer-2 networking, so instances in net2 can be
 created in both OpenStack clouds. If the router net1 and net2 connected to is
 DVR mode, when Instance1 ping Instance2, the packets are routed locally and
 exchanged via a VxLAN tunnel. Source MAC replacement is correctly handled
@@ -298,7 +298,7 @@ inside OpenStack1. But when Instance1 tries to ping Instance3, OpenStack2 does
 not recognize the DVR MAC from OpenStack1, thus connection fails. Therefore,
 only local type network can be attached to a DVR mode router.
 
-Cross-OpenStack layer-2 networking and DVR may co-exist after we address the
+Cross-Neutron layer-2 networking and DVR may co-exist after we address the
 DVR MAC recognition problem(we will issue a discussion about this problem in
 the Neutron community) or introduce l2 gateway. Actually this bridge network
 approach is just one of the implementation, we are considering in the near
@@ -306,9 +306,9 @@ future to provide a mechanism to let SDN controller to plug in, which DVR and
 bridge network may be not needed.
 
 Having the above limitation, can our proposal support the major user scenarios?
-Considering whether the tenant network and router are local or across OpenStack
-clouds, we divide the user scenarios into four categories. For the scenario of
-cross-OpenStack router, we use the proposal shown in Fig 3 in our discussion.
+Considering whether the tenant network and router are local or across Neutron
+servers, we divide the user scenarios into four categories. For the scenario of
+cross-Neutron router, we use the proposal shown in Fig 3 in our discussion.
 
 Local Network and Local Router
 ------------------------------
@@ -338,7 +338,7 @@ Topology::
 
 Each OpenStack cloud has its own external network, instance in each local
 network accesses the external network via the local router. If east-west
-networking is not required, this scenario has no requirement on cross-OpenStack
+networking is not required, this scenario has no requirement on cross-Neutron
 layer-2 and layer-3 networking functionality. Both central Neutron server and
 local Neutron server can process network resource management request. While if
 east-west networking is needed, we have two choices to extend the above
@@ -378,8 +378,8 @@ only local network is attached to local router, so it can be either legacy or
 DVR mode. In the right topology, two local routers are connected by a shared
 VxLAN network, so they can only be legacy mode.
 
-Cross-OpenStack Network and Local Router
-----------------------------------------
+Cross-Neutron Network and Local Router
+--------------------------------------
 
 Topology::
 
@@ -446,8 +446,8 @@ set to "False". See Fig 10::
 
   Fig 10
 
-Local Network and Cross-OpenStack Router
-----------------------------------------
+Local Network and Cross-Neutron Router
+--------------------------------------
 
 Topology::
 
@@ -478,13 +478,13 @@ Topology::
 
   Fig 11
 
-Since the router is cross-OpenStack type, the Tricircle automatically creates
-bridge network to connect router instances inside the two OpenStack clouds and
+Since the router is cross-Neutron type, the Tricircle automatically creates
+bridge network to connect router instances inside the two Neutron servers and
 connect the router instance to the real external network. Networks attached to
 the router are local type, so the router can be either legacy or DVR mode.
 
-Cross-OpenStack Network and Cross-OpenStack Router
---------------------------------------------------
+Cross-Neutron Network and Cross-Neutron Router
+----------------------------------------------
 
 Topology::
 

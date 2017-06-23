@@ -34,7 +34,7 @@ needed.
 
 The logical topology to be composed in Tricircle is as follows. R3(1), R3(2)
 and bridge-net will be one logical router R3, and R3 is only for cross
-OpenStack east-west traffic. North-south traffic of net1, net2 will go
+Neutron east-west traffic. North-south traffic of net1, net2 will go
 through R1, north-south traffic of net3, net4 will go through R2.
 
 .. code-block:: console

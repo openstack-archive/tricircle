@@ -74,7 +74,7 @@ will be introduced, R3(1) and R3(2) will be inter-connected by bridge-net.
 Bridge-net could be VLAN or VxLAN cross Neutron L2 network, and it's the
 "external network" for both R3(1) and R3(2), please note here the bridge-net
 is not real external network, just the concept of Neutron network. R3(1) and
-R3(2) will only forward the east-west traffic across OpenStack for local
+R3(2) will only forward the east-west traffic across Neutron for local
 networks, so it's not necessary to work as DVR, centralized router is good
 enough.
 
@@ -154,9 +154,9 @@ East-west traffic between Instance1 and Instance2 work like follows::
 
     Instance1 <-> net1 <-> R3(1) <-> bridge-net <-> R3(2) <-> net2 <-> Instance2
 
-Two hops for cross OpenStack east-west traffic.
+Two hops for cross Neutron east-west traffic.
 
-The topology will be more complex if there are cross OpenStack L2 networks
+The topology will be more complex if there are cross Neutron L2 networks
 except local networks::
 
     +-----------------------+             +----------------------+
@@ -183,7 +183,7 @@ except local networks::
     | +-----------------+   |             |  +-----------------+ |
     +-----------------------+             +----------------------+
 
-    Figure.3 Multi-NS and cross OpenStack L2 networks
+    Figure.3 Multi-NS and cross Neutron L2 networks
 
 The logical topology in central Neutron for Figure.3 looks like as follows::
 
@@ -208,7 +208,7 @@ The logical topology in central Neutron for Figure.3 looks like as follows::
     +-+---+------------+---------+------------+-----+-+
     |                    R3                           |
     +-------------------------------------------------+
-  Figure.4 Logical topology in central Neutron with cross OpenStack L2 network
+  Figure.4 Logical topology in central Neutron with cross Neutron L2 network
 
 East-west traffic inside one region will be processed locally through default
 gateway. For example, in RegionOne, R1 has router interfaces in net1, net3,
@@ -224,14 +224,14 @@ net5, net6, the east-west traffic between these networks will work as follows::
 There is nothing special for east-west traffic between local networks
 in different OpenStack regions.
 
-Net5 and net6 are cross OpenStack L2 networks, instances could be attached
+Net5 and net6 are cross Neutron L2 networks, instances could be attached
 to network from different regions, and instances are reachable in a remote
-region via the cross OpenStack L2 network itself. There is no need to add host
-route for cross OpenStack L2 network, for it's routable in the same region for
-other local networks or cross OpenStack L2 networks, default route is enough
+region via the cross Neutron L2 network itself. There is no need to add host
+route for cross Neutron L2 network, for it's routable in the same region for
+other local networks or cross Neutron L2 networks, default route is enough
 for east-west traffic.
 
-It's needed to address how one cross OpenStack L2 network will be
+It's needed to address how one cross Neutron L2 network will be
 attached different local router: different gateway IP address will be used.
 For example, in central Neutron, net5's default gateway IP is 192.168.0.1
 in R1, the user needs to create a gateway port explicitly for local router R2
@@ -261,12 +261,12 @@ For net5 in RegionTwo, host route should be added::
 
 Similar operation for net6 in RegionOne and RegionTwo.
 
-If R1 and R2 are centralized routers, cross OpenStack L2 network will
+If R1 and R2 are centralized routers, cross Neutron L2 network will
 work, but if R1 and R2 are DVRs, then DVR MAC issue mentioned in the
 spec "l3-networking-combined-bridge-net" should be fixed[2].
 
 In order to make the topology not too complex, this use case will not be
-supported: a cross OpenStack L2 network is not able to be stretched into
+supported: a cross Neutron L2 network is not able to be stretched into
 the region where there are local networks. This use case is not useful
 and will make the east-west traffic even more complex::
 
@@ -297,7 +297,7 @@ and will make the east-west traffic even more complex::
                   |          bridge-net        |                   |
                   +----------------------------+-------------------+
 
-    Figure.5 Cross OpenStack L2 network not able to be stretched into some region
+    Figure.5 Cross Neutron L2 network not able to be stretched into some region
 
 
 Implementation
@@ -319,7 +319,7 @@ Adding router interface to east-west gateway router::
         # go through this router
         # router is the default router gateway, it's the
         # single north-south external network mode
-        if the network is cross OpenStack L2 network
+        if the network is cross Neutron L2 network
             reserve gateway port in different region
             add router interface in each region using reserved gateway port IP
             make sure the gateway port IP is the default route
@@ -327,7 +327,7 @@ Adding router interface to east-west gateway router::
             add router interface using the default gateway port or the port
             specified in request
     else # not the default gateway IP in this subnet
-        if the network is cross OpenStack L2 network
+        if the network is cross Neutron L2 network
             reserve gateway port in different region
             add router interface in each region using reserved gateway port IP
             update host route in each connected local network in each region,
@@ -341,7 +341,7 @@ Adding router interface to east-west gateway router::
 
     Configure extra route to the router in each region for EW traffic
 
-Adding router interface to local router for cross OpenStack L2 network will
+Adding router interface to local router for cross Neutron L2 network will
 make the local router as the default gateway router in this region::
 
     # default north-south traffic will go through this router

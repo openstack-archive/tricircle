@@ -37,20 +37,20 @@ Local Router
 
        neutron --os-region-name=CentralRegion router-create --availability-zone-hint RegionOne R1
 
-Cross OpenStack L2 Network
-  - Cross OpenStack L2 Network is a network which can be stretched into more
-    than one OpenStack cloud.
-  - Also called cross Neutron L2 network, or cross pod L2 network.
+Cross Neutron L2 Network
+  - Cross Neutron L2 Network is a network which can be stretched into more
+    than one Neutron servers, these Neutron servers may work in one
+    OpenStack cloud or multiple OpenStack clouds.
   - Network type could be VLAN, VxLAN, Flat.
   - During the network creation, if availability-zone-hint is not specified,
     or specified with availability zone name, or more than one region name,
     or more than one availability zone name, then the network will be created
-    as cross OpenStack L2 network.
+    as cross Neutron L2 network.
   - If the default network type to be created is not configured to "local" in
-    central Neutron, then the network will be cross OpenStack L2 network if
+    central Neutron, then the network will be cross Neutron L2 network if
     the network was created without specified provider network type and single
     region name in availability-zone-hint.
-  - For example, cross OpenStack L2 network could be created as follows:
+  - For example, cross Neutron L2 network could be created as follows:
 
     .. code-block:: console
 
@@ -60,8 +60,8 @@ Non-Local Router
   - Non-Local Router will be able to reside in more than one OpenStack cloud,
     and internally inter-connected with bridge network.
   - Bridge network used internally for non-local router is a special cross
-    OpenStack L2 network.
-  - Local networks or cross OpenStack L2 networks can be attached to local
+    Neutron L2 network.
+  - Local networks or cross Neutron L2 networks can be attached to local
     router or non-local routers if the network can be presented in the region
     where the router can reside.
   - During the router creation, if availability-zone-hint is not specified,
@@ -74,19 +74,19 @@ Non-Local Router
 
        neutron --os-region-name=CentralRegion router-create --availability-zone-hint RegionOne --availability-zone-hint RegionTwo R3
 
-It's also important to understand that cross OpenStack L2 network, local
+It's also important to understand that cross Neutron L2 network, local
 router and non-local router can be created for different north-south/east-west
 networking purpose.
 
 North-South and East-West Networking
   - Instances in different OpenStack clouds can be attached to a cross
-    OpenStack L2 network directly, so that they can communicate with
+    Neutron L2 network directly, so that they can communicate with
     each other no matter in which OpenStack cloud.
   - If L3 networking across OpenStack clouds is preferred, local network
     attached to non-local router can be created for instances to attach.
   - Local router can be set gateway with external networks to support
     north-south traffic handled locally.
-  - Non-local router can work only for cross OpenStack east-west networking
+  - Non-local router can work only for cross Neutron east-west networking
     purpose if no external network is set to the router.
   - Non-local router can serve as the centralized north-south traffic gateway
     if external network is attached to the router, and support east-west

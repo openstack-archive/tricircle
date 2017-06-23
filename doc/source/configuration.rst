@@ -87,7 +87,7 @@ maintenance. The following items should be configured in Tricircle's api.conf.
 Tricircle XJob Settings
 =======================
 
-Tricircle XJob serves for receiving and processing cross OpenStack
+Tricircle XJob serves for receiving and processing cross Neutron
 functionality and other async jobs from Admin API or Tricircle Central
 Neutron Plugin. The following items should be configured in Tricircle's
 xjob.conf.
@@ -131,7 +131,7 @@ Tricircle Central Neutron Plugin and Tricircle Local Neutron Plugin.
 **Tricircle Central Neutron Plugin**
 
 The Tricircle Central Neutron Plugin serves for tenant level L2/L3 networking
-automation across multiple OpenStack instances. The following items should be
+automation across multiple Neutron servers. The following items should be
 configured in central Neutron's neutron.conf.
 
 .. _Central Neutron:

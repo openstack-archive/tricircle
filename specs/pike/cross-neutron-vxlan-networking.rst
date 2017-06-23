@@ -1,11 +1,11 @@
-=======================================
-Cross Pod VxLAN Networking in Tricircle
-=======================================
+===========================================
+Cross Neutron VxLAN Networking in Tricircle
+===========================================
 
 Background
 ==========
 
-Currently we only support VLAN as the cross-pod network type. For VLAN network
+Currently we only support VLAN as the cross-Neutron network type. For VLAN network
 type, central plugin in Tricircle picks a physical network and allocates a VLAN
 tag(or uses what users specify), then before the creation of local network,
 local plugin queries this provider network information and creates the network
@@ -17,16 +17,16 @@ physical devices.
 
 For more flexible deployment, VxLAN network type is a better choice. Compared
 to 12-bit VLAN ID, 24-bit VxLAN ID can support more numbers of bridge networks
-and cross-pod L2 networks. With MAC-in-UDP encapsulation of VxLAN network,
+and cross-Neutron L2 networks. With MAC-in-UDP encapsulation of VxLAN network,
 hosts in different pods only need to be IP routable to transport instance
 packets.
 
 Proposal
 ========
 
-There are some challenges to support cross-pod VxLAN network.
+There are some challenges to support cross-Neutron VxLAN network.
 
-1. How to keep VxLAN ID identical for the same VxLAN network across pods
+1. How to keep VxLAN ID identical for the same VxLAN network across Neutron servers
 
 2. How to synchronize tunnel endpoint information between pods
 
@@ -82,7 +82,7 @@ then sends the information to the target agent via RPC. Second, driver sends
 the tunnel endpoint information of the updated port to other agents where ports
 in the same network are located, also via RPC. L2 agents will build the tunnels
 based on the information they received. To trigger the above processes to build
-tunnels across pods, we further introduce shadow port.
+tunnels across Neutron servers, we further introduce shadow port.
 
 Let's say we have two instance ports, port1 is located in host1 in pod1 and
 port2 is located in host2 in pod2. To make L2 agent running in host1 build a
@@ -176,7 +176,7 @@ pushed to agents and agents use it to create necessary tunnels and flows.
 
 **How to support different back-ends besides ML2+OVS implementation**
 
-We consider two typical back-ends that can support cross-pod VxLAN networking,
+We consider two typical back-ends that can support cross-Neutron VxLAN networking,
 L2 gateway and SDN controller like ODL. For L2 gateway, we consider only
 supporting static tunnel endpoint information for L2 gateway at the first step.
 Shadow agent and shadow port process is almost the same with the ML2+OVS
@@ -184,8 +184,8 @@ implementation. The difference is that, for L2 gateway, the tunnel IP of the
 shadow agent is set to the tunnel endpoint of the L2 gateway. So after L2
 population, L2 agents will create tunnels to the tunnel endpoint of the L2
 gateway. For SDN controller, we assume that SDN controller has the ability to
-manage tunnel endpoint information across pods, so Tricircle only helps to
-allocate VxLAN ID and keep the VxLAN ID identical across pods for one network.
+manage tunnel endpoint information across Neutron servers, so Tricircle only helps to
+allocate VxLAN ID and keep the VxLAN ID identical across Neutron servers for one network.
 Shadow agent and shadow port process will not be used in this case. However, if
 different SDN controllers are used in different pods, it will be hard for each
 SDN controller to connect hosts managed by other SDN controllers since each SDN
@@ -224,7 +224,7 @@ Documentation Impact
 
 - Update configuration guide to introduce options for VxLAN network
 - Update networking guide to discuss new scenarios with VxLAN network
-- Add release note about cross-pod VxLAN networking support
+- Add release note about cross-Neutron VxLAN networking support
 
 References
 ==========
