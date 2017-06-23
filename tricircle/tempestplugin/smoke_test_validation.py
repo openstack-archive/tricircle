@@ -1,4 +1,3 @@
-# Copyright 2017 Huawei Technologies Co., Ltd.
 # All Rights Reserved
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -29,7 +28,11 @@ class ContainedString(object):
         return other.find(self.content) == -1
 
 
-CONDITIONS = {
+ALL_CONDITIONS = {
+    '0': {'job': [{'status': 'SUCCESS'}]}
+}
+
+ANY_CONDITIONS = {
     '1': {'server': [{'Name': 'vm1', 'Status': 'ACTIVE'},
                      {'Name': 'vm3', 'Status': 'ACTIVE'}],
           'subnet': [{'Subnet': '100.0.0.0/24'}, {'Subnet': '10.0.1.0/24'},
@@ -54,19 +57,44 @@ CONDITIONS = {
 }
 
 
-def validate_condition(result, condition):
-    if not isinstance(result, list):
-        result = [result]
-    for res in result:
+def get_result_list(result):
+    if isinstance(result, list):
+        return result
+    # not list, so result should be a dict
+    if len(result) != 1:
+        # dict for single resource
+        return [result]
+    value = list(result.values())[0]
+    if isinstance(value, list):
+        # dict for resource list
+        return value
+    else:
+        return [result]
+
+
+def validate_any_condition(result, condition):
+    for res in get_result_list(result):
         if all(res[key] == value for (key, value) in condition.items()):
             return True
     return False
 
 
-def validate_result(result, region, res_type):
-    for condition in CONDITIONS[region][res_type]:
-        if not validate_condition(result, condition):
+def validate_all_condition(result, condition):
+    for res in get_result_list(result):
+        if not all(res[key] == value for (key, value) in condition.items()):
             return False
+    return True
+
+
+def validate_result(result, region, res_type):
+    if res_type in ANY_CONDITIONS.get(region, {}):
+        for condition in ANY_CONDITIONS[region][res_type]:
+            if not validate_any_condition(result, condition):
+                return False
+    if res_type in ALL_CONDITIONS.get(region, {}):
+        for condition in ALL_CONDITIONS[region][res_type]:
+            if not validate_all_condition(result, condition):
+                return False
     return True
 
 
