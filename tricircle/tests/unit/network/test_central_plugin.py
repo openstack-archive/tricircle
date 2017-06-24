@@ -2967,6 +2967,21 @@ class PluginTest(unittest.TestCase,
         # in _prepare_associate_floatingip_test, we have created an empty fip,
         # but here we just ignore it and create a new fip by specifying fix ip
         # at the same time
+
+        # we manaully remove the resource routing for port to construct the
+        # scenario that bottom port has not been created
+        db_api.delete_mappings_by_bottom_id(t_ctx, b_port_id)
+        fip_body = {'floating_network_id': e_net['id'],
+                    'port_id': t_port_id,
+                    'tenant_id': TEST_TENANT_ID}
+        fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
+        self.assertFalse(mock_create.called)
+        fake_plugin.delete_floatingip(q_ctx, fip['id'])
+
+        # put the resource routing back for the scenario that bottom port has
+        # been created
+        db_api.create_resource_mapping(t_ctx, t_port_id, b_port_id, 'pod_id_1',
+                                       TEST_TENANT_ID, constants.RT_PORT)
         fip_body = {'floating_network_id': e_net['id'],
                     'port_id': t_port_id,
                     'tenant_id': TEST_TENANT_ID}

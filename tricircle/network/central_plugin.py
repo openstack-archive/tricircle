@@ -1746,7 +1746,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     # mapping does not exist, meaning that the bottom port has
                     # not been created, we just return and defer the work to
                     # setup bottom floating ip until vm creation
-                    return
+                    return fip
 
                 int_net_pod, b_int_port_id = mappings[0]
                 int_port = self.get_port(context, fip['port_id'])
