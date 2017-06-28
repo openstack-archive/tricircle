@@ -678,3 +678,33 @@ def is_valid_model_filters(model, filters):
         if not hasattr(model, key):
             return False
     return True
+
+
+def create_recycle_resource(context, resource_id, resource_type, project_id):
+    try:
+        context.session.begin()
+        route = core.create_resource(context, models.RecycleResources,
+                                     {'resource_id': resource_id,
+                                      'resource_type': resource_type,
+                                      'project_id': project_id})
+        context.session.commit()
+        return route
+    except db_exc.DBDuplicateEntry:
+        # entry has already been created
+        context.session.rollback()
+        return None
+    finally:
+        context.session.close()
+
+
+def list_recycle_resources(context, filters=None, sorts=None):
+    with context.session.begin():
+        resources = core.query_resource(
+            context, models.RecycleResources, filters or [], sorts or [])
+        return resources
+
+
+def delete_recycle_resource(context, resource_id):
+    with context.session.begin():
+        return core.delete_resource(
+            context, models.RecycleResources, resource_id)

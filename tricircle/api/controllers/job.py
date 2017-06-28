@@ -114,7 +114,8 @@ class AsyncJobController(rest.RestController):
 
         # if job_type = seg_rule_setup, we should ensure the project id
         # is equal to the one from resource.
-        if job_type == constants.JT_SEG_RULE_SETUP:
+        if job_type in (constants.JT_SEG_RULE_SETUP,
+                        constants.JT_RESOURCE_RECYCLE):
             if job['project_id'] != job['resource']['project_id']:
                 msg = (_("Specified project_id %(project_id_1)s and resource's"
                          " project_id %(project_id_2)s are different") %

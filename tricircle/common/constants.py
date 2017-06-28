@@ -28,6 +28,10 @@ RT_SD_SUBNET = 'shadow_subnet'
 RT_PORT = 'port'
 RT_TRUNK = 'trunk'
 RT_SD_PORT = 'shadow_port'
+RT_PORT_PAIR = 'port_pair'
+RT_PORT_PAIR_GROUP = 'port_pair_group'
+RT_FLOW_CLASSIFIER = 'flow_classifier'
+RT_PORT_CHAIN = 'port_chain'
 RT_ROUTER = 'router'
 RT_NS_ROUTER = 'ns_router'
 RT_SG = 'security_group'
@@ -73,6 +77,9 @@ interface_port_device_id = 'reserved_gateway_port'
 MAX_INT = 0x7FFFFFFF
 DEFAULT_DESTINATION = '0.0.0.0/0'
 expire_time = datetime.datetime(2000, 1, 1)
+STR_IN_USE = 'in use'
+STR_USED_BY = 'used by'
+STR_CONFLICTS_WITH = 'conflicts with'
 
 # job status
 JS_New = '3_New'
@@ -102,6 +109,8 @@ JT_NETWORK_UPDATE = 'update_network'
 JT_SUBNET_UPDATE = 'subnet_update'
 JT_SHADOW_PORT_SETUP = 'shadow_port_setup'
 JT_TRUNK_SYNC = 'trunk_sync'
+JT_SFC_SYNC = 'sfc_sync'
+JT_RESOURCE_RECYCLE = 'resource_recycle'
 
 # network type
 NT_LOCAL = 'local'
@@ -133,7 +142,11 @@ job_resource_map = {
     JT_SUBNET_UPDATE: [(None, "pod_id"),
                        (RT_SUBNET, "subnet_id")],
     JT_SHADOW_PORT_SETUP: [(None, "pod_id"),
-                           (RT_NETWORK, "network_id")]
+                           (RT_NETWORK, "network_id")],
+    JT_SFC_SYNC: [(None, "pod_id"),
+                  (RT_PORT_CHAIN, "portchain_id"),
+                  (RT_NETWORK, "network_id")],
+    JT_RESOURCE_RECYCLE: [(None, "project_id")]
 }
 
 # map raw job status to more human readable job status
@@ -156,7 +169,9 @@ job_handles = {
     JT_NETWORK_UPDATE: "update_network",
     JT_SUBNET_UPDATE: "update_subnet",
     JT_TRUNK_SYNC: "sync_trunk",
-    JT_SHADOW_PORT_SETUP: "setup_shadow_ports"
+    JT_SHADOW_PORT_SETUP: "setup_shadow_ports",
+    JT_SFC_SYNC: "sync_service_function_chain",
+    JT_RESOURCE_RECYCLE: "recycle_resources"
 }
 
 # map job type to its primary resource and then we only validate the project_id
@@ -170,5 +185,7 @@ job_primary_resource_map = {
     JT_NETWORK_UPDATE: (RT_NETWORK, "network_id"),
     JT_SUBNET_UPDATE: (RT_SUBNET, "subnet_id"),
     JT_TRUNK_SYNC: (RT_TRUNK, "trunk_id"),
-    JT_SHADOW_PORT_SETUP: (RT_NETWORK, "network_id")
+    JT_SHADOW_PORT_SETUP: (RT_NETWORK, "network_id"),
+    JT_SFC_SYNC: (RT_PORT_CHAIN, "portchain_id"),
+    JT_RESOURCE_RECYCLE: (None, "project_id")
 }

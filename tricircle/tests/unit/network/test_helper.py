@@ -111,7 +111,8 @@ class HelperTest(unittest.TestCase):
             'id': 'port-id-%d' % i,
             'fixed_ips': [{'ip_address': '10.0.1.%d' % i}],
             'mac_address': 'fa:16:3e:d4:01:%02x' % i,
-            'binding:host_id': 'host1'
+            'binding:host_id': 'host1',
+            'device_id': None
         } for i in range(1, 20)]
         agents = [{'type': 'Open vSwitch agent',
                    'tunnel_ip': '192.168.1.101'} for _ in range(1, 20)]

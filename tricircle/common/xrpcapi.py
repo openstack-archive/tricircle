@@ -126,3 +126,17 @@ class XJobAPI(object):
         self.invoke_method(
             t_ctx, project_id, constants.job_handles[constants.JT_TRUNK_SYNC],
             constants.JT_TRUNK_SYNC, '%s#%s' % (pod_id, trunk_id))
+
+    def sync_service_function_chain(self, ctxt, project_id, portchain_id,
+                                    net_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_SFC_SYNC],
+            constants.JT_SFC_SYNC,
+            '%s#%s#%s' % (pod_id, portchain_id, net_id))
+
+    def recycle_resources(self, ctxt, project_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_RESOURCE_RECYCLE],
+            constants.JT_RESOURCE_RECYCLE, project_id)

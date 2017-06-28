@@ -1,0 +1,6 @@
+---
+features:
+  - |
+    Support service function chaining creation and deletion based on networking-sfc,
+    currently all the ports in the port chain need to be in the same network and the
+    network type must be VxLAN.

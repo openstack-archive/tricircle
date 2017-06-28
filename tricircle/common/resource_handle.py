@@ -94,7 +94,11 @@ class NeutronResourceHandle(ResourceHandle):
         'security_group': LIST | CREATE | GET,
         'security_group_rule': LIST | CREATE | DELETE,
         'floatingip': LIST | CREATE | UPDATE | DELETE,
-        'trunk': LIST | CREATE | UPDATE | GET | DELETE | ACTION}
+        'trunk': LIST | CREATE | UPDATE | GET | DELETE | ACTION,
+        'port_chain': LIST | CREATE | DELETE | GET | UPDATE,
+        'port_pair_group': LIST | CREATE | DELETE | GET | UPDATE,
+        'port_pair': LIST | CREATE | DELETE | GET | UPDATE,
+        'flow_classifier': LIST | CREATE | DELETE | GET | UPDATE}
 
     def _get_client(self, cxt):
         token = cxt.auth_token

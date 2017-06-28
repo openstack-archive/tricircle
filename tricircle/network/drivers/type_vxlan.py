@@ -18,9 +18,12 @@ from oslo_log import log
 
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_vxlan
+from neutron_lib import constants as q_lib_constants
 from neutron_lib import exceptions as n_exc
 
 from tricircle.common import constants
+import tricircle.common.context as t_context
+import tricircle.db.api as db_api
 
 LOG = log.getLogger(__name__)
 
@@ -54,3 +57,13 @@ class VxLANTypeDriver(type_vxlan.VxlanTypeDriver):
 
     def get_mtu(self, physical_network=None):
         pass
+
+    def get_endpoint_by_host(self, host):
+        LOG.debug("get_endpoint_by_host() called for host %s", host)
+        host_endpoint = {'ip_address': None}
+        context = t_context.get_db_context()
+        agents = db_api.get_agent_by_host_type(
+            context, host, q_lib_constants.AGENT_TYPE_OVS)
+        if agents:
+            host_endpoint['ip_address'] = agents['tunnel_ip']
+        return host_endpoint

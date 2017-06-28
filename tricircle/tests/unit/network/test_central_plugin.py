@@ -2925,6 +2925,7 @@ class PluginTest(unittest.TestCase,
             'network_id': db_api.get_bottom_id_by_top_id_region_name(
                 t_ctx, t_net_id, 'pod_1', constants.RT_NETWORK),
             'mac_address': 'fa:16:3e:96:41:03',
+            'device_id': None,
             'fixed_ips': [
                 {'subnet_id': db_api.get_bottom_id_by_top_id_region_name(
                     t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET),

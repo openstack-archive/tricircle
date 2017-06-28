@@ -90,8 +90,17 @@ def list_resource(_type, is_top, filters=None):
     return ret
 
 
+class FakeTypeManager(object):
+
+    def __init__(self):
+        self.drivers = {}
+
+
 class FakeCorePlugin(object):
     supported_extension_aliases = ['agent']
+
+    def __init__(self):
+        self.type_manager = FakeTypeManager()
 
     def create_network(self, context, network):
         create_resource('network', False, network['network'])

@@ -928,6 +928,7 @@ class NetworkHelper(object):
                             'fixed_ips'][0]['ip_address']}],
                     'mac_address': port_body['mac_address'],
                     'device_owner': t_constants.DEVICE_OWNER_SHADOW,
+                    'device_id': port_body['device_id'],
                     portbindings.HOST_ID: host
                 }
             }
