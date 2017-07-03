@@ -26,6 +26,7 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_lib_exc
+from neutron_lib.plugins import constants as plugin_constants
 from neutron_lib.plugins import directory
 
 import neutron.conf.common as q_config
@@ -780,7 +781,7 @@ def fake_get_instance(cls, subnet_pool, context):
     return FakePool(subnet_pool, context)
 
 
-def fake_get_plugin(alias=q_constants.CORE):
+def fake_get_plugin(alias=plugin_constants.CORE):
     return FakePlugin()
 
 
@@ -833,7 +834,7 @@ class PluginTest(unittest.TestCase,
             TOP_VXLANALLOCATIONS.append(
                 test_utils.DotDict({'vxlan_vni': vxlan, 'allocated': False}))
 
-        def fake_get_plugin(alias=q_constants.CORE):
+        def fake_get_plugin(alias=plugin_constants.CORE):
             if alias == 'trunk':
                 return FakeTrunkPlugin()
             return FakePlugin()
