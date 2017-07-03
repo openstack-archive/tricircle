@@ -46,36 +46,36 @@ class PolicyTestCase(unittest.TestCase):
     def test_enforce_nonexistent_action_throws(self):
         action = "example:non_exist"
         result = policy.enforce(self.context, action, self.target)
-        self.assertEqual(result, False)
+        self.assertFalse(result)
 
     def test_enforce_bad_action_throws(self):
         action = "example:denied"
         result = policy.enforce(self.context, action, self.target)
-        self.assertEqual(result, False)
+        self.assertFalse(result)
 
     def test_enforce_good_action(self):
         action = "example:allowed"
         result = policy.enforce(self.context, action, self.target)
-        self.assertEqual(result, True)
+        self.assertTrue(result)
 
     def test_templatized_enforcement(self):
         target_mine = {'project_id': 'fake'}
         target_not_mine = {'project_id': 'another'}
         action = "example:my_file"
         result = policy.enforce(self.context, action, target_mine)
-        self.assertEqual(result, True)
+        self.assertTrue(result)
         result = policy.enforce(self.context, action, target_not_mine)
-        self.assertEqual(result, False)
+        self.assertFalse(result)
 
     def test_early_AND_enforcement(self):
         action = "example:early_and_fail"
         result = policy.enforce(self.context, action, self.target)
-        self.assertEqual(result, False)
+        self.assertFalse(result)
 
     def test_early_OR_enforcement(self):
         action = "example:early_or_success"
         result = policy.enforce(self.context, action, self.target)
-        self.assertEqual(result, True)
+        self.assertTrue(result)
 
     def test_ignore_case_role_check(self):
         lowercase_action = "example:lowercase_admin"
@@ -84,9 +84,9 @@ class PolicyTestCase(unittest.TestCase):
                                         tenant_id='fake',
                                         roles=['AdMiN'])
         result = policy.enforce(admin_context, lowercase_action, self.target)
-        self.assertEqual(result, True)
+        self.assertTrue(result)
         result = policy.enforce(admin_context, uppercase_action, self.target)
-        self.assertEqual(result, True)
+        self.assertTrue(result)
 
 
 class DefaultPolicyTestCase(unittest.TestCase):
@@ -111,13 +111,13 @@ class DefaultPolicyTestCase(unittest.TestCase):
 
     def test_policy_called(self):
         result = policy.enforce(self.context, "example:exist", {})
-        self.assertEqual(result, False)
+        self.assertFalse(result)
 
     def test_not_found_policy_calls_default(self):
         result = policy.enforce(self.context, "example:noexist", {})
-        self.assertEqual(result, True)
+        self.assertTrue(result)
 
     def test_default_not_found(self):
         self._set_rules("default_noexist")
         result = policy.enforce(self.context, "example:noexist", {})
-        self.assertEqual(result, False)
+        self.assertFalse(result)

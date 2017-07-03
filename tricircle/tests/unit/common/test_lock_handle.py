@@ -64,7 +64,7 @@ class LockHandleTest(unittest.TestCase):
         is_new, b_resource_id = lock_handle.get_or_create_element(
             self.t_ctx, self.q_ctx, self.project_id, pod, ele, _type, body,
             list_resource, create_resource)
-        self.assertEqual(is_new, True)
+        self.assertTrue(is_new)
         self.assertEqual(b_resource_id, RES[0]['id'])
 
     def test_get_create_element_routing_valid(self):
@@ -79,7 +79,7 @@ class LockHandleTest(unittest.TestCase):
         is_new, b_resource_id = lock_handle.get_or_create_element(
             self.t_ctx, self.q_ctx, self.project_id, pod, ele, _type, body,
             list_resource, create_resource)
-        self.assertEqual(is_new, False)
+        self.assertFalse(is_new)
         self.assertEqual(b_resource_id, RES[0]['id'])
 
     def test_get_create_element_routing_expire_resource_exist(self):
@@ -100,7 +100,7 @@ class LockHandleTest(unittest.TestCase):
         is_new, b_resource_id = lock_handle.get_or_create_element(
             self.t_ctx, self.q_ctx, self.project_id, pod, ele, _type, body,
             list_resource, create_resource)
-        self.assertEqual(is_new, True)
+        self.assertTrue(is_new)
         self.assertEqual(b_resource_id, RES[0]['id'])
 
     def test_get_create_element_routing_expire_resource_missing(self):
@@ -119,7 +119,7 @@ class LockHandleTest(unittest.TestCase):
         is_new, b_resource_id = lock_handle.get_or_create_element(
             self.t_ctx, self.q_ctx, self.project_id, pod, ele, _type, body,
             list_resource, create_resource)
-        self.assertEqual(is_new, True)
+        self.assertTrue(is_new)
         self.assertEqual(b_resource_id, RES[0]['id'])
 
     def test_get_create_element_routing_conflict(self):
