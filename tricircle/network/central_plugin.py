@@ -23,7 +23,6 @@ from oslo_db.sqlalchemy import utils as sa_utils
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
-from neutron.api.v2 import attributes
 from neutron.callbacks import events
 from neutron.callbacks import exceptions as callbacks_exc
 from neutron.callbacks import registry
@@ -51,6 +50,7 @@ from neutron.extensions import providernet as provider
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
+import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
 from neutron_lib import exceptions
 from neutron_lib.plugins import directory
