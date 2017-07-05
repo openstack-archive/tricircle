@@ -171,8 +171,6 @@ automation triggering. It is a shim layer between real core plugin and
 Neutron API server. The following items should be configured in local
 Neutron's neutron.conf
 
-.. _Local Neutron:
-
 .. list-table:: Description of Local Neutron configuration options
    :header-rows: 1
    :class: config-ref-table
@@ -213,8 +211,6 @@ If only cross Neutron L2 networking is needed in the deployment, it's not
 necessary to configure the service plugins.
 
 The following item should be configured in local Neutron's neutron.conf
-
-.. _Local Neutron:
 
 .. list-table:: Description of Local Neutron configuration options
    :header-rows: 1
