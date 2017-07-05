@@ -263,24 +263,14 @@ class TestAsyncJobController(API_FunctionalTest):
         for job_type in self.all_job_types:
             job = self._prepare_job_element(job_type)
 
-            jobs = [
-                {
-                    "job": job,
-                    "expected_error": 200
-                },
-            ]
+            job = {"job": job, "expected_error": 200}
 
-            self._test_and_check(jobs)
+            back_jobid = self._test_and_obtain_id(job)
 
-            response = self.app.get('/v1.0/jobs')
-            return_job = response.json
-
-            all_job_ids[index] = return_job['jobs'][index]['id']
-            all_job_project_ids[job_type] = (
-                return_job['jobs'][index]['project_id'])
+            all_job_ids[index] = back_jobid
+            all_job_project_ids[job_type] = job['job']['project_id']
 
             index = index + 1
-
         service_uris = ['jobs', 'jobs/detail']
         amount_of_all_jobs = len(self.all_job_types)
         # with no filters all jobs are returned
@@ -728,6 +718,15 @@ class TestAsyncJobController(API_FunctionalTest):
                 '/v1.0/jobs', dict(job=test_job['job']),
                 expect_errors=True)
             self.assertEqual(response.status_int, test_job['expected_error'])
+
+    def _test_and_obtain_id(self, job):
+        response = self.app.post_json(
+            '/v1.0/jobs', dict(job=job['job']),
+            expect_errors=True)
+        self.assertEqual(response.status_int, job['expected_error'])
+
+        back_job = response.json
+        return back_job['job']['id']
 
     def _prepare_job_element(self, job_type):
         # in order to create a job, we need three elements: job type,

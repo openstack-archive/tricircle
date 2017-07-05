@@ -428,33 +428,6 @@ def get_latest_failed_or_new_jobs(context):
     return failed_jobs, new_jobs
 
 
-def list_jobs(context, filters=None, sorts=None):
-    with context.session.begin():
-        # get all jobs from job table
-        jobs = core.query_resource(context, models.AsyncJob,
-                                   filters or [], sorts or [])
-        return jobs
-
-
-def list_jobs_from_log(context, filters=None, sorts=None):
-    with context.session.begin():
-        # get all jobs from job log table, because the job log table only
-        # stores successful jobs, so this method merely returns successful jobs
-        if filters is not None:
-            for filter in filters:
-                if filter.get('key') == 'status':
-                    job_status = filter['value']
-                    # job entry in job log table has no status attribute.
-                    if job_status == constants.JS_Success:
-                        filters.remove(filter)
-                    else:
-                        return []
-
-        jobs_in_log = core.query_resource(
-            context, models.AsyncJobLog, filters or [], sorts or [])
-        return jobs_in_log
-
-
 def get_job(context, job_id):
     with context.session.begin():
         return core.get_resource(context, models.AsyncJob, job_id)
@@ -468,6 +441,37 @@ def get_job_from_log(context, job_id):
 def delete_job(context, job_id):
     with context.session.begin():
         return core.delete_resource(context, models.AsyncJob, job_id)
+
+
+def list_jobs(context, filters=None, sorts=None, limit=None, marker=None):
+    with context.session.begin():
+        return core.paginate_query(
+            context, models.AsyncJob, limit,
+            models.AsyncJob(id=marker) if marker else None,
+            filters or [], sorts or [])
+
+
+def list_jobs_from_log(context, filters=None, sorts=None,
+                       limit=None, marker=None):
+    with context.session.begin():
+        filter_is_success = True
+        if filters is not None and len(filters) > 0:
+            for filter in filters:
+                if filter.get('key') == 'status':
+                    job_status = filter['value']
+                    # job entry in job log table has no
+                    # status attribute.
+                    if job_status == constants.JS_Success:
+                        filters.remove(filter)
+                    else:
+                        filter_is_success = False
+                    break
+        if filter_is_success:
+            return core.paginate_query(context, models.AsyncJobLog, limit,
+                                       models.AsyncJobLog(
+                                           id=marker) if marker else None,
+                                       filters or [], sorts or [])
+        return []
 
 
 def get_latest_job(context, status, _type, resource_id):
