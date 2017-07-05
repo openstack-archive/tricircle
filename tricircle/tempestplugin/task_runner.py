@@ -22,16 +22,22 @@ import yaml
 from openstack import connection
 from openstack import profile
 
+from tricircle.tests.network_sdk import network_service
 from tricircle.tests.tricircle_sdk import multiregion_network_service
 
 LOG = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+SLEEP_INTERVAL = 20
 
 
 class DummyRunner(object):
     class DummyResource(object):
         def __init__(self, _id):
             self.id = _id
+
+        def __getattr__(self, item):
+            return item
 
     def __init__(self):
         self.id_pool = {}
@@ -68,7 +74,7 @@ class SDKRunner(object):
                   'region1': 'RegionOne',
                   'region2': 'RegionTwo'}
     serv_reslist_map = {
-        'network': ['network', 'subnet', 'port', 'router', 'fip'],
+        'network_sdk': ['network', 'subnet', 'port', 'router', 'fip', 'trunk'],
         'compute': ['server'],
         'image': ['image'],
         'tricircle_sdk': ['job']}
@@ -94,6 +100,8 @@ class SDKRunner(object):
                 serv = multiregion_network_service.MultiregionNetworkService(
                     version='v1')
                 prof._add_service(serv)
+            net_serv = network_service.NetworkService(version='v2')
+            prof._add_service(net_serv)
             prof.set_region(profile.Profile.ALL, region)
             param['profile'] = prof
             conn = connection.Connection(**param)
@@ -363,7 +371,7 @@ class RunnerEngine(object):
                 if i == run_time - 1:
                     raise
                 else:
-                    time.sleep(10)
+                    time.sleep(SLEEP_INTERVAL)
                     LOG.info('Redo failed task %s', task_id)
 
     def run_tasks(self, task_set_id, depend_task_set_result={}):

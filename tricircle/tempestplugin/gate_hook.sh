@@ -43,6 +43,7 @@ function _setup_tricircle_multinode {
     # Configure primary node
     export DEVSTACK_LOCAL_CONFIG="$ENABLE_TRICIRCLE"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=True"
+    export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_TRUNK=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"REGION_NAME=RegionOne"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"HOST_IP=$PRIMARY_NODE_IP"
 
@@ -59,6 +60,7 @@ function _setup_tricircle_multinode {
     # Configure sub-node
     export DEVSTACK_SUBNODE_CONFIG="$ENABLE_TRICIRCLE"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=False"
+    export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_ENABLE_TRUNK=True"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"REGION_NAME=RegionTwo"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"HOST_IP=$SUBNODE_IP"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"KEYSTONE_REGION_NAME=RegionOne"
