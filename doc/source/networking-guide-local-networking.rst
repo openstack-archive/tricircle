@@ -129,26 +129,28 @@ Create subnet in ext-net1.
     | updated_at        | 2017-01-10T04:49:16Z                             |
     +-------------------+--------------------------------------------------+
 
-Create router R1.
+Create local router R1 in RegionOne
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion router-create R1
-    +-----------------------+--------------------------------------+
-    | Field                 | Value                                |
-    +-----------------------+--------------------------------------+
-    | admin_state_up        | True                                 |
-    | created_at            | 2017-01-10T04:50:06Z                 |
-    | description           |                                      |
-    | external_gateway_info |                                      |
-    | id                    | 7ce3282f-3864-4c55-84bf-fc5edc3293cb |
-    | name                  | R1                                   |
-    | project_id            | c0e194dfadd44fc1983fd6dd7c8ed384     |
-    | revision_number       | 1                                    |
-    | status                | ACTIVE                               |
-    | tenant_id             | c0e194dfadd44fc1983fd6dd7c8ed384     |
-    | updated_at            | 2017-01-10T04:50:06Z                 |
-    +-----------------------+--------------------------------------+
+    $ neutron --os-region-name=CentralRegion router-create --availability-zone-hint RegionOne R1
+    +-------------------------+--------------------------------------+
+    | Field                   | Value                                |
+    +-------------------------+--------------------------------------+
+    | admin_state_up          | True                                 |
+    | availability_zone_hints | RegionOne                            |
+    | availability_zones      |                                      |
+    | created_at              | 2017-01-10T04:50:06Z                 |
+    | description             |                                      |
+    | external_gateway_info   |                                      |
+    | id                      | 7ce3282f-3864-4c55-84bf-fc5edc3293cb |
+    | name                    | R1                                   |
+    | project_id              | c0e194dfadd44fc1983fd6dd7c8ed384     |
+    | revision_number         | 1                                    |
+    | status                  | ACTIVE                               |
+    | tenant_id               | c0e194dfadd44fc1983fd6dd7c8ed384     |
+    | updated_at              | 2017-01-10T04:50:06Z                 |
+    +-------------------------+--------------------------------------+
 
 Set the router gateway to ext-net1 for R1.
 
@@ -175,16 +177,16 @@ Set the router gateway to ext-net1 for R1.
     | updated_at            | 2017-01-10T04:51:19Z                                                                                       |
     +-----------------------+------------------------------------------------------------------------------------------------------------+
 
-Create network net1.
+Create local network net1 in RegionOne.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create net1
+    $ neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionOne net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   |                                      |
+    | availability_zone_hints   | RegionOne                            |
     | id                        | beaf59eb-c597-4b69-bd41-8bf9fee2dc6a |
     | name                      | net1                                 |
     | project_id                | c0e194dfadd44fc1983fd6dd7c8ed384     |

@@ -154,9 +154,9 @@ configured in central Neutron's neutron.conf.
      - (String) Default region where the external network belongs to, it must exist, for example, RegionOne.
    * - ``network_vlan_ranges`` = ``None``
      - (String) List of <physical_network>:<vlan_min>:<vlan_max> or <physical_network> specifying physical_network names usable for VLAN provider and tenant networks, as well as ranges of VLAN tags on each available for allocation to tenant networks, for example, bridge:2001:3000.
-   * - ``tenant_network_types`` = ``local,vxlan``
+   * - ``tenant_network_types`` = ``vxlan,local``
      - (String) Ordered list of network_types to allocate as tenant networks. The default value "local" is useful for single pod connectivity, for example, local vlan and vxlan.
-   * - ``type_drivers`` = ``local,vxlan``
+   * - ``type_drivers`` = ``vxlan,local``
      - (String) List of network type driver entry points to be loaded from the tricircle.network.type_drivers namespace, for example, local vlan and vxlan.
    * - ``vni_ranges`` = ``None``
      - (String) Comma-separated list of <vni_min>:<vni_max> tuples enumerating ranges of VXLAN VNI IDs that are available for tenant network allocation, for example, 1001:2000

@@ -162,8 +162,8 @@ Set the router gateway to ext-net1 for R1.
     | updated_at            | 2017-01-12T07:04:36Z                                                                                       |
     +-----------------------+------------------------------------------------------------------------------------------------------------+
 
-Create local network net1 which will reside in RegionOne. You can use az1 or
-RegionOne as the value of availability-zone-hint.
+Create local network net1 which will reside in RegionOne, so you use RegionOne
+as the value of availability-zone-hint.
 
 .. code-block:: console
 

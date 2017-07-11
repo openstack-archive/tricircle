@@ -169,8 +169,8 @@ Installation with Central Neutron Server
      [client] admin_tenant, "project name of admin account", demo
      [client] admin_user_domain_name, "user domain name of admin account", Default
      [client] admin_tenant_domain_name, "project name of admin account", Default
-     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "local,vlan,vxlan,flat"
-     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "local,vlan,vxlan,flat"
+     [tricircle] type_drivers, "list of network type driver entry points to be loaded", "vxlan,vlan,flat,local"
+     [tricircle] tenant_network_types, "ordered list of network_types to allocate as tenant networks", "vxlan,vlan,flat,local"
      [tricircle] network_vlan_ranges, "physical network names and VLAN tags range usable of VLAN provider", "bridge:2001:3000"
      [tricircle] vni_ranges, "VxLAN VNI range", "1001:2000"
      [tricircle] flat_networks, "physical network names with which flat networks can be created", bridge

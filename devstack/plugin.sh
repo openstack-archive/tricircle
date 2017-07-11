@@ -279,23 +279,29 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client auto_refresh_endpoint True
     iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
 
-    local type_drivers=local
-    local tenant_network_types=local
-    if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
-        type_drivers+=,vlan
-        tenant_network_types+=,vlan
-        iniset $NEUTRON_CONF.$server_index tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
-    fi
+    local type_drivers=''
+    local tenant_network_types=''
     if [ "$Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS" != "" ]; then
         type_drivers+=,vxlan
         tenant_network_types+=,vxlan
         iniset $NEUTRON_CONF.$server_index tricircle vni_ranges `echo $Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
+    fi
+    if [ "$Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS" != "" ]; then
+        type_drivers+=,vlan
+        tenant_network_types+=,vlan
+        iniset $NEUTRON_CONF.$server_index tricircle network_vlan_ranges `echo $Q_ML2_PLUGIN_VLAN_TYPE_OPTIONS | awk -F= '{print $2}'`
     fi
     if [ "Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS" != "" ]; then
         type_drivers+=,flat
         tenant_network_types+=,flat
         iniset $NEUTRON_CONF.$server_index tricircle flat_networks `echo $Q_ML2_PLUGIN_FLAT_TYPE_OPTIONS | awk -F= '{print $2}'`
     fi
+    type_drivers+=,local
+    tenant_network_types+=,local
+    # remove the heading ","
+    type_drivers=$(echo $type_drivers | sed 's/^,//')
+    tenant_network_types=$(echo $tenant_network_types | sed 's/^,//')
+
     iniset $NEUTRON_CONF.$server_index tricircle type_drivers $type_drivers
     iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types
     iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False

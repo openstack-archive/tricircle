@@ -4,8 +4,8 @@ North South Networking via Single External Network
 
 The following figure illustrates one typical networking mode, the north
 south networking traffic for the tenant will be centralized through
-single external network. Only one virtual router is needed even if
-the tenant's network are located in multiple OpenStack regions.
+single external network. Only one virtual non-local router R1 is needed
+even if the tenant's network are located in multiple OpenStack regions.
 
 Only Neutron and Tricircle Local Neutron Plugin are required to be deployed
 in RegionThree if you want to make the external network being floating and
@@ -188,8 +188,8 @@ Set the router gateway to ext-net1 for R1.
     $ neutron --os-region-name=CentralRegion router-gateway-set R1 ext-net1
     Set gateway for router R1
 
-Create local network net1 which will reside in RegionOne. You can use az1 or
-RegionOne as the value of availability-zone-hint.
+Create local network net1 which will reside in RegionOne, so you use RegionOne
+as the value of availability-zone-hint.
 
 .. code-block:: console
 

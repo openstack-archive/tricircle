@@ -44,11 +44,6 @@ configure the local.conf like this::
     TRICIRCLE_START_SERVICES=True
     enable_plugin tricircle https://github.com/openstack/tricircle/
 
-If you also want to configure vxlan network, suppose the vxlan range for tenant
-network is 1001~2000, add the following configuration to the above local.conf::
-
-    Q_ML2_PLUGIN_VXLAN_TYPE_OPTIONS=(vni_ranges=1001:2000)
-
 In the node which will run local Neutron without Tricircle services, configure
 the local.conf like this::
 
@@ -93,16 +88,17 @@ follows::
     network_vlan_ranges = bridge:101:150,extern:151:200
     vni_ranges = 1001:2000
     flat_networks = bridge,extern
-    tenant_network_types = local,vlan,vxlan,flat
-    type_drivers = local,vlan,vxlan,flat
+    tenant_network_types = vxlan,vlan,flat,local
+    type_drivers = vxlan,vlan,flat,local
 
-The default network type in central Neutron is local network, i.e, one
-network can only be presented in one local Neutron. In which region the
-local network will be located, it's up to in which region the first instance
-will be booted in this network. After that, it'll fail if you want to boot
-instance in another region to this network. The local network could be VLAN
-or VxLAN or GRE network by default, it's up to your local Neutron's
-configuration.
+If you want to create a local network, it is recommend that you specify
+availability_zone_hint as region name when creating the network, instead of
+specifying the network type as "local". The "local" type has two drawbacks.
+One is that you can not control the exact type of the network in local Neutron,
+it's up to your local Neutron's configuration. The other is that the segment
+ID of the network is allocated by local Neutron, so it may conflict with a
+segment ID that is allocated by central Neutron. Considering such problems, we
+have plan to deprecate "local" type.
 
 If you want to create a L2 network across multiple Neutron servers, then you
 have to speficy --provider-network-type vlan in network creation

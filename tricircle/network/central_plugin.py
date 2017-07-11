@@ -75,11 +75,11 @@ from tricircle.network import security_groups
 
 tricircle_opts = [
     cfg.ListOpt('type_drivers',
-                default=['local,vxlan'],
+                default=['vxlan,local'],
                 help=_('List of network type driver entry points to be loaded '
                        'from the tricircle.network.type_drivers namespace.')),
     cfg.ListOpt('tenant_network_types',
-                default=['local,vxlan'],
+                default=['vxlan,local'],
                 help=_('Ordered list of network_types to allocate as tenant '
                        'networks. The default value "local" is useful for '
                        'single pod connectivity.')),

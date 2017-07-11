@@ -31,17 +31,16 @@ support service redundancy in case of region level failure.
 How to create this network topology
 ===================================
 
-Create provider network phy_net1, which will be located in az1, including
-RegionOne.
+Create provider network phy_net1, which will be located in RegionOne.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --availability-zone-hint az1 phy_net1
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --availability-zone-hint RegionOne phy_net1
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   | az1                                  |
+    | availability_zone_hints   | RegionOne                            |
     | id                        | b7832cbb-d399-4d5d-bcfd-d1b804506a1a |
     | name                      | phy_net1                             |
     | project_id                | ce444c8be6da447bb412db7d30cd7023     |
@@ -84,17 +83,16 @@ Create subnet in phy_net1.
     | updated_at        | 2017-01-11T08:43:48Z                           |
     +-------------------+------------------------------------------------+
 
-Create provider network phy_net2, which will be located in az2, including
-RegionTwo.
+Create provider network phy_net2, which will be located in RegionTwo.
 
 .. code-block:: console
 
-    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --availability-zone-hint az2 phy_net2
+    $ neutron --os-region-name=CentralRegion net-create --provider:network_type vlan --provider:physical_network extern --availability-zone-hint RegionTwo phy_net2
     +---------------------------+--------------------------------------+
     | Field                     | Value                                |
     +---------------------------+--------------------------------------+
     | admin_state_up            | True                                 |
-    | availability_zone_hints   | az2                                  |
+    | availability_zone_hints   | RegionTwo                            |
     | id                        | 731293af-e68f-4677-b433-f46afd6431f3 |
     | name                      | phy_net2                             |
     | project_id                | ce444c8be6da447bb412db7d30cd7023     |
@@ -328,7 +326,7 @@ List available flavors in RegionTwo.
     | d4 | ds4G      | 4096      | 20   | 0         |      | 4     | 1.0         | True      |
     +----+-----------+-----------+------+-----------+------+-------+-------------+-----------+
 
-Boot instance1 in RegionOne, and connect this instance to net1 and phy_net2.
+Boot instance2 in RegionTwo, and connect this instance to net1 and phy_net2.
 
 .. code-block:: console
 
