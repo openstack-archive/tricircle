@@ -1,0 +1,6 @@
+---
+features:
+  - |
+    Support pagination for resource routing list operation. If page size is
+    not specified from client, then maximum pagination limit from
+    configuration will be used.
