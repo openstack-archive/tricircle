@@ -1,0 +1,556 @@
+- task_set_id: preparation
+  tasks:
+    - task_id: image1
+      type: image
+      region: region1
+      query:
+        get_one: true
+    - task_id: image2
+      type: image
+      region: region2
+      query:
+        get_one: true
+    - task_id: net1
+      type: network
+      region: central
+      params:
+        name: net1
+        provider_network_type: vxlan
+    - task_id: subnet1
+      type: subnet
+      region: central
+      depend: [net1]
+      params:
+        name: subnet1
+        ip_version: 4
+        cidr: 10.0.1.0/24
+        network_id: net1@id
+    - task_id: p1
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p1
+        network_id: net1@id
+    - task_id: p2
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p2
+        network_id: net1@id
+    - task_id: p3
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p3
+        network_id: net1@id
+    - task_id: p4
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p4
+        network_id: net1@id
+    - task_id: p5
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p5
+        network_id: net1@id
+    - task_id: p6
+      type: port
+      region: central
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p6
+        network_id: net1@id
+    - task_id: vm_sfc1
+      region: region1
+      type: server
+      depend:
+        - p2
+        - p3
+        - image1
+      params:
+        flavor_id: 1
+        image_id: image1@id
+        name: vm_sfc1
+        networks:
+          - port: p2@id
+          - port: p3@id
+    - task_id: vm_sfc2
+      region: region2
+      type: server
+      depend:
+        - p4
+        - p5
+        - image2
+      params:
+        flavor_id: 1
+        image_id: image2@id
+        name: vm_sfc2
+        networks:
+          - port: p4@id
+          - port: p5@id
+    - task_id: vm_src
+      region: region1
+      type: server
+      depend:
+        - p1
+        - image1
+      params:
+        flavor_id: 1
+        image_id: image1@id
+        name: vm_src
+        networks:
+          - port: p1@id
+    - task_id: vm_dst
+      region: region2
+      type: server
+      depend:
+        - p6
+        - image2
+      params:
+        flavor_id: 1
+        image_id: image2@id
+        name: vm_dst
+        networks:
+          - port: p6@id
+    - task_id: wait-servers1
+      region: region1
+      type: server
+      depend:
+        - vm_src
+        - vm_sfc1
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm_src
+          - status: ACTIVE
+            name: vm_sfc1
+    - task_id: wait-servers2
+      region: region2
+      type: server
+      depend:
+        - wait-servers1
+        - vm_dst
+        - vm_sfc2
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm_dst
+          - status: ACTIVE
+            name: vm_sfc2
+    - task_id: pp1
+      region: central
+      type: port_pair
+      depend:
+        - vm_sfc1
+        - p2
+        - p3
+        - wait-servers2
+      params:
+        name: pp1
+        ingress: p2@id
+        egress: p3@id
+    - task_id: pp2
+      region: central
+      type: port_pair
+      depend:
+        - vm_sfc2
+        - p4
+        - p5
+        - wait-servers2
+      params:
+        name: pp2
+        ingress: p4@id
+        egress: p5@id
+    - task_id: ppg1
+      region: central
+      type: port_pair_group
+      depend: [pp1]
+      params:
+        name: ppg1
+        port_pairs: [pp1@id]
+    - task_id: ppg2
+      region: central
+      type: port_pair_group
+      depend: [pp2]
+      params:
+        name: ppg2
+        port_pairs: [pp2@id]
+    - task_id: fc
+      region: central
+      type: flow_classifier
+      depend: [p1]
+      params:
+        name: fc
+        logical_source_port: p1@id
+        source_ip_prefix: 10.0.1.0/24
+    - task_id: pc
+      region: central
+      type: port_chain
+      depend:
+        - ppg1
+        - ppg2
+        - fc
+      params:
+        name: pc
+        flow_classifiers: [fc@id]
+        port_pair_groups:
+          - ppg1@id
+          - ppg2@id
+- task_set_id: wait-for-job
+  tasks:
+    - task_id: check-job
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: check
+  depend: [preparation]
+  tasks:
+    - task_id: pp1-1
+      region: region1
+      type: port_pair
+      query:
+        get_one: true
+      params:
+        name: pp1
+    - task_id: pp1-2
+      region: region2
+      type: port_pair
+      query:
+        get_one: true
+      params:
+        name: pp1
+    - task_id: pp2-1
+      region: region1
+      type: port_pair
+      query:
+        get_one: true
+      params:
+        name: pp2
+    - task_id: pp2-2
+      region: region2
+      type: port_pair
+      query:
+        get_one: true
+      params:
+        name: pp2
+    - task_id: ppg1-1
+      region: region1
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg1
+    - task_id: ppg1-2
+      region: region2
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg1
+    - task_id: ppg2-1
+      region: region1
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg2
+    - task_id: ppg2-2
+      region: region2
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg2
+    - task_id: fc-1
+      region: region1
+      type: flow_classifier
+      query:
+        get_one: true
+      params:
+        name: fc
+    - task_id: fc-2
+      region: region2
+      type: flow_classifier
+      query:
+        get_one: true
+      params:
+        name: fc
+    - task_id: check-pp-1
+      region: region1
+      type: port_pair
+      validate:
+        predicate: any
+        condition:
+          - ingress: preparation@p2@id
+            egress: preparation@p3@id
+            name: pp1
+          - ingress: preparation@p4@id
+            egress: preparation@p5@id
+            name: pp2
+    - task_id: check-pp-2
+      region: region2
+      type: port_pair
+      validate:
+        predicate: any
+        condition:
+          - ingress: preparation@p2@id
+            egress: preparation@p3@id
+            name: pp1
+          - ingress: preparation@p4@id
+            egress: preparation@p5@id
+            name: pp2
+    - task_id: check-ppg-1
+      region: region1
+      type: port_pair_group
+      depend:
+        - pp1-1
+        - pp2-1
+      validate:
+        predicate: any
+        condition:
+          - name: ppg1
+            port_pairs: [pp1-1@id]
+          - name: ppg2
+            port_pairs: [pp2-1@id]
+    - task_id: check-ppg-2
+      region: region2
+      type: port_pair_group
+      depend:
+        - pp1-2
+        - pp2-2
+      validate:
+        predicate: any
+        condition:
+          - name: ppg1
+            port_pairs: [pp1-2@id]
+          - name: ppg2
+            port_pairs: [pp2-2@id]
+    - task_id: check-pc-1
+      region: region1
+      type: port_chain
+      depend:
+        - ppg1-1
+        - ppg2-1
+        - fc-1
+      validate:
+        predicate: any
+        condition:
+          - name: pc
+            port_pair_groups:
+              - ppg1-1@id
+              - ppg2-1@id
+            flow_classifiers: [fc-1@id]
+    - task_id: check-pc-2
+      region: region2
+      type: port_chain
+      depend:
+        - ppg1-2
+        - ppg2-2
+        - fc-2
+      validate:
+        predicate: any
+        condition:
+          - name: pc
+            port_pair_groups:
+              - ppg1-2@id
+              - ppg2-2@id
+            flow_classifiers: [fc-2@id]
+- task_set_id: clean
+  depend: [preparation]
+  tasks:
+    - task_id: delete-pc
+      region: central
+      type: port_chain
+      action:
+        target: preparation@pc@id
+        method: delete
+    - task_id: delete-fc
+      region: central
+      type: flow_classifier
+      depend: [delete-pc]
+      action:
+        target: preparation@fc@id
+        method: delete
+    - task_id: delete-ppg1
+      region: central
+      type: port_pair_group
+      depend: [delete-pc]
+      action:
+        target: preparation@ppg1@id
+        method: delete
+    - task_id: delete-ppg2
+      region: central
+      type: port_pair_group
+      depend: [delete-pc]
+      action:
+        target: preparation@ppg2@id
+        method: delete
+    - task_id: delete-pp1
+      region: central
+      type: port_pair
+      depend: [delete-ppg1]
+      action:
+        target: preparation@pp1@id
+        method: delete
+    - task_id: delete-pp2
+      region: central
+      type: port_pair
+      depend: [delete-ppg2]
+      action:
+        target: preparation@pp2@id
+        method: delete
+    - task_id: delete-vm-src
+      region: region1
+      type: server
+      action:
+        target: preparation@vm_src@id
+        method: delete
+    - task_id: delete-vm-sfc1
+      region: region1
+      type: server
+      depend: [delete-pp1]
+      action:
+        target: preparation@vm_sfc1@id
+        method: delete
+    - task_id: delete-vm-dst
+      region: region2
+      type: server
+      action:
+        target: preparation@vm_dst@id
+        method: delete
+    - task_id: delete-vm-sfc2
+      region: region2
+      type: server
+      depend: [delete-pp2]
+      action:
+        target: preparation@vm_sfc2@id
+        method: delete
+- task_set_id: wait-server-delete
+  tasks:
+    - task_id: check-no-servers-1
+      region: region1
+      type: server
+      validate:
+        retries: 10
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-no-servers-2
+      region: region2
+      type: server
+      validate:
+        retries: 10
+        predicate: all
+        condition:
+          - name: invalid-name
+- task_set_id: clean-cont
+  depend: [preparation]
+  tasks:
+    - task_id: delete-p1
+      region: central
+      type: port
+      action:
+        target: preparation@p1@id
+        method: delete
+    - task_id: delete-p2
+      region: central
+      type: port
+      action:
+        target: preparation@p2@id
+        method: delete
+    - task_id: delete-p3
+      region: central
+      type: port
+      action:
+        target: preparation@p3@id
+        method: delete
+    - task_id: delete-p4
+      region: central
+      type: port
+      action:
+        target: preparation@p4@id
+        method: delete
+    - task_id: delete-p5
+      region: central
+      type: port
+      action:
+        target: preparation@p5@id
+        method: delete
+    - task_id: delete-p6
+      region: central
+      type: port
+      action:
+        target: preparation@p6@id
+        method: delete
+    - task_id: delete-subnet
+      region: central
+      depend:
+        - delete-p1
+        - delete-p2
+        - delete-p3
+        - delete-p4
+        - delete-p5
+        - delete-p6
+      type: subnet
+      action:
+        target: preparation@subnet1@id
+        method: delete
+        retries: 3
+    - task_id: delete-net
+      region: central
+      depend: [delete-subnet]
+      type: network
+      action:
+        target: preparation@net1@id
+        method: delete
+- task_set_id: clean-check
+  tasks:
+    - task_id: check-no-networks1
+      region: region1
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-no-networks2
+      region: region2
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-jobs
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS

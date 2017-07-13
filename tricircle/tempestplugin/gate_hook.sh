@@ -26,6 +26,7 @@ GATE_DEST=$BASE/new
 
 function _setup_tricircle_multinode {
 
+    export PROJECTS="openstack/networking-sfc $PROJECTS"
     PRIMARY_NODE_IP=$(cat /etc/nodepool/primary_node_private)
     SUBNODE_IP=$(head -n1 /etc/nodepool/sub_nodes_private)
 
@@ -39,11 +40,14 @@ function _setup_tricircle_multinode {
     export OVERRIDE_ENABLED_SERVICES+="dstat,peakmem_tracker,rabbit,mysql"
 
     ENABLE_TRICIRCLE="enable_plugin tricircle https://git.openstack.org/openstack/tricircle/"
+    ENABLE_SFC="enable_plugin networking-sfc https://git.openstack.org/openstack/networking-sfc/"
 
     # Configure primary node
     export DEVSTACK_LOCAL_CONFIG="$ENABLE_TRICIRCLE"
+    export DEVSTACK_LOCAL_CONFIG+=$'\n'"$ENABLE_SFC"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_TRUNK=True"
+    export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_SFC=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"REGION_NAME=RegionOne"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"HOST_IP=$PRIMARY_NODE_IP"
 
@@ -52,6 +56,8 @@ function _setup_tricircle_multinode {
     ML2_CONFIG+=$'\n'"[ml2]"
     ML2_CONFIG+=$'\n'"mechanism_drivers = openvswitch,linuxbridge,l2population"
     ML2_CONFIG+=$'\n'"[agent]"
+    ML2_CONFIG+=$'\n'"extensions=sfc"
+    ML2_CONFIG+=$'\n'"arp_responder=True"
     ML2_CONFIG+=$'\n'"tunnel_types=vxlan"
     ML2_CONFIG+=$'\n'"l2_population=True"
 
@@ -59,8 +65,10 @@ function _setup_tricircle_multinode {
 
     # Configure sub-node
     export DEVSTACK_SUBNODE_CONFIG="$ENABLE_TRICIRCLE"
+    export DEVSTACK_SUBNODE_CONFIG+=$'\n'"$ENABLE_SFC"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=False"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_ENABLE_TRUNK=True"
+    export DEVSTACK_SUBNODE_CONFIG+=$'\n'"TRICIRCLE_ENABLE_SFC=True"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"REGION_NAME=RegionTwo"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"HOST_IP=$SUBNODE_IP"
     export DEVSTACK_SUBNODE_CONFIG+=$'\n'"KEYSTONE_REGION_NAME=RegionOne"
