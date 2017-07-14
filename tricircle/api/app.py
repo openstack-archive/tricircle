@@ -38,10 +38,9 @@ common_opts = [
                 help=_("Allow the usage of the pagination")),
     cfg.BoolOpt('allow_sorting', default=False,
                 help=_("Allow the usage of the sorting")),
-    cfg.StrOpt('pagination_max_limit', default="-1",
+    cfg.IntOpt('pagination_max_limit', min=1, default=2000,
                help=_("The maximum number of items returned in a single "
-                      "response, value was 'infinite' or negative integer "
-                      "means no limit")),
+                      "response, value must be greater or equal to 1")),
 ]
 
 

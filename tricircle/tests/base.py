@@ -23,7 +23,8 @@ CONFLICT_OPT_NAMES = [
     'bind_port',
     'bind_host',
     'allow_pagination',
-    'allow_sorting'
+    'allow_sorting',
+    'pagination_max_limit',
 ]
 
 
