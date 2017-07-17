@@ -1159,7 +1159,7 @@ class PluginTest(unittest.TestCase,
                          update_body['network']['description'])
         self.assertEqual(top_net['admin_state_up'],
                          update_body['network']['admin_state_up'])
-        self.assertEqual(top_net['shared'], True)
+        self.assertTrue(top_net['shared'])
 
         bottom_net = fake_client.get_networks(t_ctx, b_net_id)
         # name is set to top resource id, which is used by lock_handle to
@@ -1171,7 +1171,7 @@ class PluginTest(unittest.TestCase,
                          update_body['network']['description'])
         self.assertEqual(bottom_net['admin_state_up'],
                          update_body['network']['admin_state_up'])
-        self.assertEqual(bottom_net['shared'], True)
+        self.assertTrue(bottom_net['shared'])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
@@ -2096,7 +2096,7 @@ class PluginTest(unittest.TestCase,
         # for supporting multi-gateway l3 mode, we allow attaching a network
         # to a local router if the regions of the network include the region
         # of the router
-        self.assertEqual(True, is_local_router)
+        self.assertTrue(is_local_router)
 
         router_az_hints = '["az_name_1"]'
         net_az_hints = '["az_name_1", "pod_2"]'
@@ -2121,7 +2121,7 @@ class PluginTest(unittest.TestCase,
         # for supporting multi-gateway l3 mode, we allow attaching a network
         # to a local router if the regions of the network include the region
         # of the router
-        self.assertEqual(True, is_local_router)
+        self.assertTrue(is_local_router)
 
         router_az_hints = None
         net_az_hints = '["pod_1", "az_name_2"]'
@@ -2132,7 +2132,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, False)
+        self.assertFalse(is_local_router)
 
         router_az_hints = None
         net_az_hints = None
@@ -2143,7 +2143,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, False)
+        self.assertFalse(is_local_router)
 
         router_az_hints = '["pod_1"]'
         net_az_hints = '["pod_1"]'
@@ -2154,7 +2154,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, True)
+        self.assertTrue(is_local_router)
 
         router_az_hints = '["az_name_2"]'
         net_az_hints = '["az_name_2"]'
@@ -2165,7 +2165,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, False)
+        self.assertFalse(is_local_router)
 
         router_az_hints = '["pod_1", "az_name_2"]'
         net_az_hints = '["az_name_2"]'
@@ -2177,7 +2177,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, False)
+        self.assertFalse(is_local_router)
 
         net_az_hints = '["pod_1"]'
         t_ctx.is_admin = True
@@ -2199,7 +2199,7 @@ class PluginTest(unittest.TestCase,
         net = fake_plugin.get_network(q_ctx, t_net_id)
         is_local_router = helper.NetworkHelper.is_local_router(t_ctx, t_router)
         fake_plugin.validate_router_net_location_match(t_ctx, router, net)
-        self.assertEqual(is_local_router, True)
+        self.assertTrue(is_local_router)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)

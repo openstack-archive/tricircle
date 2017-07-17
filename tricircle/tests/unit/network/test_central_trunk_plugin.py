@@ -529,12 +529,12 @@ class PluginTest(unittest.TestCase):
                                                      update_body)
         self.assertEqual(updated_top_trunk['name'], 'new_name')
         self.assertEqual(updated_top_trunk['description'], 'updated')
-        self.assertEqual(updated_top_trunk['admin_state_up'], False)
+        self.assertFalse(updated_top_trunk['admin_state_up'])
 
         updated_btm_trunk = fake_plugin.get_trunk(q_ctx, t_trunk['id'])
         self.assertEqual(updated_btm_trunk['name'], 'new_name')
         self.assertEqual(updated_btm_trunk['description'], 'updated')
-        self.assertEqual(updated_btm_trunk['admin_state_up'], False)
+        self.assertFalse(updated_btm_trunk['admin_state_up'])
 
     @patch.object(context, 'get_context_from_neutron_context',
                   new=fake_get_context_from_neutron_context)
