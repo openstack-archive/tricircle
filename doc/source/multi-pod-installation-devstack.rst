@@ -78,9 +78,9 @@ too, you should prepare one more network interface in the second node for the
 external network. In this guide, the external network is also VLAN type, so the
 local.conf sample is based on VLAN type external network setup. For the resource
 requirements to setup each node, please refer to
-`All-In-One Single Machine <http://docs.openstack.org/developer/devstack/guides/single-machine.html>`_
+`All-In-One Single Machine <https://docs.openstack.org/devstack/latest/guides.html#all-in-one-single-machine>`_
 for installing DevStack in bare metal server and
-`All-In-One Single VM <http://docs.openstack.org/developer/devstack/guides/single-vm.html>`_
+`All-In-One Single VM <https://docs.openstack.org/devstack/latest/guides.html#all-in-one-single-vm>`_
 for installing DevStack in virtual machine.
 
 If you want to experience cross Neutron VxLAN network, please make sure
@@ -95,7 +95,7 @@ In pod1 in node1 for Tricircle service, central Neutron and OpenStack
 RegionOne,
 
 - 1 Install DevStack. Please refer to
-  `DevStack document <http://docs.openstack.org/developer/devstack/>`_
+  `DevStack document <https://docs.openstack.org/devstack/latest/>`_
   on how to install DevStack into single VM or bare metal server.
 
 - 2 In DevStack folder, create a file local.conf, and copy the content of
@@ -170,7 +170,7 @@ RegionOne,
 In pod2 in node2 for OpenStack RegionTwo,
 
 - 1 Install DevStack. Please refer to
-  `DevStack document <http://docs.openstack.org/developer/devstack/>`_
+  `DevStack document <https://docs.openstack.org/devstack/latest/>`_
   on how to install DevStack into single VM or bare metal server.
 
 - 2 In DevStack folder, create a file local.conf, and copy the content of
@@ -235,7 +235,7 @@ In pod2 in node2 for OpenStack RegionTwo,
   want to try l3 north-south networking, you can simply remove the "extern"
   part. The external network type we use in the guide is VLAN, if you want to
   use other network type like flat, please refer to
-  `DevStack document <http://docs.openstack.org/developer/devstack/>`_.
+  `DevStack document <https://docs.openstack.org/devstack/latest/>`_.
 
 - 4 Create OVS bridge and attach the VLAN network interface to it ::
 
