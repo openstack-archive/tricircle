@@ -18,13 +18,13 @@ import functools
 import inspect
 import six
 from six.moves import xrange
-import uuid
 
 import keystoneauth1.identity.generic as auth_identity
 from keystoneauth1 import session
 from keystoneclient.v3 import client as keystone_client
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import uuidutils
 
 import tricircle.common.context as tricircle_context
 from tricircle.common import exceptions
@@ -333,7 +333,7 @@ class Client(object):
                         cxt, config_id, update_dict)
                 else:
                     config_dict = {
-                        'service_id': str(uuid.uuid4()),
+                        'service_id': uuidutils.generate_uuid(),
                         'pod_id': pod_id,
                         'service_type': service,
                         'service_url': endpoint_map[region][service]
