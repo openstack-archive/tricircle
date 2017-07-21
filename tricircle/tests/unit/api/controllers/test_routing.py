@@ -15,7 +15,6 @@ from mock import patch
 from oslo_utils import uuidutils
 import six
 from six.moves import xrange
-import unittest
 
 from oslo_config import cfg
 import pecan
@@ -27,6 +26,7 @@ from tricircle.common import context
 from tricircle.common import policy
 from tricircle.db import api as db_api
 from tricircle.db import core
+from tricircle.tests import base
 
 
 class FakeResponse(object):
@@ -36,8 +36,10 @@ class FakeResponse(object):
         return super(FakeResponse, cls).__new__(cls)
 
 
-class RoutingControllerTest(unittest.TestCase):
+class RoutingControllerTest(base.TestCase):
     def setUp(self):
+        super(RoutingControllerTest, self).setUp()
+
         cfg.CONF.clear()
         cfg.CONF.register_opts(app.common_opts)
         core.initialize()
@@ -409,3 +411,5 @@ class RoutingControllerTest(unittest.TestCase):
     def tearDown(self):
         cfg.CONF.unregister_opts(app.common_opts)
         core.ModelBase.metadata.drop_all(core.get_engine())
+
+        super(RoutingControllerTest, self).tearDown()
