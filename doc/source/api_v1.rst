@@ -25,11 +25,11 @@ the OpenStack Identity service. They also require a base service url that can
 be got from the OpenStack Tricircle endpoint. This will be the root url that
 every call below will be added to build a full path.
 
-For instance, if the Tricircle service url is http://127.0.0.1/tricircle/v1.0
-then the full API call for /pods is http://127.0.0.1/tricircle/v1.0/pods.
+For instance, if the Tricircle service url is ``http://127.0.0.1/tricircle/v1.0``
+then the full API call for ``/pods`` is ``http://127.0.0.1/tricircle/v1.0/pods``.
 
 As such, for the rest of this document we will leave out the root url where
-GET /pods really means GET {tricircle_service_url}/pods.
+``GET /pods`` really means ``GET {tricircle_service_url}/pods``.
 
 Pod
 ===
@@ -82,7 +82,7 @@ following table.
 
 **Response Example**
 
-This is an example of response information for GET /pods.
+This is an example of response information for ``GET /pods``.
 
 ::
 
@@ -164,7 +164,7 @@ All of its attributes are described in the following table.
 
 **Response Example**
 
-This is an example of response information for GET /pods/{pod_id}.
+This is an example of response information for ``GET /pods/{pod_id}``.
 
 ::
 
@@ -250,7 +250,7 @@ are listed below.
 
 **Request Example**
 
-This is an example of request information for POST /pods.
+This is an example of request information for ``POST /pods``.
 
 ::
 
@@ -265,7 +265,7 @@ This is an example of request information for POST /pods.
 
 **Response Example**
 
-This is an example of response information for POST /pods.
+This is an example of response information for ``POST /pods``.
 
 ::
 
@@ -324,9 +324,32 @@ This fetches all the resource routing entries by default, but we can
 apply filter(s) on the returned values to only show the specific routing
 entries. Accordingly the filtering condition(s) will be added to the tail of
 the service url separated by question mark. For example, the default service
-url is GET /routings, when filtering is applied, the service url becomes
-GET /routings?attribute=attribute_value. One or multiple conditions are
+url is ``GET /routings``, when filtering is applied, the service url becomes
+``GET /routings?attribute=attribute_value``. One or multiple conditions are
 supported.
+
+All items returned are sorted in descending order by ID. Because the ID is a
+big integer, ID with greater value means they are newly added to the resource
+routing table. So most recently created items will be shown first.
+
+To reduce load on service, list operation returns a maximum number of items
+at a time by pagination. To navigate the collection, the parameters limit
+and marker can be set in the URI. For example: ``GET /v1.0/routings?limit=2000&marker=500``.
+The marker parameter is the ID of the last item in the previous list.
+If marker is specified, we can get the results after this item. A marker
+with an invalid ID results in a bad request. The limit parameter sets
+the page size. If the client requests a limit beyond the maximum limit
+in configuration, then this maximum limit will be used. For each list request,
+if there are more items waiting to be shown besides those already in page,
+then a link to next page will be given. Using this link and same filtering
+conditions we can retrieve the following items. If the total number of items is
+less than the limit, then no next page link in the response. If user lists the
+routings without limit value specified, then maximum limit value will be
+used to control page size for protecting service.
+
+Both limit and marker parameters are optional, they can be specified together
+or separately. Pagination and filtering can work together in routing list
+operations.
 
 Normal Response Code: 200
 
@@ -363,28 +386,31 @@ attributes are described in the following table.
 
 **Response Example**
 
-This is an example of response information for GET /routings. By default, all
-the resource routing entries will be returned.
+This is an example of response information for ``GET /routings``. By default, all
+the resource routing entries will be returned. As there is no page size limit
+provided by the client, so default maximum pagination limit is used. As is shown,
+because total number of items is less than the limit, therefore no next page link
+in the response.
 
 ::
 
     {
         "routings": [
            {
-                "updated_at": "2016-09-25 03:16:31"",
-                "created_at": "2016-09-25 03:16:30",
+                "updated_at": "2016-09-25 03:16:33"",
+                "created_at": "2016-09-25 03:16:32",
                 "top_id": "4487087e-34c7-40d8-8553-3a4206d0591b",
-                "id": 2,
+                "id": 3,
                 "bottom_id": "834ef10b-a96f-460c-b448-b39b9f3e6b52",
                 "project_id": "d937fe2ad1064a37968885a58808f7a3",
                 "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
                 "resource_type": "security_group"
             },
             {
-                "updated_at": "2016-09-25 03:16:33",
-                "created_at": "2016-09-25 03:16:32",
+                "updated_at": "2016-09-25 03:16:31",
+                "created_at": "2016-09-25 03:16:30",
                 "top_id": "a4d786fd-0511-4fac-be45-8b9ee447324b",
-                "id": 3,
+                "id": 2,
                 "bottom_id": "7a05748c-5d1a-485e-bd5c-e52bc39b5414",
                 "project_id": "d937fe2ad1064a37968885a58808f7a3",
                 "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
@@ -393,23 +419,111 @@ the resource routing entries will be returned.
         ]
     }
 
-This is an example of response information for GET /routings?id=2. When a
-filter is applied to the list request, only the specific routing entry is
-retrieved.
+This is an example of response information for ``GET /v1.0/routings?limit=2``,
+to retrieve the first page we can only provide limit value.
 
 ::
 
     {
         "routings": [
            {
-                "updated_at": "2016-09-25 03:16:31"",
-                "created_at": "2016-09-25 03:16:30",
-                "top_id": "4487087e-34c7-40d8-8553-3a4206d0591b",
-                "id": 2,
-                "bottom_id": "834ef10b-a96f-460c-b448-b39b9f3e6b52",
-                "project_id": "d937fe2ad1064a37968885a58808f7a3",
-                "pod_id": "444a8ce3-9fb6-4a0f-b948-6b9d31d6b202",
-                "resource_type": "security_group"
+               "updated_at": null,
+               "created_at": "2017-06-11 12:52:46",
+               "top_id": "e091d3ad-a5a9-41a1-a948-54e2a1583b8d",
+               "id": 8,
+               "bottom_id": "e091d3ad-a5a9-41a1-a948-54e2a1583b8d",
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "07ce2e57-fdba-4a6a-a7ce-44528108380d",
+               "resource_type": "security_group"
+           },
+           {
+               "updated_at": null,
+               "created_at": "2017-06-11 12:52:46",
+               "top_id": "90806f6a-2c79-4cdf-8db4-de1f3e46fe1f",
+               "id": 6,
+               "bottom_id": "90806f6a-2c79-4cdf-8db4-de1f3e46fe1f",
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "07ce2e57-fdba-4a6a-a7ce-44528108380d",
+               "resource_type": "network"
+           }
+        ],
+        "routings_links": [
+            {
+                "href": "/v1.0/routings?limit=2&marker=6",
+                "rel": "next"
+            }
+        ]
+    }
+
+This is an example of response information for ``GET /v1.0/routings?limit=2&marker=6``,
+with the help of the link to next page, we can get the following items.
+
+::
+
+    {
+        "routings": [
+           {
+               "updated_at": null,
+               "created_at": "2017-06-11 12:52:46",
+               "top_id": "724b5ae0-d4eb-4165-a2cc-e6428719cab3",
+               "id": 5,
+               "bottom_id": "724b5ae0-d4eb-4165-a2cc-e6428719cab3",
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "07ce2e57-fdba-4a6a-a7ce-44528108380d",
+               "resource_type": "subnet"
+           },
+           {
+               "updated_at": null,
+               "created_at": "2017-06-11 12:50:01",
+               "top_id": "64b886de-62ca-4713-9461-bd77c79e2282",
+               "id": 4,
+               "bottom_id": null,
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "8ae8c849-ce30-43bb-8346-d4da6678fc9c",
+               "resource_type": "network"
+           }
+        ],
+        "routings_links": [
+            {
+                "href": "/v1.0/routings?limit=2&marker=4",
+                "rel": "next"
+            }
+        ]
+    }
+
+This is an example of response information for ``GET /v1.0/routings?limit=2&resource_type=port``.
+When filter and limit are applied to the list operation, we can restrict the total number of
+specific routing entries.
+
+::
+
+    {
+        "routings": [
+           {
+               "updated_at": "2017-06-11 12:49:41",
+               "created_at": "2017-06-11 12:49:41",
+               "top_id": "interface_RegionOne_724b5ae0-d4eb-4165-a2cc-e6428719cab3",
+               "id": 3,
+               "bottom_id": "73845c04-a709-4b0d-a70e-71923c4c5bfc",
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "07ce2e57-fdba-4a6a-a7ce-44528108380d",
+               "resource_type": "port"
+           },
+           {
+               "updated_at": "2017-06-11 12:49:03",
+               "created_at": "2017-06-11 12:49:03",
+               "top_id": "dhcp_port_724b5ae0-d4eb-4165-a2cc-e6428719cab3",
+               "id": 2,
+               "bottom_id": "4c6f2e86-7455-4fe5-8cbc-7c3d6bc7625f",
+               "project_id": "3b2a11d52ec44d7bb8c53a18fd5105d6",
+               "pod_id": "6073e33e-4d4f-45dc-961a-d7d3b4a8e7f7",
+               "resource_type": "port"
+           }
+        ],
+        "routings_links": [
+            {
+                "href": "/v1.0/routings?limit=2&marker=2",
+                "rel": "next"
             }
         ]
     }
@@ -466,7 +580,7 @@ table.
 
 **Response Example**
 
-This is an example of response information for GET /routings/{id}.
+This is an example of response information for ``GET /routings/{id}``.
 
 ::
 
@@ -549,7 +663,7 @@ entry's attributes are listed below.
 
 **Request Example**
 
-This is an example of request information for POST /routings.
+This is an example of request information for ``POST /routings``.
 
 ::
 
@@ -565,7 +679,7 @@ This is an example of request information for POST /routings.
 
 **Response Example**
 
-This is an example of response information for POST /routings.
+This is an example of response information for ``POST /routings``.
 
 ::
 
@@ -678,7 +792,7 @@ attributes of routing entry are listed below.
 
 **Request Example**
 
-This is an example of request information for PUT /routings/{id}.
+This is an example of request information for ``PUT /routings/{id}``.
 
 ::
 
@@ -690,7 +804,7 @@ This is an example of request information for PUT /routings/{id}.
 
 **Response Example**
 
-This is an example of response information for PUT /routings/{id}. The change
+This is an example of response information for ``PUT /routings/{id}``. The change
 of the field updated_at will be showed next time we retrieve this routing entry
 from the database.
 
@@ -755,10 +869,10 @@ and RUNNING jobs as well as SUCCESS jobs from job log. We can filter them by
 project ID, job type and job status to only get the specific kind of job
 entries. Accordingly the filtering condition will be added to the tail
 of the service url separated by question mark. For example, the default
-service url is GET /jobs. Using a filter the service url becomes
-GET /jobs?filter_name=value. One or multiple filtering conditions are
+service url is ``GET /jobs``. Using a filter the service url becomes
+``GET /jobs?filter_name=value``. One or multiple filtering conditions are
 supported. Particularly, job status is case insensitive when filtering the
-jobs, so both 'GET /jobs?status=NEW' and 'GET /jobs?status=new' will return
+jobs, so both ``GET /jobs?status=NEW`` and ``GET /jobs?status=new`` will return
 the same job set.
 
 Normal Response Code: 200
@@ -795,7 +909,7 @@ The attributes of single job are described in the following table.
 
 **Response Example**
 
-This is an example of response information for GET /jobs. By default, all the
+This is an example of response information for ``GET /jobs``. By default, all the
 job entries will be retrieved.
 
 
@@ -827,7 +941,7 @@ job entries will be retrieved.
         ]
     }
 
-This is an example of response information for GET /job?type=port_delete. Using
+This is an example of response information for ``GET /job?type=port_delete``. Using
 a filter only a part of job entries are retrieved.
 
 ::
@@ -853,7 +967,7 @@ a filter only a part of job entries are retrieved.
 +------------------+-------------------+-----------------------+-------------------------------+
 
 Retrieve jobs from the Tricircle database. We can filter them by project ID,
-job type and job status. It functions the same as service GET /jobs.
+job type and job status. It functions the same as service ``GET /jobs``.
 
 Normal Response Code: 200
 
@@ -886,7 +1000,7 @@ in the following table.
 
 **Response Example**
 
-This is an example of response information for GET /jobs/detail.
+This is an example of response information for ``GET /jobs/detail``.
 ::
 
     {
@@ -960,7 +1074,7 @@ The attributes of the returned job are described in the following table.
 
 **Response Example**
 
-This is an example of response information for GET /job/{id}.
+This is an example of response information for ``GET /job/{id}``.
 
 ::
 
@@ -1005,7 +1119,7 @@ is described as following.
 
 **Response Example**
 
-This is an example of response information for GET /jobs/schemas.
+This is an example of response information for ``GET /jobs/schemas``.
 
 ::
 
@@ -1101,7 +1215,7 @@ table.
 
 **Request Example**
 
-This is an example of request information for POST /jobs.
+This is an example of request information for ``POST /jobs``.
 
 ::
 
@@ -1118,7 +1232,7 @@ This is an example of request information for POST /jobs.
 
 **Response Example**
 
-This is an example of response information for POST /jobs.
+This is an example of response information for ``POST /jobs``.
 
 ::
 
