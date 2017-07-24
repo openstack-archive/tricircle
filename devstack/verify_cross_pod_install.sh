@@ -47,14 +47,11 @@ token=$(openstack token issue | awk 'NR==5 {print $4}')
 
 echo $token
 
-curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne"}}'
+openstack multiregion networking pod create --region-name RegionOne
 
-curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "Pod1", "az_name": "az1"}}'
+openstack multiregion networking pod create --region-name Pod1 --availability-zone az1
 
-curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "Pod2", "az_name": "az2"}}'
+openstack multiregion networking pod create --region-name Pod2 --availability-zone az2
 
 echo "******************************"
 echo "*         Verify Nova        *"
@@ -63,17 +60,12 @@ echo "******************************"
 echo "Show nova aggregate:"
 nova aggregate-list
 
-curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" \
-    -d '{"network": {"name": "net1", "admin_state_up": true, "availability_zone_hints": ["az1"]}}'
-curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $token" \
-    -d '{"network": {"name": "net2", "admin_state_up": true, "availability_zone_hints": ["az2"]}}'
+neutron net-create --availability-zone-hint az1 net1
 
-echo "Create external network ext-net by curl:"
-curl -X POST http://127.0.0.1:9696/v2.0/networks -H "Content-Type: application/json" \
-     -H "X-Auth-Token: $token" \
-     -d '{"network": {"name": "ext-net", "admin_state_up": true, "router:external": true, "provider:network_type": "vlan", "provider:physical_network": "extern", "availability_zone_hints": ["Pod2"]}}'
+neutron net-create --availability-zone-hint az2 net2
+
+echo "Create external network ext-net:"
+neutron net-create --router:external --provider:network_type vlan --provider:physical_network extern --availability-zone-hint Pod2 ext-net
 
 echo "Create test flavor:"
 nova flavor-create test 1 1024 10 1
