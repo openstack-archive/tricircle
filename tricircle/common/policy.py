@@ -142,7 +142,7 @@ def init(policy_file=None, rules=None,
     """
     global _ENFORCER
     if not _ENFORCER:
-        # http://docs.openstack.org/developer/oslo.policy/usage.html
+        # https://docs.openstack.org/oslo.policy/latest/user/usage.html
         _ENFORCER = policy.Enforcer(CONF,
                                     policy_file=policy_file,
                                     rules=rules,
