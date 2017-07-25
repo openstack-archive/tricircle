@@ -7,44 +7,38 @@
 Welcome to Tricircle's documentation!
 =====================================
 
-Tricircle User Guide
-====================
+User Documentation
+==================
 .. toctree::
    :maxdepth: 3
 
    user/index
 
-Tricircle Contribution Guide
-============================
+Contributor Guide
+=================
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    contributor/index
 
-Tricircle Admin Guide
-=====================
+Admin Guide
+===========
 .. toctree::
    :maxdepth: 3
 
    admin/index
 
-Tricircle Installation Guide
-============================
+Installation Guide
+==================
 .. toctree::
    :maxdepth: 3
 
    install/index
 
-Tricircle Configuration Guide
-=============================
+Configuration Guide
+===================
 .. toctree::
    :maxdepth: 3
 
    configuration/index
 
-Tricircle Networking Guide
-==========================
-.. toctree::
-   :maxdepth: 4
-
-   networking/index
