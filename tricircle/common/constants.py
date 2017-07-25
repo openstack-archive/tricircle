@@ -46,7 +46,9 @@ REAL_SHADOW_TYPE_MAP = {
 
 # check whether the resource type is properly provisioned.
 def is_valid_resource_type(resource_type):
-    resource_type_table = [RT_NETWORK, RT_SUBNET, RT_PORT, RT_ROUTER, RT_SG]
+    resource_type_table = [RT_NETWORK, RT_SUBNET, RT_PORT, RT_ROUTER, RT_SG,
+                           RT_TRUNK, RT_PORT_PAIR, RT_PORT_PAIR_GROUP,
+                           RT_FLOW_CLASSIFIER, RT_PORT_CHAIN]
     return resource_type in resource_type_table
 
 
