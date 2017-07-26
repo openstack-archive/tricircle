@@ -192,5 +192,6 @@ job_primary_resource_map = {
     JT_RESOURCE_RECYCLE: (None, "project_id")
 }
 
-# resource routing request path
+# admin API request path
 ROUTING_PATH = '/v1.0/routings'
+JOB_PATH = '/v1.0/jobs'

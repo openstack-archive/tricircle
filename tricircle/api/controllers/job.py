@@ -200,23 +200,81 @@ class AsyncJobController(rest.RestController):
             return utils.format_api_error(
                 403, _('Unauthorized to show all jobs'))
 
-        is_valid_filter, filters = self._get_filters(kwargs)
-
-        if not is_valid_filter:
-            msg = (_('Unsupported filter type: %(filters)s') % {
-                'filters': ', '.join([filter_name for filter_name in filters])
-            })
-            return utils.format_api_error(400, msg)
-
-        filters = [{'key': key,
-                    'comparator': 'eq',
-                    'value': value} for key, value in six.iteritems(filters)]
+        # check limit and marker, default value -1 means no pagination
+        _limit = kwargs.pop('limit', -1)
 
         try:
-            jobs_in_job_table = db_api.list_jobs(context, filters)
-            jobs_in_job_log_table = db_api.list_jobs_from_log(context, filters)
-            jobs = jobs_in_job_table + jobs_in_job_log_table
-            return {'jobs': [self._get_more_readable_job(job) for job in jobs]}
+            limit = int(_limit)
+            limit = utils.get_pagination_limit(limit)
+        except ValueError as e:
+            LOG.exception('Failed to convert pagination limit to an integer: '
+                          '%(exception)s ', {'exception': e})
+            msg = (_("Limit should be an integer or a valid literal "
+                     "for int() rather than '%s'") % _limit)
+            return utils.format_api_error(400, msg)
+
+        marker = kwargs.pop('marker', None)
+
+        sorts = [('id', 'asc')]
+        if kwargs:
+            is_valid_filter, filters = self._get_filters(kwargs)
+
+            if not is_valid_filter:
+                msg = (_('Unsupported filter type: %(filters)s') % {
+                    'filters': ', '.join(
+                        [filter_name for filter_name in filters])
+                })
+                return utils.format_api_error(400, msg)
+
+            filters = [{'key': key, 'comparator': 'eq', 'value': value}
+                       for key, value in six.iteritems(filters)]
+        else:
+            filters = None
+
+        try:
+            if marker is not None:
+                try:
+                    # verify whether the marker is effective
+                    db_api.get_job(context, marker)
+                    jobs = db_api.list_jobs(context, filters,
+                                            sorts, limit, marker)
+                    jobs_from_log = []
+                    if len(jobs) < limit:
+                        jobs_from_log = db_api.list_jobs_from_log(
+                            context, filters, sorts, limit - len(jobs), None)
+                    job_collection = jobs + jobs_from_log
+                except t_exc.ResourceNotFound:
+                    try:
+                        db_api.get_job_from_log(context, marker)
+                        jobs_from_log = db_api.list_jobs_from_log(
+                            context, filters, sorts, limit, marker)
+                        job_collection = jobs_from_log
+                    except t_exc.ResourceNotFound:
+                        msg = (_('Invalid marker: %(marker)s')
+                               % {'marker': marker})
+                        return utils.format_api_error(400, msg)
+            else:
+                jobs = db_api.list_jobs(context, filters,
+                                        sorts, limit, marker)
+                jobs_from_log = []
+                if len(jobs) < limit:
+                    jobs_from_log = db_api.list_jobs_from_log(
+                        context, filters, sorts, limit - len(jobs), None)
+                job_collection = jobs + jobs_from_log
+            # add link
+            links = []
+            if len(job_collection) >= limit:
+                marker = job_collection[-1]['id']
+                base = constants.JOB_PATH
+                link = "%s?limit=%s&marker=%s" % (base, limit, marker)
+                links.append({"rel": "next",
+                              "href": link})
+
+            result = {'jobs': [self._get_more_readable_job(job)
+                               for job in job_collection]}
+            if links:
+                result['jobs_links'] = links
+            return result
         except Exception as e:
             LOG.exception('Failed to show all asynchronous jobs: '
                           '%(exception)s ', {'exception': e})

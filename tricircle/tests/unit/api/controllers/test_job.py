@@ -13,13 +13,15 @@
 import copy
 import mock
 from mock import patch
+from oslo_config import cfg
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
+import re
 from six.moves import xrange
-import unittest
 
 import pecan
 
+from tricircle.api import app
 from tricircle.api.controllers import job
 from tricircle.common import constants
 from tricircle.common import context
@@ -28,6 +30,7 @@ from tricircle.common import xrpcapi
 from tricircle.db import api as db_api
 from tricircle.db import core
 from tricircle.db import models
+from tricircle.tests import base
 
 
 class FakeRPCAPI(xrpcapi.XJobAPI):
@@ -47,8 +50,12 @@ class FakeResponse(object):
         return super(FakeResponse, cls).__new__(cls)
 
 
-class AsyncJobControllerTest(unittest.TestCase):
+class AsyncJobControllerTest(base.TestCase):
     def setUp(self):
+        super(AsyncJobControllerTest, self).setUp()
+
+        cfg.CONF.clear()
+        cfg.CONF.register_opts(app.common_opts)
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         self.controller = FakeAsyncJobController()
@@ -177,7 +184,7 @@ class AsyncJobControllerTest(unittest.TestCase):
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
-    def test_get_one(self, mock_context):
+    def test_get_one_and_get_all(self, mock_context):
         mock_context.return_value = self.context
 
         # failure case, only admin can list the job's info
@@ -251,15 +258,24 @@ class AsyncJobControllerTest(unittest.TestCase):
         job_status_filter_1 = {'status': 'success'}
         jobs_3 = self.controller.get_one("detail", **job_status_filter_1)
         self.assertEqual(amount_of_succ_jobs, len(jobs_3['jobs']))
+        # set marker in job log
+        res = self.controller.get_all(marker=jobs_3['jobs'][0]['id'],
+                                      limit=amount_of_succ_jobs)
+        self.assertEqual(amount_of_succ_jobs - 1, len(res['jobs']))
 
         job_status_filter_2 = {'status': 'new'}
         jobs_4 = self.controller.get_one("detail", **job_status_filter_2)
         self.assertEqual(amount_of_all_jobs - amount_of_succ_jobs,
                          len(jobs_4['jobs']))
+        # set marker in job
+        res = self.controller.get_all(marker=jobs_4['jobs'][0]['id'],
+                                      limit=amount_of_all_jobs)
+        self.assertEqual(amount_of_all_jobs - 1,
+                         len(res['jobs']))
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
-    def test_get_all_jobs(self, mock_context):
+    def test_get_all_jobs_with_pagination(self, mock_context):
         mock_context.return_value = self.context
 
         # map job type to project id for later project id filter validation.
@@ -376,6 +392,101 @@ class AsyncJobControllerTest(unittest.TestCase):
             **job_status_filter_3)
         self.assertEqual(amount_of_running_jobs,
                          len(jobs_job_status_filter_3['jobs']))
+
+        # test for paginate query
+        job_paginate_no_filter_1 = self.controller.get_all()
+        self.assertEqual(amount_of_all_jobs,
+                         len(job_paginate_no_filter_1['jobs']))
+
+        # no limit no marker
+        job_paginate_filter_1 = {'status': 'new'}
+        jobs_paginate_filter_1 = self.controller.get_all(
+            **job_paginate_filter_1)
+        self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
+                         len(jobs_paginate_filter_1['jobs']))
+
+        # failed cases, unsupported limit type
+        job_paginate_filter_2 = {'limit': '2test'}
+        res = self.controller.get_all(**job_paginate_filter_2)
+        self._validate_error_code(res, 400)
+
+        # successful cases
+        job_paginate_filter_4 = {'status': 'new', 'limit': '2'}
+        res = self.controller.get_all(**job_paginate_filter_4)
+        self.assertEqual(2, len(res['jobs']))
+
+        job_paginate_filter_5 = {'status': 'new', 'limit': 2}
+        res = self.controller.get_all(**job_paginate_filter_5)
+        self.assertEqual(2, len(res['jobs']))
+
+        job_paginate_filter_6 = {'status': 'running', 'limit': 1}
+        res1 = self.controller.get_all(**job_paginate_filter_6)
+        marker = res1['jobs'][0]['id']
+        job_paginate_filter_7 = {'status': 'running', 'marker': marker}
+        res2 = self.controller.get_all(**job_paginate_filter_7)
+        self.assertEqual(amount_of_running_jobs-1, len(res2['jobs']))
+
+        job_paginate_filter_8 = {'status': 'new', 'limit': 3}
+        res = self.controller.get_all(**job_paginate_filter_8)
+        self.assertLessEqual(res['jobs'][0]['id'], res['jobs'][1]['id'])
+        self.assertLessEqual(res['jobs'][1]['id'], res['jobs'][2]['id'])
+
+        # unsupported marker type
+        res = self.controller.get_all(marker=None)
+        self.assertEqual(amount_of_all_jobs, len(res['jobs']))
+
+        res = self.controller.get_all(marker='-123')
+        self._validate_error_code(res, 400)
+
+        # marker not in job table and job log table
+        job_paginate_filter_9 = {'marker': uuidutils.generate_uuid()}
+        res = self.controller.get_all(**job_paginate_filter_9)
+        self._validate_error_code(res, 400)
+
+        # test marker and limit
+        limit = 2
+        assert_count = 0
+        pt = '/v1.0/jobs\?limit=\w+&marker=([\w-]+)'
+        job_paginate_filter = {'status': 'new', 'limit': limit}
+        res = self.controller.get_all(**job_paginate_filter)
+        assert_count = assert_count + len(res['jobs'])
+        while 'jobs_links' in res:
+            m = re.match(pt, res['jobs_links'][0]['href'])
+            marker = m.group(1)
+            self.assertEqual(limit, len(res['jobs']))
+            job_paginate_filter = {'status': 'new', 'limit': limit,
+                                   'marker': marker}
+            res = self.controller.get_all(**job_paginate_filter)
+            assert_count = assert_count + len(res['jobs'])
+
+        self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
+                         assert_count)
+
+        job_paginate_filter_10 = {'status': 'running'}
+        res = self.controller.get_all(**job_paginate_filter_10)
+        self.assertEqual(amount_of_running_jobs, len(res['jobs']))
+        # add some rows to job log table
+        for i in xrange(amount_of_running_jobs):
+            db_api.finish_job(self.context, res['jobs'][i]['id'], True,
+                              timeutils.utcnow())
+        res_success_log = db_api.list_jobs_from_log(self.context, None,
+                                                    [('id', 'asc')])
+        self.assertEqual(amount_of_running_jobs, len(res_success_log))
+
+        marker_id = res_success_log[0]['id']
+        res = self.controller.get_all(marker=marker_id)
+        self.assertEqual(2, len(res['jobs']))
+
+        res_in_job = db_api.list_jobs(self.context, None, [('id', 'asc')])
+        self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
+                         len(res_in_job))
+        marker_id = res_in_job[0]['id']
+        res = self.controller.get_all(marker=marker_id)
+        self.assertEqual(amount_of_all_jobs - 1, len(res['jobs']))
+
+        job_paginate_filter_11 = {'limit': 2}
+        res = self.controller.get_all(**job_paginate_filter_11)
+        self.assertIsNotNone(res['jobs_links'][0]['href'])
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(pecan, 'response', new=mock.Mock)
@@ -614,4 +725,7 @@ class AsyncJobControllerTest(unittest.TestCase):
         self.assertEqual(res[list(res.keys())[0]]['code'], code)
 
     def tearDown(self):
+        cfg.CONF.unregister_opts(app.common_opts)
         core.ModelBase.metadata.drop_all(core.get_engine())
+
+        super(AsyncJobControllerTest, self).tearDown()
