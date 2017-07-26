@@ -113,6 +113,9 @@ function init_local_neutron_variables {
         OVS_BRIDGE_MAPPINGS=$vlan_mapping,$ext_mapping
 
     fi
+    if [ "$TRICIRCLE_ENABLE_TRUNK" == "True" ]; then
+        _neutron_service_plugin_class_add trunk
+    fi
 }
 
 function add_default_bridges {
@@ -278,6 +281,10 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client admin_tenant demo
     iniset $NEUTRON_CONF.$server_index client auto_refresh_endpoint True
     iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
+
+    if [ "$TRICIRCLE_ENABLE_TRUNK" == "True" ]; then
+        iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins "tricircle.network.central_trunk_plugin.TricircleTrunkPlugin"
+    fi
 
     local type_drivers=''
     local tenant_network_types=''

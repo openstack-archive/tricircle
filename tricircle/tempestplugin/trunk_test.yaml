@@ -1,0 +1,229 @@
+- task_set_id: preparation
+  tasks:
+    - task_id: image1
+      type: image
+      region: region1
+      query:
+        get_one: true
+    - task_id: net1
+      region: central
+      type: network
+      params:
+        name: net1
+        provider_network_type: vlan
+    - task_id: subnet1
+      region: central
+      type: subnet
+      depend: [net1]
+      params:
+        name: subnet1
+        ip_version: 4
+        cidr: 10.0.1.0/24
+        network_id: net1@id
+    - task_id: net2
+      region: central
+      type: network
+      params:
+        name: net2
+        provider_network_type: vlan
+    - task_id: subnet2
+      region: central
+      type: subnet
+      depend: [net2]
+      params:
+        name: subnet2
+        ip_version: 4
+        cidr: 10.0.2.0/24
+        network_id: net2@id
+    - task_id: p1
+      region: central
+      type: port
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: p1
+        network_id: net1@id
+    - task_id: p2
+      region: central
+      type: port
+      depend:
+        - net2
+        - subnet2
+      params:
+        name: p2
+        network_id: net2@id
+    - task_id: vm1
+      region: region1
+      type: server
+      depend:
+        - p1
+        - image1
+        - trunk1
+      params:
+        flavor_id: 1
+        image_id: image1@id
+        name: vm1
+        networks:
+          - port: p1@id
+    - task_id: trunk1
+      region: central
+      depend:
+        - p1
+        - p2
+        - net2
+      type: trunk
+      params:
+        name: trunk1
+        port_id: p1@id
+        sub_ports:
+          - port_id: p2@id
+            segmentation_type: vlan
+            segmentation_id: net2@provider_segmentation_id
+- task_set_id: wait-for-job
+  tasks:
+    # ensure server is active and thus sync_trunk job is registered
+    - task_id: check-servers
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm1
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [check-servers]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: check
+  depend: [preparation]
+  tasks:
+    - task_id: check-ports
+      region: region1
+      type: port
+      validate:
+        predicate: any
+        condition:
+          - name: p1
+            fixed_ips:
+              - ip_address: 10.0.1*
+          - name: p2
+            fixed_ips:
+              - ip_address: 10.0.2*
+    - task_id: check-trunks
+      region: region1
+      type: trunk
+      validate:
+        predicate: any
+        condition:
+          - name: trunk1
+            port_id: preparation@p1@id
+            sub_ports:
+              - port_id: preparation@p2@id
+                segmentation_type: vlan
+                segmentation_id: preparation@net2@provider_segmentation_id
+- task_set_id: clean
+  depend: [preparation]
+  tasks:
+    - task_id: delete-server
+      region: region1
+      type: server
+      action:
+        target: preparation@vm1@id
+        method: delete
+    - task_id: delete-trunk
+      region: central
+      type: trunk
+      depend: [delete-server]
+      action:
+        target: preparation@trunk1@id
+        method: delete
+        retries: 3
+    - task_id: delete-p1
+      region: central
+      type: port
+      depend: [delete-trunk]
+      action:
+        target: preparation@p1@id
+        method: delete
+    - task_id: delete-p2
+      region: central
+      type: port
+      depend: [delete-trunk]
+      action:
+        target: preparation@p2@id
+        method: delete
+    - task_id: delete-subnet1
+      region: central
+      type: subnet
+      depend: [delete-p1]
+      action:
+        target: preparation@subnet1@id
+        method: delete
+        retries: 3
+    - task_id: delete-subnet2
+      region: central
+      type: subnet
+      depend: [delete-p2]
+      action:
+        target: preparation@subnet2@id
+        method: delete
+        retries: 3
+    - task_id: delete-net1
+      region: central
+      type: network
+      depend: [delete-subnet1]
+      action:
+        target: preparation@net1@id
+        method: delete
+    - task_id: delete-net2
+      region: central
+      type: network
+      depend: [delete-subnet2]
+      action:
+        target: preparation@net2@id
+        method: delete
+- task_set_id: clean-check
+  tasks:
+    - task_id: check-no-trunks1
+      region: region1
+      type: trunk
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-no-trunks2
+      region: region2
+      type: trunk
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-no-networks1
+      region: region1
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-no-networks2
+      region: region2
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-jobs
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
