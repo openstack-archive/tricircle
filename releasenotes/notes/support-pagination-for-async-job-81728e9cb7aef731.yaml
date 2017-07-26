@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    Support pagination for asynchronous job list operation. Jobs in job table
+    will be shown ahead of those in job log table. If page size is not specified
+    from client, then maximum pagination limit from configuration will be used.
+
