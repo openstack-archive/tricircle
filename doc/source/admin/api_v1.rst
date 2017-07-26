@@ -875,6 +875,16 @@ supported. Particularly, job status is case insensitive when filtering the
 jobs, so both ``GET /jobs?status=NEW`` and ``GET /jobs?status=new`` will return
 the same job set.
 
+To reduce the load on service, job list operation also supports pagination as
+resource routing does. It takes ``limit`` parameter as page size, and takes the
+item following ``marker`` parameter as starting point for next list operation.
+
+All items in job log table are successful jobs, there are nothing new. So job table
+will be searched ahead of job log table. Then failed, new or running jobs will be
+shown first. These jobs are sorted by timestamp in descending order, if two or more
+jobs have the same timestamp, then they'll be further sorted by job id in descending
+order.
+
 Normal Response Code: 200
 
 **Response**
@@ -941,23 +951,122 @@ job entries will be retrieved.
         ]
     }
 
-This is an example of response information for ``GET /job?type=port_delete``. Using
-a filter only a part of job entries are retrieved.
+This is an example of response information for ``GET /v1.0/jobs?limit=2``. When
+total number of items is equal or greater than limit value, then a link to next
+page will be returned.
 
 ::
 
     {
         "jobs": [
             {
-                "id": "3f4ecf30-0213-4f1f-9cb0-0233bcedb767",
-                "project_id": "d01246bc5792477d9062a76332b7514a",
-                "type": "port_delete",
-                "timestamp": "2017-03-03 11:05:36",
-                "status": "NEW",
+                "status": "SUCCESS",
                 "resource": {
-                    "pod_id": "0eb59465-5132-4f57-af01-a9e306158b86",
-                    "port_id": "8498b903-9e18-4265-8d62-3c12e0ce4314"
-                }
+                    "network_id": "7bf3ef1c-1f03-47b5-8191-a3d56938581b",
+                    "pod_id": "e6880238-3764-4de7-8644-3c09cff85b03"
+                },
+                "timestamp": "2017-07-26 22:36:48",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "shadow_port_setup",
+                "id": "ee035edb-87a6-4dc4-ba00-06d6e62e9ad4"
+            },
+            {
+                "status": "SUCCESS",
+                "resource": {
+                    "router_id": "dbaa0b04-0686-45b6-8bac-a61269517c14"
+                },
+                "timestamp": "2017-07-26 22:36:39",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "configure_route",
+                "id": "a10d9078-dee4-45d4-a352-d89d7072b766"
+            }
+        ],
+         "jobs_links": [
+            {
+                "href": "/v1.0/jobs?limit=2&marker=a10d9078-dee4-45d4-a352-d89d7072b766",
+                "rel": "next"
+            }
+        ]
+    }
+
+This is an example of response information for ``GET /v1.0/jobs?limit=2&marker=a10d9078-dee4-45d4-a352-d89d7072b766``.
+When marker is provided, the next list operation will start from the item
+following the marker.
+
+::
+
+    {
+        "jobs": [
+            {
+                "status": "SUCCESS",
+                "resource": {
+                    "router_id": "dbaa0b04-0686-45b6-8bac-a61269517c14"
+                },
+                "timestamp": "2017-07-26 22:36:20",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "configure_route",
+                "id": "89ae3921-2349-49fb-85ad-804b8ca99053"
+
+            },
+            {
+                "status": "SUCCESS",
+                "resource": {
+                    "network_id": "7bf3ef1c-1f03-47b5-8191-a3d56938581b",
+                    "pod_id": "e6880238-3764-4de7-8644-3c09cff85b03"
+                },
+                "timestamp": "2017-07-26 22:36:12",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "shadow_port_setup",
+                "id": "afd8761b-b082-4fce-af00-afee07c3b923"
+            }
+        ],
+         "jobs_links": [
+            {
+                "href": "/v1.0/jobs?limit=2&marker=afd8761b-b082-4fce-af00-afee07c3b923",
+                "rel": "next"
+            }
+        ]
+    }
+
+This is an example of response information for ``GET /v1.0/jobs?limit=2&marker=a10d9078-dee4-45d4-a352-d89d7072b766&type=shadow_port_setup``.
+Pagination and filtering requirements can be met by specifying limit and
+filtering conditions at the same time. If there are more items waiting to
+be shown besides those already in page, then a link to next page will be
+returned. Using this link and same filtering conditions we can retrieve the
+following items.
+
+::
+
+    {
+        "jobs": [
+            {
+                "status": "SUCCESS",
+                "resource": {
+                    "network_id": "7bf3ef1c-1f03-47b5-8191-a3d56938581b",
+                    "pod_id": "e6880238-3764-4de7-8644-3c09cff85b03"
+                },
+                "timestamp": "2017-07-26 22:36:12",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "shadow_port_setup",
+                "id": "afd8761b-b082-4fce-af00-afee07c3b923"
+
+            },
+            {
+                "status": "SUCCESS",
+                "resource": {
+                    "network_id": "fb53ea2d-a0e8-4ed5-a2b2-f0e2fce9ff4f",
+                    "pod_id": "e6880238-3764-4de7-8644-3c09cff85b03"
+                },
+                "timestamp": "2017-07-26 22:33:45",
+                "project_id": "cab94f5a2c6346fe956d3f45ccf84c82",
+                "type": "shadow_port_setup",
+                "id": "592ade1c-12a5-4ca3-9f75-4810c25a1604"
+            }
+        ],
+         "jobs_links": [
+            {
+                "href": "/v1.0/jobs?limit=2&marker=592ade1c-12a5-4ca3-9f75-4810c25a1604",
+                "rel": "next"
             }
         ]
     }

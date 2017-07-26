@@ -112,8 +112,8 @@ def paginate_query(context, model, limit, marker_obj, filters, sorts):
         sort_keys.append(sort_key)
         sort_dirs.append(sort_dir)
 
-    query = sa_utils.paginate_query(query, model, limit, marker=marker_obj,
-                                    sort_keys=sort_keys, sort_dirs=sort_dirs)
+    query = sa_utils.paginate_query(query, model, limit, sort_keys,
+                                    marker=marker_obj, sort_dirs=sort_dirs)
 
     return [obj.to_dict() for obj in query]
 

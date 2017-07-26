@@ -18,6 +18,7 @@ from oslo_utils import timeutils
 from oslo_utils import uuidutils
 import re
 from six.moves import xrange
+import time
 
 import pecan
 
@@ -235,6 +236,7 @@ class AsyncJobControllerTest(base.TestCase):
                                    resource_id)
             all_job_ids[index] = job_1['id']
             index = index + 1
+            time.sleep(1)
 
             # validate if the id=job_id, get_one(id=job_id) can take effective
             job_2 = self.controller.get_one(job_1['id'])['job']
@@ -251,6 +253,7 @@ class AsyncJobControllerTest(base.TestCase):
         for i in xrange(amount_of_succ_jobs):
             db_api.finish_job(self.context, all_job_ids[i], True,
                               timeutils.utcnow())
+            time.sleep(1)
 
         jobs_2 = self.controller.get_one("detail")
         self.assertEqual(amount_of_all_jobs, len(jobs_2['jobs']))
@@ -258,20 +261,21 @@ class AsyncJobControllerTest(base.TestCase):
         job_status_filter_1 = {'status': 'success'}
         jobs_3 = self.controller.get_one("detail", **job_status_filter_1)
         self.assertEqual(amount_of_succ_jobs, len(jobs_3['jobs']))
+
         # set marker in job log
         res = self.controller.get_all(marker=jobs_3['jobs'][0]['id'],
                                       limit=amount_of_succ_jobs)
         self.assertEqual(amount_of_succ_jobs - 1, len(res['jobs']))
 
         job_status_filter_2 = {'status': 'new'}
+        amount_of_new_jobs = amount_of_all_jobs - amount_of_succ_jobs
         jobs_4 = self.controller.get_one("detail", **job_status_filter_2)
-        self.assertEqual(amount_of_all_jobs - amount_of_succ_jobs,
-                         len(jobs_4['jobs']))
+        self.assertEqual(amount_of_new_jobs, len(jobs_4['jobs']))
+
         # set marker in job
         res = self.controller.get_all(marker=jobs_4['jobs'][0]['id'],
-                                      limit=amount_of_all_jobs)
-        self.assertEqual(amount_of_all_jobs - 1,
-                         len(res['jobs']))
+                                      limit=amount_of_new_jobs)
+        self.assertEqual(amount_of_new_jobs, len(res['jobs']))
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
@@ -297,10 +301,15 @@ class AsyncJobControllerTest(base.TestCase):
                 db_api.register_job(self.context,
                                     job['project_id'], job_type,
                                     resource_id)
+                # because jobs are sorted by timestamp, without time delay then
+                # all jobs are created at the same time, paginate_query can't
+                # identify them
+                time.sleep(1)
             else:
                 db_api.new_job(self.context,
                                job['project_id'], job_type,
                                resource_id)
+                time.sleep(1)
             count = count + 1
 
         # query the jobs with several kinds of filters.
@@ -421,15 +430,18 @@ class AsyncJobControllerTest(base.TestCase):
 
         job_paginate_filter_6 = {'status': 'running', 'limit': 1}
         res1 = self.controller.get_all(**job_paginate_filter_6)
+
         marker = res1['jobs'][0]['id']
         job_paginate_filter_7 = {'status': 'running', 'marker': marker}
         res2 = self.controller.get_all(**job_paginate_filter_7)
-        self.assertEqual(amount_of_running_jobs-1, len(res2['jobs']))
+        self.assertEqual(amount_of_running_jobs, len(res2['jobs']))
 
         job_paginate_filter_8 = {'status': 'new', 'limit': 3}
         res = self.controller.get_all(**job_paginate_filter_8)
-        self.assertLessEqual(res['jobs'][0]['id'], res['jobs'][1]['id'])
-        self.assertLessEqual(res['jobs'][1]['id'], res['jobs'][2]['id'])
+        self.assertGreaterEqual(res['jobs'][0]['timestamp'],
+                                res['jobs'][1]['timestamp'])
+        self.assertGreaterEqual(res['jobs'][1]['timestamp'],
+                                res['jobs'][2]['timestamp'])
 
         # unsupported marker type
         res = self.controller.get_all(marker=None)
@@ -445,11 +457,9 @@ class AsyncJobControllerTest(base.TestCase):
 
         # test marker and limit
         limit = 2
-        assert_count = 0
         pt = '/v1.0/jobs\?limit=\w+&marker=([\w-]+)'
         job_paginate_filter = {'status': 'new', 'limit': limit}
         res = self.controller.get_all(**job_paginate_filter)
-        assert_count = assert_count + len(res['jobs'])
         while 'jobs_links' in res:
             m = re.match(pt, res['jobs_links'][0]['href'])
             marker = m.group(1)
@@ -457,10 +467,6 @@ class AsyncJobControllerTest(base.TestCase):
             job_paginate_filter = {'status': 'new', 'limit': limit,
                                    'marker': marker}
             res = self.controller.get_all(**job_paginate_filter)
-            assert_count = assert_count + len(res['jobs'])
-
-        self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
-                         assert_count)
 
         job_paginate_filter_10 = {'status': 'running'}
         res = self.controller.get_all(**job_paginate_filter_10)
@@ -469,20 +475,13 @@ class AsyncJobControllerTest(base.TestCase):
         for i in xrange(amount_of_running_jobs):
             db_api.finish_job(self.context, res['jobs'][i]['id'], True,
                               timeutils.utcnow())
-        res_success_log = db_api.list_jobs_from_log(self.context, None,
-                                                    [('id', 'asc')])
+            time.sleep(1)
+        res_success_log = db_api.list_jobs_from_log(self.context, None)
         self.assertEqual(amount_of_running_jobs, len(res_success_log))
 
-        marker_id = res_success_log[0]['id']
-        res = self.controller.get_all(marker=marker_id)
-        self.assertEqual(2, len(res['jobs']))
-
-        res_in_job = db_api.list_jobs(self.context, None, [('id', 'asc')])
+        res_in_job = db_api.list_jobs(self.context, None)
         self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
                          len(res_in_job))
-        marker_id = res_in_job[0]['id']
-        res = self.controller.get_all(marker=marker_id)
-        self.assertEqual(amount_of_all_jobs - 1, len(res['jobs']))
 
         job_paginate_filter_11 = {'limit': 2}
         res = self.controller.get_all(**job_paginate_filter_11)

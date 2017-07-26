@@ -215,7 +215,7 @@ class AsyncJobController(rest.RestController):
 
         marker = kwargs.pop('marker', None)
 
-        sorts = [('id', 'asc')]
+        sorts = [('timestamp', 'desc'), ('id', 'desc')]
         if kwargs:
             is_valid_filter, filters = self._get_filters(kwargs)
 

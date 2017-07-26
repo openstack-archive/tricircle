@@ -445,15 +445,23 @@ def delete_job(context, job_id):
 
 def list_jobs(context, filters=None, sorts=None, limit=None, marker=None):
     with context.session.begin():
+        marker_obj = None
+        if marker is not None:
+            marker_obj = context.session.query(models.AsyncJob).filter(
+                models.AsyncJob.id == marker).first()
         return core.paginate_query(
-            context, models.AsyncJob, limit,
-            models.AsyncJob(id=marker) if marker else None,
+            context, models.AsyncJob, limit, marker_obj,
             filters or [], sorts or [])
 
 
 def list_jobs_from_log(context, filters=None, sorts=None,
                        limit=None, marker=None):
     with context.session.begin():
+        marker_obj = None
+        if marker is not None:
+            marker_obj = context.session.query(models.AsyncJobLog).filter(
+                models.AsyncJobLog.id == marker).first()
+
         filter_is_success = True
         if filters is not None and len(filters) > 0:
             for filter in filters:
@@ -468,8 +476,7 @@ def list_jobs_from_log(context, filters=None, sorts=None,
                     break
         if filter_is_success:
             return core.paginate_query(context, models.AsyncJobLog, limit,
-                                       models.AsyncJobLog(
-                                           id=marker) if marker else None,
+                                       marker_obj,
                                        filters or [], sorts or [])
         return []
 
