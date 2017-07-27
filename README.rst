@@ -46,12 +46,12 @@ detailed in the LICENSE file.
 * Free software: Apache license
 * Design documentation: `Tricircle Design Blueprint <https://docs.google.com/document/d/1zcxwl8xMEpxVCqLTce2-dUOtB-ObmzJTbV1uSQ6qTsY/>`_
 * Wiki: https://wiki.openstack.org/wiki/tricircle
-* Installation guide: https://docs.openstack.org/tricircle/latest/installation-guide.html
-* Tricircle Admin API documentation: https://docs.openstack.org/tricircle/latest/api_v1.html
-* Configuration guide: https://docs.openstack.org/tricircle/latest/configuration.html
-* Networking guide: https://docs.openstack.org/tricircle/latest/networking-guide.html
+* Installation guide: https://docs.openstack.org/tricircle/latest/install/index.html
+* Admin guide: https://docs.openstack.org/tricircle/latest/admin/index.html
+* Configuration guide: https://docs.openstack.org/tricircle/latest/configuration/index.html
+* Networking guide: https://docs.openstack.org/tricircle/latest/networking/index.html
 * Source: http://git.openstack.org/cgit/openstack/tricircle
 * Bugs: http://bugs.launchpad.net/tricircle
 * Blueprints: https://blueprints.launchpad.net/tricircle
 * Release notes: http://docs.openstack.org/releasenotes/tricircle
-* Contributing: https://docs.openstack.org/tricircle/latest/contributing.html
+* Contributing: https://docs.openstack.org/tricircle/latest/contributor/index.html
