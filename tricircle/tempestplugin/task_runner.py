@@ -210,7 +210,7 @@ class RunnerEngine(object):
         self.runner = runner
 
         with open(yaml_path) as f:
-            data = yaml.load(f)
+            data = yaml.safe_load(f)
         self._parse_data(data)
 
     def _validate_task(self, task):
