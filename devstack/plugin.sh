@@ -282,8 +282,18 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index client auto_refresh_endpoint True
     iniset $NEUTRON_CONF.$server_index client top_region_name $CENTRAL_REGION_NAME
 
+    local service_plugins=''
     if [ "$TRICIRCLE_ENABLE_TRUNK" == "True" ]; then
-        iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins "tricircle.network.central_trunk_plugin.TricircleTrunkPlugin"
+        service_plugins+=",tricircle.network.central_trunk_plugin.TricircleTrunkPlugin"
+    fi
+    if [ "$TRICIRCLE_ENABLE_SFC" == "True" ]; then
+        service_plugins+=",networking_sfc.services.flowclassifier.plugin.FlowClassifierPlugin,tricircle.network.central_sfc_plugin.TricircleSfcPlugin"
+        iniset $NEUTRON_CONF.$server_index sfc drivers tricircle_sfc
+        iniset $NEUTRON_CONF.$server_index flowclassifier drivers tricircle_fc
+    fi
+    if [ -n service_plugins ]; then
+        service_plugins=$(echo $service_plugins| sed 's/^,//')
+        iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins "$service_plugins"
     fi
 
     local type_drivers=''

@@ -66,7 +66,8 @@ class DummyRunner(object):
         return []
 
     def validate(self, region, _type, predicate, conditions, params):
-        pass
+        msg = 'validate %s, conditions: %s' % (_type, conditions)
+        LOG.info(msg)
 
 
 class SDKRunner(object):
@@ -74,7 +75,9 @@ class SDKRunner(object):
                   'region1': 'RegionOne',
                   'region2': 'RegionTwo'}
     serv_reslist_map = {
-        'network_sdk': ['network', 'subnet', 'port', 'router', 'fip', 'trunk'],
+        'network_sdk': ['network', 'subnet', 'port', 'router', 'fip', 'trunk',
+                        'flow_classifier', 'port_pair', 'port_pair_group',
+                        'port_chain'],
         'compute': ['server'],
         'image': ['image'],
         'tricircle_sdk': ['job']}
@@ -190,12 +193,14 @@ class SDKRunner(object):
             for condition in conditions:
                 if not validate_any_condition(results, condition):
                     raise Exception(
-                        'Validation fail, acutal results: %s' % results)
+                        'Validation fail, acutal results: %s, '
+                        'expected results: %s' % (results, condition))
         elif predicate == 'all':
             for condition in conditions:
                 if not validate_all_condition(results, condition):
                     raise Exception(
-                        'Validation fail, acutal results: %s' % results)
+                        'Validation fail, acutal results: %s, '
+                        'expected results: %s' % (results, condition))
 
 
 class RunnerEngine(object):
@@ -246,6 +251,8 @@ class RunnerEngine(object):
         requires = []
         if 'params' in task:
             collect_require_from_dict(requires, task['params'])
+        if 'validate' in task:
+            collect_require_from_dict(requires, task['validate'])
         if 'action' in task:
             requires.append(task['action']['target'])
         depend = task.get('depend', [])
