@@ -36,20 +36,12 @@ unset OS_REGION_NAME
 mytoken=$(openstack --os-region-name=RegionOne token issue | awk 'NR==5 {print $4}')
 echo $mytoken
 
-curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
-    -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $mytoken" -d '{"pod": {"region_name":  "CentralRegion"}}'
+openstack multiregion networking pod create --region-name CentralRegion
 
-curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
-    -H "Content-Type: application/json" \
-    -H "X-Auth-Token: $mytoken" \
-    -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
+openstack multiregion networking pod create --region-name RegionOne --availability-zone az1
 
 if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then
-    curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
-        -H "Content-Type: application/json" \
-        -H "X-Auth-Token: $mytoken" \
-        -d '{"pod": {"region_name":  "RegionTwo", "az_name": "az2"}}'
+    openstack multiregion networking pod create --region-name RegionTwo --availability-zone az2
 fi
 
 # the usage of "nova flavor-create":

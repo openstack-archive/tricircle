@@ -17,25 +17,25 @@ installing DevStack in virtual machine.
   https://github.com/openstack/tricircle/blob/master/devstack/local.conf.sample
   to local.conf, change password in the file if needed.
 
-- 3 Run DevStack. In DevStack folder, run::
+- 3 Run DevStack. In DevStack folder, run ::
 
     ./stack.sh
 
 - 4 After DevStack successfully starts, we need to create environment variables for
-  the user (admin user as example in this document). In DevStack folder::
+  the user (admin user as example in this document). In DevStack folder ::
 
       source openrc admin demo
 
 - 5 Unset the region name environment variable, so that the command can be issued to
-  specified region in following commands as needed::
+  specified region in following commands as needed ::
 
       unset OS_REGION_NAME
 
-- 6 Check if services have been correctly registered. Run::
+- 6 Check if services have been correctly registered. Run ::
 
       openstack --os-region-name=RegionOne endpoint list
 
-  you should get output looks like as following::
+  you should get output looks like as following ::
 
         +----------------------------------+---------------+--------------+----------------+
         | ID                               | Region        | Service Name | Service Type   |
@@ -59,41 +59,34 @@ installing DevStack in virtual machine.
   "RegionOne" is the normal OpenStack region which includes Nova, Cinder,
   Neutron.
 
-- 7 Get token for the later commands. Run::
+- 7 Create pod instances for the Tricircle to manage the mapping between
+  availability zone and OpenStack instances ::
 
-      openstack --os-region-name=RegionOne token issue
+      openstack multiregion networking pod create --region-name CentralRegion
 
-- 8 Create pod instances for the Tricircle to manage the mapping between
-  availability zone and OpenStack instances, the "$token" is obtained in the
-  step 7::
-
-      curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-          -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "CentralRegion"}}'
-
-      curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-          -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
+      openstack multiregion networking pod create --region-name RegionOne --availability-zone az1
 
   Pay attention to "region_name" parameter we specify when creating pod. Pod name
   should exactly match the region name registered in Keystone. In the above
   commands, we create pods named "CentralRegion" and "RegionOne".
 
-- 9 Create necessary resources in central Neutron server::
+- 8 Create necessary resources in central Neutron server ::
 
-     neutron --os-region-name=CentralRegion net-create net1
+     neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionOne net1
      neutron --os-region-name=CentralRegion subnet-create net1 10.0.0.0/24
 
   Please note that the net1 ID will be used in later step to boot VM.
 
-- 10 Get image ID and flavor ID which will be used in VM booting::
+- 9 Get image ID and flavor ID which will be used in VM booting ::
 
      glance --os-region-name=RegionOne image-list
      nova --os-region-name=RegionOne flavor-list
 
-- 11 Boot a virtual machine::
+- 10 Boot a virtual machine ::
 
      nova --os-region-name=RegionOne boot --flavor 1 --image $image_id --nic net-id=$net_id vm1
 
-- 12 Verify the VM is connected to the net1::
+- 11 Verify the VM is connected to the net1 ::
 
      neutron --os-region-name=CentralRegion port-list
      neutron --os-region-name=RegionOne port-list

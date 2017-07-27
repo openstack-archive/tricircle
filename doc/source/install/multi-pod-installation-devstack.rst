@@ -313,48 +313,41 @@ How to play
   normal OpenStack regions which includes Nova, Neutron and Glance. Shared
   Keystone service is registered in "RegionOne".
 
-- 4 Get token for the later commands. Run ::
+- 4 Create pod instances for the Tricircle to manage the mapping between
+  availability zones and OpenStack instances ::
 
-    openstack --os-region-name=RegionOne token issue
+    openstack multiregion networking pod create --region-name CentralRegion
 
-- 5 Create pod instances for the Tricircle to manage the mapping between
-  availability zones and OpenStack instances, "$token" is obtained in step 4 ::
+    openstack multiregion networking pod create --region-name RegionOne --availability-zone az1
 
-    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-      -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "CentralRegion"}}'
-
-    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-      -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
-
-    curl -X POST http://127.0.0.1/tricircle/v1.0/pods -H "Content-Type: application/json" \
-      -H "X-Auth-Token: $token" -d '{"pod": {"region_name":  "RegionTwo", "az_name": "az2"}}'
+    openstack multiregion networking pod create --region-name RegionTwo --availability-zone az2
 
   Pay attention to "region_name" parameter we specify when creating pod. Pod name
   should exactly match the region name registered in Keystone. In the above
   commands, we create pods named "CentralRegion", "RegionOne" and "RegionTwo".
 
-- 6 Create necessary resources in central Neutron server ::
+- 5 Create necessary resources in central Neutron server ::
 
-    neutron --os-region-name=CentralRegion net-create net1
+    neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionOne net1
     neutron --os-region-name=CentralRegion subnet-create net1 10.0.1.0/24
-    neutron --os-region-name=CentralRegion net-create net2
+    neutron --os-region-name=CentralRegion net-create --availability-zone-hint RegionTwo net2
     neutron --os-region-name=CentralRegion subnet-create net2 10.0.2.0/24
 
   Please note that the net1 and net2 ID will be used in later step to boot VM.
 
-- 7 Get image ID and flavor ID which will be used in VM booting ::
+- 6 Get image ID and flavor ID which will be used in VM booting ::
 
     glance --os-region-name=RegionOne image-list
     nova --os-region-name=RegionOne flavor-list
     glance --os-region-name=RegionTwo image-list
     nova --os-region-name=RegionTwo flavor-list
 
-- 8 Boot virtual machines ::
+- 7 Boot virtual machines ::
 
     nova --os-region-name=RegionOne boot --flavor 1 --image $image1_id --nic net-id=$net1_id vm1
     nova --os-region-name=RegionTwo boot --flavor 1 --image $image2_id --nic net-id=$net2_id vm2
 
-- 9 Verify the VMs are connected to the networks ::
+- 8 Verify the VMs are connected to the networks ::
 
     neutron --os-region-name=CentralRegion port-list
     neutron --os-region-name=RegionOne port-list
@@ -366,11 +359,9 @@ How to play
   Neutron server. The port has same uuid in local Neutron server and central
   Neutron Server.
 
-- 10 Create external network and subnet ::
+- 9 Create external network and subnet ::
 
-    curl -X POST http://127.0.0.1:20001/v2.0/networks -H "Content-Type: application/json" \
-      -H "X-Auth-Token: $token" \
-      -d '{"network": {"name": "ext-net", "admin_state_up": true, "router:external": true,  "provider:network_type": "vlan", "provider:physical_network": "extern", "availability_zone_hints": ["RegionTwo"]}}'
+    neutron --os-region-name=CentralRegion net-create --router:external --provider:network_type vlan --provider:physical_network extern --availability-zone-hint RegionTwo ext-net
     neutron --os-region-name=CentralRegion subnet-create --name ext-subnet --disable-dhcp ext-net 163.3.124.0/24
 
   Pay attention that when creating external network, we need to pass
@@ -382,13 +373,13 @@ How to play
   bridge network when handling interface adding operation. This limitation will
   be removed later.*
 
-- 11 Create router and attach subnets in central Neutron server ::
+- 10 Create router and attach subnets in central Neutron server ::
 
     neutron --os-region-name=CentralRegion router-create router
     neutron --os-region-name=CentralRegion router-interface-add router $subnet1_id
     neutron --os-region-name=CentralRegion router-interface-add router $subnet2_id
 
-- 12 Set router external gateway in central Neutron server ::
+- 11 Set router external gateway in central Neutron server ::
 
     neutron --os-region-name=CentralRegion router-gateway-set router ext-net
 
@@ -397,18 +388,18 @@ How to play
   to directly start a virtual machine in the external network to check the
   network connectivity.
 
-- 13 Launch VNC console and test connection ::
+- 12 Launch VNC console and test connection ::
 
     nova --os-region-name=RegionOne get-vnc-console vm1 novnc
     nova --os-region-name=RegionTwo get-vnc-console vm2 novnc
 
   You should be able to ping vm1 from vm2 and vice versa.
 
-- 14 Create floating ip in central Neutron server ::
+- 13 Create floating ip in central Neutron server ::
 
    neutron --os-region-name=CentralRegion floatingip-create ext-net
 
-- 15 Associate floating ip ::
+- 14 Associate floating ip ::
 
    neutron --os-region-name=CentralRegion floatingip-list
    neutron --os-region-name=CentralRegion port-list
