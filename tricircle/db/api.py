@@ -38,6 +38,10 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
+def db_test_stub(*args):
+    pass
+
+
 def create_pod(context, pod_dict):
     with context.session.begin():
         return core.create_resource(context, models.Pod, pod_dict)
@@ -508,32 +512,45 @@ def get_running_job(context, _type, resource_id):
 
 def finish_job(context, job_id, successful, timestamp):
     status = constants.JS_Success if successful else constants.JS_Fail
-    with context.session.begin():
-        job_dict = {'status': status,
-                    'timestamp': timestamp,
-                    'extra_id': uuidutils.generate_uuid()}
-        job = core.update_resource(context, models.AsyncJob, job_id, job_dict)
-        if status == constants.JS_Success:
-            log_dict = {'id': uuidutils.generate_uuid(),
-                        'type': job['type'],
-                        'project_id': job['project_id'],
-                        'timestamp': timestamp,
-                        'resource_id': job['resource_id']}
-            context.session.query(models.AsyncJob).filter(
-                sql.and_(models.AsyncJob.type == job['type'],
-                         models.AsyncJob.resource_id == job['resource_id'],
-                         models.AsyncJob.timestamp <= timestamp)).delete(
-                synchronize_session=False)
-            core.create_resource(context, models.AsyncJobLog, log_dict)
-        else:
-            # sqlite has problem handling "<" operator on timestamp, so we
-            # slide the timestamp a bit and use "<="
-            timestamp = timestamp - datetime.timedelta(microseconds=1)
-            context.session.query(models.AsyncJob).filter(
-                sql.and_(models.AsyncJob.type == job['type'],
-                         models.AsyncJob.resource_id == job['resource_id'],
-                         models.AsyncJob.timestamp <= timestamp)).delete(
-                synchronize_session=False)
+    retries = 5
+    for i in range(retries + 1):
+        try:
+            with context.session.begin():
+                db_test_stub(i)
+                job_dict = {'status': status,
+                            'timestamp': timestamp,
+                            'extra_id': uuidutils.generate_uuid()}
+                job = core.update_resource(context, models.AsyncJob, job_id,
+                                           job_dict)
+                if status == constants.JS_Success:
+                    log_dict = {'id': uuidutils.generate_uuid(),
+                                'type': job['type'],
+                                'project_id': job['project_id'],
+                                'timestamp': timestamp,
+                                'resource_id': job['resource_id']}
+                    context.session.query(models.AsyncJob).filter(
+                        sql.and_(
+                            models.AsyncJob.type == job['type'],
+                            models.AsyncJob.resource_id == job['resource_id'],
+                            models.AsyncJob.timestamp <= timestamp)).delete(
+                        synchronize_session=False)
+                    core.create_resource(context, models.AsyncJobLog, log_dict)
+                else:
+                    # sqlite has problem handling "<" operator on timestamp,
+                    # so we slide the timestamp a bit and use "<="
+                    timestamp = timestamp - datetime.timedelta(microseconds=1)
+                    context.session.query(models.AsyncJob).filter(
+                        sql.and_(
+                            models.AsyncJob.type == job['type'],
+                            models.AsyncJob.resource_id == job['resource_id'],
+                            models.AsyncJob.timestamp <= timestamp)).delete(
+                        synchronize_session=False)
+        except db_exc.DBDeadlock:
+            if i == retries:
+                raise
+            time.sleep(1)
+            continue
+        return
 
 
 def ensure_agent_exists(context, pod_id, host, _type, tunnel_ip):

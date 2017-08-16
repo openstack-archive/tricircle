@@ -14,6 +14,7 @@ import copy
 import mock
 from mock import patch
 from oslo_config import cfg
+import oslo_db.exception as db_exc
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 import re
@@ -51,6 +52,11 @@ class FakeResponse(object):
         return super(FakeResponse, cls).__new__(cls)
 
 
+def mock_db_test_stub(i):
+    if i == 0:
+        raise db_exc.DBDeadlock
+
+
 class AsyncJobControllerTest(base.TestCase):
     def setUp(self):
         super(AsyncJobControllerTest, self).setUp()
@@ -64,6 +70,7 @@ class AsyncJobControllerTest(base.TestCase):
         self.job_resource_map = constants.job_resource_map
         policy.populate_default_rules()
 
+    @patch.object(db_api, 'db_test_stub', new=mock_db_test_stub)
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
     def test_post(self, mock_context):
@@ -186,6 +193,7 @@ class AsyncJobControllerTest(base.TestCase):
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
     def test_get_one_and_get_all(self, mock_context):
+        self.context.project_id = uuidutils.generate_uuid()
         mock_context.return_value = self.context
 
         # failure case, only admin can list the job's info
@@ -227,6 +235,8 @@ class AsyncJobControllerTest(base.TestCase):
         index = 0
         for job_type in self.job_resource_map.keys():
             job = self._prepare_job_element(job_type)
+            # for test convenience, all jobs have same project ID
+            job['project_id'] = self.context.project_id
 
             resource_id = '#'.join([job['resource'][resource_id]
                                     for resource_type, resource_id
@@ -280,6 +290,7 @@ class AsyncJobControllerTest(base.TestCase):
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
     def test_get_all_jobs_with_pagination(self, mock_context):
+        self.context.project_id = uuidutils.generate_uuid()
         mock_context.return_value = self.context
 
         # map job type to project id for later project id filter validation.
@@ -291,6 +302,10 @@ class AsyncJobControllerTest(base.TestCase):
         # cover all job types.
         for job_type in self.job_resource_map.keys():
             job = self._prepare_job_element(job_type)
+            if count > 1:
+                # for test convenience, the first job has a project ID
+                # that is different from the context.project_id
+                job['project_id'] = self.context.project_id
 
             job_project_id_map[job_type] = job['project_id']
 
@@ -321,9 +336,6 @@ class AsyncJobControllerTest(base.TestCase):
         unsupported_filter = {'fake_filter': "fake_filter"}
         count = 1
         for job_type in self.job_resource_map.keys():
-            project_id_filter_1 = {'project_id': job_project_id_map[job_type]}
-            project_id_filter_2 = {'project_id': uuidutils.generate_uuid()}
-
             job_type_filter_1 = {'type': job_type}
             job_type_filter_2 = {'type': job_type + '_1'}
 
@@ -334,41 +346,53 @@ class AsyncJobControllerTest(base.TestCase):
 
             self.context.is_admin = True
 
-            # successful case, filter by project id
-            jobs_project_id_filter_1 = self.controller.get_all(
-                **project_id_filter_1)
-            self.assertEqual(1, len(jobs_project_id_filter_1['jobs']))
+            # test when specify project ID filter from client, if this
+            # project ID is different from the one from context, then
+            # it will be ignored, project ID from context will be
+            # used instead.
+            filter1 = {'project_id': uuidutils.generate_uuid()}
+            res1 = self.controller.get_all(**filter1)
 
-            jobs_project_id_filter_2 = self.controller.get_all(
-                **project_id_filter_2)
-            self.assertEqual(0, len(jobs_project_id_filter_2['jobs']))
+            filter2 = {'project_id': self.context.project_id}
+            res2 = self.controller.get_all(**filter2)
+            self.assertEqual(len(res2['jobs']), len(res1['jobs']))
+
+            res3 = self.controller.get_all()
+            # there is one job whose project ID is different from
+            # context.project_id. As the list operation only retrieves the
+            # jobs whose project ID equals to context.project_id, so this
+            # special job entry won't be retrieved.
+            self.assertEqual(len(res3['jobs']), len(res2['jobs']))
 
             # successful case, filter by job type
             jobs_job_type_filter_1 = self.controller.get_all(
                 **job_type_filter_1)
-            self.assertEqual(1, len(jobs_job_type_filter_1['jobs']))
+            if count == 1:
+                self.assertEqual(0, len(jobs_job_type_filter_1['jobs']))
+            else:
+                self.assertEqual(1, len(jobs_job_type_filter_1['jobs']))
 
             jobs_job_type_filter_2 = self.controller.get_all(
                 **job_type_filter_2)
             self.assertEqual(0, len(jobs_job_type_filter_2['jobs']))
 
-            # successful case, filter by project id, job status and job type
+            # successful case, filter by job status and job type
             if count <= amount_of_running_jobs:
-                all_filters = dict(list(project_id_filter_1.items()) +
-                                   list(job_status_filter_3.items()) +
+                all_filters = dict(list(job_status_filter_3.items()) +
                                    list(job_type_filter_1.items()))
                 jobs_all_filters = self.controller.get_all(**all_filters)
-                self.assertEqual(1, len(jobs_all_filters['jobs']))
+                if count == 1:
+                    self.assertEqual(0, len(jobs_all_filters['jobs']))
+                else:
+                    self.assertEqual(1, len(jobs_all_filters['jobs']))
             else:
-                all_filters = dict(list(project_id_filter_1.items()) +
-                                   list(job_status_filter_1.items()) +
+                all_filters = dict(list(job_status_filter_1.items()) +
                                    list(job_type_filter_1.items()))
                 jobs_all_filters = self.controller.get_all(**all_filters)
                 self.assertEqual(1, len(jobs_all_filters['jobs']))
 
             # successful case, contradictory filter
-            contradict_filters = dict(list(project_id_filter_1.items()) +
-                                      list(job_status_filter_2.items()) +
+            contradict_filters = dict(list(job_status_filter_2.items()) +
                                       list((job_type_filter_2.items())))
             jobs_contradict_filters = self.controller.get_all(
                 **contradict_filters)
@@ -385,7 +409,8 @@ class AsyncJobControllerTest(base.TestCase):
 
         # successful case, list jobs without filters
         jobs_empty_filters = self.controller.get_all()
-        self.assertEqual(amount_of_all_jobs, len(jobs_empty_filters['jobs']))
+        self.assertEqual(amount_of_all_jobs - 1,
+                         len(jobs_empty_filters['jobs']))
 
         # successful case, filter by job status
         jobs_job_status_filter_1 = self.controller.get_all(
@@ -399,12 +424,12 @@ class AsyncJobControllerTest(base.TestCase):
 
         jobs_job_status_filter_3 = self.controller.get_all(
             **job_status_filter_3)
-        self.assertEqual(amount_of_running_jobs,
+        self.assertEqual(amount_of_running_jobs - 1,
                          len(jobs_job_status_filter_3['jobs']))
 
         # test for paginate query
         job_paginate_no_filter_1 = self.controller.get_all()
-        self.assertEqual(amount_of_all_jobs,
+        self.assertEqual(amount_of_all_jobs - 1,
                          len(job_paginate_no_filter_1['jobs']))
 
         # no limit no marker
@@ -434,7 +459,7 @@ class AsyncJobControllerTest(base.TestCase):
         marker = res1['jobs'][0]['id']
         job_paginate_filter_7 = {'status': 'running', 'marker': marker}
         res2 = self.controller.get_all(**job_paginate_filter_7)
-        self.assertEqual(amount_of_running_jobs, len(res2['jobs']))
+        self.assertEqual(amount_of_running_jobs - 1, len(res2['jobs']))
 
         job_paginate_filter_8 = {'status': 'new', 'limit': 3}
         res = self.controller.get_all(**job_paginate_filter_8)
@@ -445,7 +470,7 @@ class AsyncJobControllerTest(base.TestCase):
 
         # unsupported marker type
         res = self.controller.get_all(marker=None)
-        self.assertEqual(amount_of_all_jobs, len(res['jobs']))
+        self.assertEqual(amount_of_all_jobs - 1, len(res['jobs']))
 
         res = self.controller.get_all(marker='-123')
         self._validate_error_code(res, 400)
@@ -470,17 +495,17 @@ class AsyncJobControllerTest(base.TestCase):
 
         job_paginate_filter_10 = {'status': 'running'}
         res = self.controller.get_all(**job_paginate_filter_10)
-        self.assertEqual(amount_of_running_jobs, len(res['jobs']))
+        self.assertEqual(amount_of_running_jobs - 1, len(res['jobs']))
         # add some rows to job log table
-        for i in xrange(amount_of_running_jobs):
+        for i in xrange(amount_of_running_jobs - 1):
             db_api.finish_job(self.context, res['jobs'][i]['id'], True,
                               timeutils.utcnow())
             time.sleep(1)
         res_success_log = db_api.list_jobs_from_log(self.context, None)
-        self.assertEqual(amount_of_running_jobs, len(res_success_log))
+        self.assertEqual(amount_of_running_jobs - 1, len(res_success_log))
 
         res_in_job = db_api.list_jobs(self.context, None)
-        self.assertEqual(amount_of_all_jobs - amount_of_running_jobs,
+        self.assertEqual(amount_of_all_jobs - (amount_of_running_jobs - 1),
                          len(res_in_job))
 
         job_paginate_filter_11 = {'limit': 2}

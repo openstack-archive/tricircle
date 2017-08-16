@@ -216,20 +216,21 @@ class AsyncJobController(rest.RestController):
         marker = kwargs.pop('marker', None)
 
         sorts = [('timestamp', 'desc'), ('id', 'desc')]
-        if kwargs:
-            is_valid_filter, filters = self._get_filters(kwargs)
+        is_valid_filter, filters = self._get_filters(kwargs)
 
-            if not is_valid_filter:
-                msg = (_('Unsupported filter type: %(filters)s') % {
-                    'filters': ', '.join(
-                        [filter_name for filter_name in filters])
-                })
-                return utils.format_api_error(400, msg)
+        if not is_valid_filter:
+            msg = (_('Unsupported filter type: %(filters)s') % {
+                'filters': ', '.join(
+                    [filter_name for filter_name in filters])
+            })
+            return utils.format_api_error(400, msg)
 
-            filters = [{'key': key, 'comparator': 'eq', 'value': value}
-                       for key, value in six.iteritems(filters)]
-        else:
-            filters = None
+        # project ID from client should be equal to the one from
+        # context, since only the project ID in which the user
+        # is authorized will be used as the filter.
+        filters['project_id'] = context.project_id
+        filters = [{'key': key, 'comparator': 'eq', 'value': value}
+                   for key, value in six.iteritems(filters)]
 
         try:
             if marker is not None:

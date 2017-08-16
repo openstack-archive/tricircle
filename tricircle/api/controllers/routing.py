@@ -146,33 +146,33 @@ class RoutingController(rest.RestController):
                          "for int() rather than '%s'") % marker)
                 return utils.format_api_error(400, msg)
 
-        if kwargs:
-            is_valid_filter, filters = self._get_filters(kwargs)
+        is_valid_filter, filters = self._get_filters(kwargs)
 
-            if not is_valid_filter:
-                msg = (_('Unsupported filter type: %(filters)s') % {
-                    'filters': ', '.join(
-                        [filter_name for filter_name in filters])
-                })
+        if not is_valid_filter:
+            msg = (_('Unsupported filter type: %(filters)s') % {
+                'filters': ', '.join(
+                    [filter_name for filter_name in filters])
+            })
+            return utils.format_api_error(400, msg)
+
+        if 'id' in filters:
+            try:
+                # resource routing id is an integer.
+                filters['id'] = int(filters['id'])
+            except ValueError as e:
+                LOG.exception('Failed to convert routing id to an integer:'
+                              ' %(exception)s ', {'exception': e})
+                msg = (_("Id should be an integer or a valid literal "
+                         "for int() rather than '%s'") % filters['id'])
                 return utils.format_api_error(400, msg)
 
-            if 'id' in filters:
-                try:
-                    # resource routing id is an integer.
-                    filters['id'] = int(filters['id'])
-                except ValueError as e:
-                    LOG.exception('Failed to convert routing id to an integer:'
-                                  ' %(exception)s ', {'exception': e})
-                    msg = (_("Id should be an integer or a valid literal "
-                             "for int() rather than '%s'") % filters['id'])
-                    return utils.format_api_error(400, msg)
-
-            expand_filters = [{'key': filter_name, 'comparator': 'eq',
-                               'value': filters[filter_name]}
-                              for filter_name in filters]
-        else:
-            expand_filters = None
-
+        # project ID from client should be equal to the one from
+        # context, since only the project ID in which the user
+        # is authorized will be used as the filter.
+        filters['project_id'] = context.project_id
+        expand_filters = [{'key': filter_name, 'comparator': 'eq',
+                           'value': filters[filter_name]}
+                          for filter_name in filters]
         try:
             routings = db_api.list_resource_routings(context, expand_filters,
                                                      limit, marker,

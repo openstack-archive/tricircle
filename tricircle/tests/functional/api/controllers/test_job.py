@@ -251,17 +251,24 @@ class TestAsyncJobController(API_FunctionalTest):
 
             self._test_and_check(jobs)
 
-    @patch.object(context, 'extract_context_from_environ',
-                  new=fake_admin_context)
     @patch.object(xrpcapi.XJobAPI, 'invoke_method',
                   new=fake_invoke_method)
-    def test_get_one_and_get_all(self):
+    @patch.object(context, 'extract_context_from_environ')
+    def test_get_one_and_get_all(self, mock_context):
+        self.context.project_id = "fake_project_id"
+        mock_context.return_value = self.context
+
         all_job_ids = {}
         all_job_project_ids = {}
-
         index = 0
         for job_type in self.all_job_types:
-            job = self._prepare_job_element(job_type)
+            if index == 0:
+                # the first job has a project ID that differs from
+                # context.project_id
+                job = self._prepare_job_element(job_type)
+            else:
+                job = self._prepare_job_element(job_type,
+                                                self.context.project_id)
 
             job = {"job": job, "expected_error": 200}
 
@@ -279,7 +286,8 @@ class TestAsyncJobController(API_FunctionalTest):
                 'service_uri': service_uri})
             return_jobs_1 = response_1.json
 
-            self.assertEqual(amount_of_all_jobs, len(return_jobs_1['jobs']))
+            self.assertEqual(amount_of_all_jobs - 1,
+                             len(return_jobs_1['jobs']))
             self.assertIn('status', response_1)
             self.assertIn('resource', response_1)
             self.assertIn('project_id', response_1)
@@ -294,7 +302,7 @@ class TestAsyncJobController(API_FunctionalTest):
         response_2 = self.app.get('/v1.0/jobs?status=new')
         return_jobs_2 = response_2.json
 
-        self.assertEqual(amount_of_all_jobs, len(return_jobs_2['jobs']))
+        self.assertEqual(amount_of_all_jobs - 1, len(return_jobs_2['jobs']))
 
         response = self.app.get('/v1.0/jobs?status=fail')
         return_jobs_3 = response.json
@@ -318,7 +326,7 @@ class TestAsyncJobController(API_FunctionalTest):
                 'service_uri': service_uri})
             return_jobs = response.json
 
-            self.assertEqual(amount_of_fail_jobs, len(return_jobs['jobs']))
+            self.assertEqual(amount_of_fail_jobs - 1, len(return_jobs['jobs']))
 
             response = self.app.get('/v1.0/%(service_uri)s?status=success'
                                     '' % {'service_uri': service_uri})
@@ -326,36 +334,45 @@ class TestAsyncJobController(API_FunctionalTest):
 
             self.assertEqual(amount_of_succ_jobs, len(return_jobs['jobs']))
 
-            # use job type filter or project id filter
+            # project ID filter in URL query string will be ignored, and
+            # only the project ID in which the user is authorized will
+            # be used as filter.
+            response = self.app.get(
+                '/v1.0/%(service_uri)s' % {'service_uri': service_uri})
+            return_job = response.json
+
+            response1 = self.app.get(
+                '/v1.0/%(service_uri)s?project_id=%(project_id)s' % {
+                    'service_uri': service_uri,
+                    'project_id': uuidutils.generate_uuid()})
+            return_job1 = response1.json
+
+            response2 = self.app.get(
+                '/v1.0/%(service_uri)s?project_id=%(project_id)s' % {
+                    'service_uri': service_uri,
+                    'project_id': 'fake_project_id'})
+            return_job2 = response2.json
+
+            self.assertEqual(len(return_job2['jobs']),
+                             len(return_job1['jobs']))
+            self.assertEqual(len(return_job['jobs']),
+                             len(return_job2['jobs']))
+
+            # use job type filter
+            count = 1
             for job_type in self.all_job_types:
                 response = self.app.get('/v1.0/%(service_uri)s?type=%(type)s'
                                         '' % {'service_uri': service_uri,
                                               'type': job_type})
                 return_job = response.json
+                if count == 1:
+                    self.assertEqual(0, len(return_job['jobs']))
+                else:
+                    self.assertEqual(1, len(return_job['jobs']))
+                count += 1
 
-                self.assertEqual(1, len(return_job['jobs']))
-
-                response = self.app.get(
-                    '/v1.0/%(service_uri)s?project_id=%(project_id)s' % {
-                        'service_uri': service_uri,
-                        'project_id': all_job_project_ids[job_type]})
-                return_job = response.json
-
-                self.assertEqual(1, len(return_job['jobs']))
-
-                # combine job type filter and project id filter
-                response = self.app.get(
-                    '/v1.0/%(service_uri)s?project_id=%(project_id)s&'
-                    'type=%(type)s' % {
-                        'service_uri': service_uri,
-                        'project_id': all_job_project_ids[job_type],
-                        'type': job_type})
-                return_job = response.json
-
-                self.assertEqual(1, len(return_job['jobs']))
-
-            # combine job type filter, project id filter and job status filter
-            for i in xrange(amount_of_all_jobs):
+            # combine job type and job status filter
+            for i in xrange(1, amount_of_all_jobs):
                 if i < amount_of_fail_jobs:
                     # this aims to test service "/v1.0/jobs/{id}"
                     response_1 = self.app.get('/v1.0/jobs/%(id)s' % {
@@ -364,11 +381,9 @@ class TestAsyncJobController(API_FunctionalTest):
 
                     response_2 = self.app.get(
                         '/v1.0/%(service_uri)s?'
-                        'project_id=%(project_id)s&'
                         'type=%(type)s&'
                         'status=%(status)s' % {
                             'service_uri': service_uri,
-                            'project_id': return_job_1['job']['project_id'],
                             'type': return_job_1['job']['type'],
                             'status': 'fail'})
 
@@ -382,10 +397,9 @@ class TestAsyncJobController(API_FunctionalTest):
                     # job log. their job ids are not stored in all_job_ids
                     job_type = self.all_job_types[i]
                     response = self.app.get(
-                        '/v1.0/%(service_uri)s?project_id=%(project_id)s&'
+                        '/v1.0/%(service_uri)s?'
                         'type=%(type)s&status=%(status)s' % {
                             'service_uri': service_uri,
-                            'project_id': all_job_project_ids[job_type],
                             'type': job_type,
                             'status': 'success'})
 
@@ -408,10 +422,9 @@ class TestAsyncJobController(API_FunctionalTest):
                     return_job_1 = response_1.json
 
                     response_2 = self.app.get(
-                        '/v1.0/%(service_uri)s?project_id=%(project_id)s&'
+                        '/v1.0/%(service_uri)s?'
                         'type=%(type)s&status=%(status)s' % {
                             'service_uri': service_uri,
-                            'project_id': return_job_1['job']['project_id'],
                             'type': return_job_1['job']['type'],
                             'status': 'new'})
 
@@ -728,40 +741,43 @@ class TestAsyncJobController(API_FunctionalTest):
         back_job = response.json
         return back_job['job']['id']
 
-    def _prepare_job_element(self, job_type):
+    def _prepare_job_element(self, job_type, project_id=None):
         # in order to create a job, we need three elements: job type,
-        # job resource and project id.
+        # job resource and project id. If project_id parameter is not
+        # None then we create resource and job for that project,
+        # or else we create resource and job for an entirely new project.
+        if project_id is None:
+            project_id = uuidutils.generate_uuid()
         job = {}
         job['resource'] = {}
         job['type'] = job_type
 
-        for resource_type, resource_id in self.job_resource_map[job_type]:
-            job['resource'][resource_id] = uuidutils.generate_uuid()
+        # these two jobs need no resource routings. We only need to ensure
+        # that job['resource']['project_id'] equals to job['project_id'], which
+        # keeps consistent with job_primary_resource_map in common/constant.py
+        if job_type in (constants.JT_SEG_RULE_SETUP,
+                        constants.JT_RESOURCE_RECYCLE):
+            job['resource']['project_id'] = project_id
+        else:
+            for resource_type, resource_id in self.job_resource_map[job_type]:
+                job['resource'][resource_id] = uuidutils.generate_uuid()
 
-        job['project_id'] = self._prepare_project_id_for_job(job)
+            self._create_resource_for_project(job, project_id)
+        job['project_id'] = project_id
 
         return job
 
-    def _prepare_project_id_for_job(self, job):
-        # prepare the project id for job creation, currently job parameter
-        # contains job type and job resource information.
-        job_type = job['type']
-        if job_type in (constants.JT_SEG_RULE_SETUP,
-                        constants.JT_RESOURCE_RECYCLE):
-            project_id = job['resource']['project_id']
-        else:
-            project_id = uuidutils.generate_uuid()
-            pod_id = uuidutils.generate_uuid()
+    def _create_resource_for_project(self, job, project_id):
+        # create resource for project ${project_id}
+        pod_id = uuidutils.generate_uuid()
 
-            resource_type, resource_id = (
-                constants.job_primary_resource_map[job_type])
-            routing = db_api.create_resource_mapping(
-                self.context, job['resource'][resource_id],
-                job['resource'][resource_id], pod_id, project_id,
-                resource_type)
-            self.assertIsNotNone(routing)
-
-        return project_id
+        resource_type, resource_id = (
+            constants.job_primary_resource_map[job['type']])
+        routing = db_api.create_resource_mapping(
+            self.context, job['resource'][resource_id],
+            job['resource'][resource_id], pod_id, project_id,
+            resource_type)
+        self.assertIsNotNone(routing)
 
     def _validate_error_code(self, res, code):
         self.assertEqual(res[list(res.keys())[0]]['code'], code)

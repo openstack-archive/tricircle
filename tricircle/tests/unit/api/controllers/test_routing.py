@@ -141,21 +141,30 @@ class RoutingControllerTest(base.TestCase):
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')
     def test_get_routings_with_pagination(self, mock_context):
+        self.context.project_id = uuidutils.generate_uuid()
+
         mock_context.return_value = self.context
 
         # test when no pagination and filters are applied to the list
         # operation, then all of the routings will be retrieved.
+        count = 1
+        total_routings = 4
         for resource_type in ('subnet', 'router', 'security_group', 'network'):
             kw_routing = self._prepare_routing_element(resource_type)
+            # for test convenience, the first routing has a different
+            # project ID from later ones.
+            if count > 1:
+                kw_routing['routing']['project_id'] = self.context.project_id
             self.controller.post(**kw_routing)
+            count += 1
 
         routings = self.controller.get_all()
         ids = [routing['id']
                for key, values in six.iteritems(routings)
                for routing in values]
-        self.assertEqual([4, 3, 2, 1], ids)
+        self.assertEqual([4, 3, 2], ids)
 
-        for filter_name in ('subnet', 'router', 'security_group', 'network'):
+        for filter_name in ('router', 'security_group', 'network'):
             filters = {'resource_type': filter_name}
             routings = self.controller.get_all(**filters)
             items = [routing['resource_type']
@@ -163,8 +172,8 @@ class RoutingControllerTest(base.TestCase):
                      for routing in values]
             self.assertEqual(1, len(items))
 
-        # test when pagination limit varies in range [1, 5)
-        for i in xrange(1, 5):
+        # test when pagination limit varies in range [1, total_routings+1)
+        for i in xrange(1, total_routings+1):
             routings = []
             total_pages = 0
 
@@ -183,16 +192,19 @@ class RoutingControllerTest(base.TestCase):
                     total_pages += 1
                 routings.extend(routing['routings'])
             # assert that total pages will decrease as the limit increase.
-            pages = int(4 / i)
-            if 4 % i:
+            # because the first routing has a different project ID and can't
+            # be retrieved by current admin role of project, so the number
+            # of actual total routings we can get is total_routings-1.
+            pages = int((total_routings - 1) / i)
+            if (total_routings - 1) % i:
                 pages += 1
             self.assertEqual(pages, total_pages)
-            self.assertEqual(4, len(routings))
+            self.assertEqual(total_routings - 1, len(routings))
 
-            for i in xrange(4):
-                self.assertEqual(4-i, routings[i]['id'])
+            for i in xrange(total_routings-1):
+                self.assertEqual(total_routings - i, routings[i]['id'])
 
-            set1 = set(['subnet', 'router', 'security_group', 'network'])
+            set1 = set(['router', 'security_group', 'network'])
             set2 = set([routing1['resource_type'] for routing1 in routings])
             self.assertEqual(set1, set2)
 
@@ -201,7 +213,7 @@ class RoutingControllerTest(base.TestCase):
         self.assertEqual(1, len(routings['routings']))
 
         routings = self.controller.get_all(resource_type='subnet', limit=2)
-        self.assertEqual(1, len(routings['routings']))
+        self.assertEqual(0, len(routings['routings']))
 
         # apply a filter and if it doesn't match with any of the retrieved
         # routings, then all of them will be discarded and the method returns
@@ -211,10 +223,10 @@ class RoutingControllerTest(base.TestCase):
 
         # test cases when limit from client is abnormal
         routings = self.controller.get_all(limit=0)
-        self.assertEqual(4, len(routings['routings']))
+        self.assertEqual(total_routings - 1, len(routings['routings']))
 
         routings = self.controller.get_all(limit=-1)
-        self.assertEqual(4, len(routings['routings']))
+        self.assertEqual(total_routings - 1, len(routings['routings']))
 
         res = self.controller.get_all(limit='20x')
         self._validate_error_code(res, 400)
@@ -256,6 +268,19 @@ class RoutingControllerTest(base.TestCase):
         kw_filter5 = {'id': '4s'}
         res = self.controller.get_all(**kw_filter5)
         self._validate_error_code(res, 400)
+
+        # test when specify project ID filter from client, if this
+        # project ID is different from the one from context, then
+        # it will be ignored, project ID from context will be
+        # used instead.
+        res = self.controller.get_all()
+        kw_filter6 = {'project_id': uuidutils.generate_uuid()}
+        res1 = self.controller.get_all(**kw_filter6)
+
+        kw_filter7 = {'project_id': self.context.project_id}
+        res2 = self.controller.get_all(**kw_filter7)
+        self.assertEqual(len(res2['routings']), len(res1['routings']))
+        self.assertEqual(len(res['routings']), len(res2['routings']))
 
     @patch.object(pecan, 'response', new=FakeResponse)
     @patch.object(context, 'extract_context_from_environ')

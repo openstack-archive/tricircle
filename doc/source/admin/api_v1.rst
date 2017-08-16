@@ -326,7 +326,8 @@ entries. Accordingly the filtering condition(s) will be added to the tail of
 the service url separated by question mark. For example, the default service
 url is ``GET /routings``, when filtering is applied, the service url becomes
 ``GET /routings?attribute=attribute_value``. One or multiple conditions are
-supported.
+supported. What's more, project ID filter in URL query string will be ignored,
+and only the project ID in which the user is authorized will be used as the filter.
 
 All items returned are sorted in descending order by ID. Because the ID is a
 big integer, ID with greater value means they are newly added to the resource
@@ -866,8 +867,10 @@ be raised.
 
 By default, this fetches all of the jobs including active jobs like NEW, FAIL
 and RUNNING jobs as well as SUCCESS jobs from job log. We can filter them by
-project ID, job type and job status to only get the specific kind of job
-entries. Accordingly the filtering condition will be added to the tail
+job type and job status to only get the specific kind of job entries, project ID
+filter in URL query string will be ignored, and only the project ID in which
+the user is authorized will be used as the filter.
+Accordingly the filtering condition will be added to the tail
 of the service url separated by question mark. For example, the default
 service url is ``GET /jobs``. Using a filter the service url becomes
 ``GET /jobs?filter_name=value``. One or multiple filtering conditions are
