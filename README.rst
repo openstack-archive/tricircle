@@ -2,8 +2,8 @@
 Team and repository tags
 ========================
 
-.. image:: http://governance.openstack.org/badges/tricircle.svg
-    :target: http://governance.openstack.org/reference/tags/index.html
+.. image:: https://governance.openstack.org/tc/badges/tricircle.svg
+    :target: https://governance.openstack.org/tc/reference/tags/index.html
 
 .. Change things from this point on
 
@@ -50,8 +50,8 @@ detailed in the LICENSE file.
 * Admin guide: https://docs.openstack.org/tricircle/latest/admin/index.html
 * Configuration guide: https://docs.openstack.org/tricircle/latest/configuration/index.html
 * Networking guide: https://docs.openstack.org/tricircle/latest/networking/index.html
-* Source: http://git.openstack.org/cgit/openstack/tricircle
-* Bugs: http://bugs.launchpad.net/tricircle
+* Source: https://git.openstack.org/cgit/openstack/tricircle
+* Bugs: https://bugs.launchpad.net/tricircle
 * Blueprints: https://blueprints.launchpad.net/tricircle
-* Release notes: http://docs.openstack.org/releasenotes/tricircle
+* Release notes: https://docs.openstack.org/releasenotes/tricircle
 * Contributing: https://docs.openstack.org/tricircle/latest/contributor/index.html
