@@ -11,7 +11,7 @@ Installation
 ^^^^^^^^^^^^
 
 After installing tricircle, please refer to
-https://docs.openstack.org/developer/networking-sfc/installation.html
+https://docs.openstack.org/networking-sfc/latest/install/install.html
 to install networking-sfc.
 
 Configuration
@@ -35,7 +35,7 @@ Configuration
 
 - 2 Configure local Neutron
 
-  Please refer to https://docs.openstack.org/developer/networking-sfc/installation.html#Configuration
+  Please refer to https://docs.openstack.org/networking-sfc/latest/install/configuration.html
   to config local networking-sfc.
 
 
