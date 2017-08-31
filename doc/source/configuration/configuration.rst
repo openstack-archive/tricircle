@@ -40,9 +40,11 @@ Central Plugin.
    * - ``admin_username`` = ``None``
      - (String) username of admin account, needed when auto_refresh_endpoint set to True.
    * - ``auth_url`` = ``http://127.0.0.1/identity``
-     - (String) keystone authorization url, for example, http://$service_host/identity
+     - (String) keystone authorization url, it's basically the internal or public endpoint of keystone, depends on how
+       the common.client module can reach keystone, for example, http://$service_host/identity
    * - ``identity_url`` = ``http://127.0.0.1/identity/v3``
-     - (String) keystone service url, for example, http://$service_host/identity/v3
+     - [Deprecated] (String) keystone service url, for example, http://$service_host/identity/v3 (this option is not
+       used in code since Pike release, you can simply ignore this option)
    * - ``auto_refresh_endpoint`` = ``True``
      - (Boolean) if set to True, endpoint will be automatically refreshed if timeout accessing endpoint.
    * - ``bridge_cidr`` = ``100.0.0.0/9``

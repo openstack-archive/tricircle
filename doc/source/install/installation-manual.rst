@@ -91,6 +91,15 @@ Installation with Central Neutron Server
    Oslo library if you need further configuration of these modules. Change
    keystone_service_host to the address of Keystone service.
 
+.. note:: It's worth explaining the following options that can easily make users confused. **keystone_authtoken.auth_url**
+   is the keystone endpoint url used by services to validate user tokens. **keystone_authtoken.auth_uri** will be put in
+   the "WWW-Authenticate: Keystone uri=%s" header in the 401 response to tell users where they can get authentication.
+   These two URLs can be the same, but sometimes people would like to use an internal URL for auth_url and a public URL
+   for auth_uri. **client.auth_url** is used by the common.client module to construct a client to get authentication and
+   access other services, it can be the either internal or public endpoint of keystone, depends on how the module can
+   reach keystone. **client.identity_url** is no longer used in code since Pike release so you can simply ignore it, we
+   will deprecate and remove this option later.
+
 - 5 Create the Tricircle database(take mysql as an example)::
 
     mysql -uroot -p -e "create database tricircle character set utf8;"
