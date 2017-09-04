@@ -138,8 +138,8 @@ class FakeClient(test_utils.FakeClient):
             key = query_filter['key']
             # when querying trunks, "fields" is passed in the query string to
             # ask the server to only return necessary fields, which can reduce
-            # the data being transfered. in test, we just return all the fields
-            # since there's no need to optimize
+            # the data being transferred. In test, we just return all the
+            # fields since there's no need to optimize
             if key != 'fields':
                 value = query_filter['value']
                 filter_dict[key] = value
