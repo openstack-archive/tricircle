@@ -23,8 +23,8 @@ from sqlalchemy.sql import elements
 import sqlalchemy.sql.expression as sql_expression
 from sqlalchemy.sql import selectable
 
-import neutron.objects.exceptions as q_obj_exceptions
 import neutron_lib.context as q_context
+import neutron_lib.objects.exceptions as q_obj_exceptions
 
 from tricircle.common import constants
 
