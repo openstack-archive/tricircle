@@ -48,6 +48,12 @@ ML2_L3_PLUGIN=tricircle.network.local_l3_plugin.TricircleL3Plugin
 TRICIRCLE_START_SERVICES=False
 enable_plugin tricircle https://github.com/openstack/tricircle/
 
+# Configure Neutron LBaaS, which will be removed after tricircle plugin enabling
+# enable_plugin neutron-lbaas https://github.com/openstack/neutron-lbaas.git
+# enable_plugin octavia https://github.com/openstack/octavia.git
+# ENABLED_SERVICES+=,q-lbaasv2
+# ENABLED_SERVICES+=,octavia,o-cw,o-hk,o-hm,o-api
+
 disable_service horizon
 
 # Enable l2population for vxlan network

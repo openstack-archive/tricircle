@@ -1,0 +1,10 @@
+---
+features:
+  - |
+    Support LBaaS in multi-region scenario. To enable adding instances as
+    members with VIP, amphora routes the traffic sent from VIP to its
+    gateway. However, in Tricircle, the gateway obtained from central neutron
+    is not the real gateway in local neutron. As a result, only subnet
+    without gateway is supported as member subnet. We will remove the
+    limitation in the future, and LBaaS working together with Nova Cells V2
+    multi-cells will also be supported in the future.
