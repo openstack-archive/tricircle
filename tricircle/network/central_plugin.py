@@ -326,6 +326,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     else:
                         raise ml2_exceptions.FlatNetworkInUse(
                             physical_network=match.groups()[0])
+        # process_extensions is set to False in _make_network_dict, so "tags"
+        # field will not be set, we manually set here so openstack client can
+        # correctly read this field
+        res['tags'] = []
         return res
 
     def delete_network(self, context, network_id):
