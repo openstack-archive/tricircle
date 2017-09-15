@@ -18,7 +18,6 @@ import six
 
 from oslo_log import log
 
-from neutron.plugins.ml2 import config  # noqa
 from neutron.services.trunk import exceptions as trunk_exc
 from neutron.services.trunk import plugin
 from neutron_lib.plugins import directory
