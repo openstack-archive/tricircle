@@ -63,7 +63,7 @@ function init_common_tricircle_conf {
 }
 
 function init_local_nova_conf {
-    iniset $NOVA_CONF glance api_servers http://$KEYSTONE_SERVICE_HOST:9292
+    iniset $NOVA_CONF glance api_servers http://$KEYSTONE_SERVICE_HOST/image
     iniset $NOVA_CONF placement os_region_name $CENTRAL_REGION_NAME
 }
 
@@ -228,28 +228,27 @@ function start_central_nova_server {
     local central_region=$2
     local central_neutron_port=$3
 
-    # reconfigure central neutron server to use our own central plugin
     echo "Configuring Nova API for Tricircle to work with cell V2"
 
-    cp $NOVA_CONF $NOVA_CONF.0
-    iniset $NOVA_CONF.0 neutron region_name $central_region
-    iniset $NOVA_CONF.0 neutron url "$Q_PROTOCOL://$SERVICE_HOST:$central_neutron_port"
+    iniset $NOVA_CONF neutron region_name $central_region
+    iniset $NOVA_CONF neutron url "$Q_PROTOCOL://$SERVICE_HOST:$central_neutron_port"
 
-    nova_endpoint_id=$(openstack endpoint list --service compute --interface public --region $local_region -c ID -f value)
-    openstack endpoint set --region $central_region $nova_endpoint_id
-    nova_legacy_endpoint_id=$(openstack endpoint list --service compute_legacy --interface public --region $local_region -c ID -f value)
-    openstack endpoint set --region $central_region $nova_legacy_endpoint_id
+    # Here we create new endpoints for central region instead of updating the
+    # endpoints in local region because at the end of devstack, the script tries
+    # to query the nova api in local region to check whether the nova-compute
+    # service is running. If we update the endpoint region from local region to
+    # central region, the check will fail and thus devstack fails
+    nova_url=$(openstack endpoint list --service compute --interface public --region $local_region -c URL -f value)
+    get_or_create_endpoint "compute" "$central_region" "$nova_url"
+    nova_legacy_url=$(openstack endpoint list --service compute_legacy --interface public --region $local_region -c URL -f value)
+    get_or_create_endpoint "compute_legacy" "$central_region" "$nova_legacy_url"
+
     image_endpoint_id=$(openstack endpoint list --service image --interface public --region $local_region -c ID -f value)
     openstack endpoint set --region $central_region $image_endpoint_id
     place_endpoint_id=$(openstack endpoint list --service placement --interface public --region $local_region -c ID -f value)
     openstack endpoint set --region $central_region $place_endpoint_id
 
-    stop_process n-api
-    # remove previous failure flag file since we are going to restart service
-    rm -f "$SERVICE_DIR/$SCREEN_NAME"/n-api.failure
-    sleep 20
-    run_process n-api "$NOVA_BIN_DIR/nova-api --config-file $NOVA_CONF.0"
-
+    restart_service devstack@n-api
     restart_apache_server
 }
 
