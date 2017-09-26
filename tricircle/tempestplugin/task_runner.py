@@ -94,6 +94,8 @@ class SDKRunner(object):
         param = {
             'auth_url': auth_url,
             'project_name': project,
+            'user_domain_name': 'default',
+            'project_domain_name': 'default',
             'username': username,
             'password': password}
 
