@@ -19,8 +19,6 @@ export DEVSTACK_DIR=$DEST/devstack
 export TRICIRCLE_DIR=$DEST/tricircle
 export TRICIRCLE_DEVSTACK_PLUGIN_DIR=$TRICIRCLE_DIR/devstack
 export TRICIRCLE_TEMPEST_PLUGIN_DIR=$TRICIRCLE_DIR/tricircle/tempestplugin
-export TEMPEST_DIR=$DEST/tempest
-export TEMPEST_CONF=$TEMPEST_DIR/etc/tempest.conf
 
 # execute test only in the primary node(i.e, RegionOne)
 if [ "$OS_REGION_NAME" -ne "RegionOne" ]; then
@@ -53,38 +51,8 @@ fi
 # nova flavor-create test 1 1024 10 1
 image_id=$(openstack --os-region-name=RegionOne image list | awk 'NR==4 {print $2}')
 
-# preparation for the tests
-cd $TEMPEST_DIR
-if [ -d .testrepository ]; then
-  sudo rm -r .testrepository
-fi
-
-sudo chown -R jenkins:stack $DEST/tempest
-# sudo chown -R jenkins:stack $BASE/data/tempest
-
 # change the tempest configruation to test Tricircle
 env | grep OS_
-
-# import functions needed for the below workaround
-source $DEVSTACK_DIR/functions
-
-# designate is a good example how to config TEMPEST_CONF
-iniset $TEMPEST_CONF auth admin_username ${ADMIN_USERNAME:-"admin"}
-iniset $TEMPEST_CONF auth admin_project_name admin
-iniset $TEMPEST_CONF auth admin_password $OS_PASSWORD
-iniset $TEMPEST_CONF identity uri $OS_AUTH_URL
-iniset $TEMPEST_CONF identity-feature-enabled api_v3 false
-
-iniset $TEMPEST_CONF compute region RegionOne
-iniset $TEMPEST_CONF compute image_ref $image_id
-iniset $TEMPEST_CONF compute image_ref_alt $image_id
-
-iniset $TEMPEST_CONF volume region RegionOne
-iniset $TEMPEST_CONF volume catalog_type volumev2
-iniset $TEMPEST_CONF volume endpoint_type publicURL
-iniset $TEMPEST_CONF volume-feature-enabled api_v1 false
-
-iniset $TEMPEST_CONF validation connect_method fixed
 
 if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then
     cd $TRICIRCLE_TEMPEST_PLUGIN_DIR

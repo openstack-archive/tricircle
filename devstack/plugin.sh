@@ -60,6 +60,7 @@ function init_common_tricircle_conf {
     iniset $conf_file client top_region_name $CENTRAL_REGION_NAME
 
     iniset $conf_file oslo_concurrency lock_path $TRICIRCLE_STATE_PATH/lock
+    iniset_rpc_backend tricircle $conf_file
 }
 
 function init_local_nova_conf {

@@ -15,11 +15,11 @@ python run_yaml_test.py multi_gw_topology_test.yaml "$OS_AUTH_URL" "$OS_TENANT_N
 if [ $? != 0 ]; then
     die $LINENO "Smoke test fails, error in multi gateway topology test"
 fi
-echo "Start to run trunk test"
-python run_yaml_test.py trunk_test.yaml "$OS_AUTH_URL" "$OS_TENANT_NAME" "$OS_USERNAME" "$OS_PASSWORD"
-if [ $? != 0 ]; then
-    die $LINENO "Smoke test fails, error in trunk test"
-fi
+# echo "Start to run trunk test"
+# python run_yaml_test.py trunk_test.yaml "$OS_AUTH_URL" "$OS_TENANT_NAME" "$OS_USERNAME" "$OS_PASSWORD"
+# if [ $? != 0 ]; then
+#     die $LINENO "Smoke test fails, error in trunk test"
+# fi
 echo "Start to run service function chain test"
 python run_yaml_test.py sfc_test.yaml "$OS_AUTH_URL" "$OS_TENANT_NAME" "$OS_USERNAME" "$OS_PASSWORD"
 if [ $? != 0 ]; then
