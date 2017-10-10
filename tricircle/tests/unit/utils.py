@@ -456,6 +456,9 @@ class FakeSession(object):
     def delete(self, model_obj):
         unlink_models(self.resource_store.store_map['routers'], model_obj,
                       'router_id', 'id', 'attached_ports', 'port_id', 'id')
+        unlink_models(self.resource_store.store_map['securitygroups'],
+                      model_obj, 'security_group_id', 'id',
+                      'security_group_rules', 'id', 'id')
         self._cascade_delete(model_obj, 'port_id', 'ipallocations', 'id')
         key = self.delete_hook(model_obj)
         for res_list in self.resource_store.store_map.values():

@@ -44,6 +44,14 @@ class CentralizedSNATPortNotFound(exceptions.NotFound):
     message = _('Centralized snat port for subnet %(subnet_id)s not found')
 
 
+class SecurityGroupNotFound(exceptions.NotFound):
+    message = _('Security group for %(sg_id)s not found')
+
+
+class SecurityGroupRuleNotFound(exceptions.NotFound):
+    message = _('Security group rule for id %(rule_id)s not found')
+
+
 class NetAttachedToNonLocalRouter(exceptions.Conflict):
     message = _('Network %(network_id)s has already been attached to non '
                 'local router %(router_id)s')

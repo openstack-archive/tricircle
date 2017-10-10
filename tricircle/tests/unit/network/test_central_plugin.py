@@ -442,22 +442,32 @@ class FakeClient(test_utils.FakeClient):
     def delete_floatingips(self, ctx, _id):
         self.delete_resources('floatingip', ctx, _id)
 
+    @staticmethod
+    def _compare_rule(rule1, rule2):
+        for key in ('direction', 'remote_ip_prefix', 'protocol', 'ethertype',
+                    'port_range_max', 'port_range_min'):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
     def create_security_group_rules(self, ctx, body):
-        sg_id = body['security_group_rule']['security_group_id']
+        sg_id = body['security_group_rules'][0]['security_group_id']
         res_list = self._res_map[self.region_name]['security_group']
         for sg in res_list:
             if sg['id'] == sg_id:
                 target_sg = sg
-        new_rule = copy.copy(body['security_group_rule'])
+        new_rules = copy.copy(body['security_group_rules'])
         match_found = False
-        for rule in target_sg['security_group_rules']:
-            old_rule = copy.copy(rule)
-            if new_rule == old_rule:
-                match_found = True
-                break
+        for new_rule in new_rules:
+            for rule in target_sg['security_group_rules']:
+                if self._compare_rule(rule, new_rule):
+                    match_found = True
+                    break
+            if not match_found:
+                new_rule['id'] = uuidutils.generate_uuid()
         if match_found:
             raise q_exceptions.Conflict()
-        target_sg['security_group_rules'].append(body['security_group_rule'])
+        target_sg['security_group_rules'].extend(body['security_group_rules'])
 
     def delete_security_group_rules(self, ctx, rule_id):
         res_list = self._res_map[self.region_name]['security_group']
@@ -476,6 +486,9 @@ class FakeClient(test_utils.FakeClient):
 
     def get_security_group(self, context, _id, fields=None, tenant_id=None):
         pass
+
+    def list_security_groups(self, ctx, sg_filters):
+        return self.list_resources('security_group', ctx, sg_filters)
 
 
 def update_floatingip_dict(fip_dict, update_dict):
@@ -586,7 +599,8 @@ class FakeRPCAPI(FakeBaseRPCAPI):
         pass
 
     def configure_security_group_rules(self, ctxt, project_id):
-        pass
+        self.xmanager.configure_security_group_rules(
+            ctxt, payload={constants.JT_SEG_RULE_SETUP: project_id})
 
     def setup_shadow_ports(self, ctxt, project_id, pod_id, net_id):
         combine_id = '%s#%s' % (pod_id, net_id)
@@ -3314,19 +3328,6 @@ class PluginTest(unittest.TestCase,
                                                      'pod_id_1', TOP_SGS,
                                                      TOP_SG_RULES, BOTTOM1_SGS)
 
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_handle_default_sg_invalid_input(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_handle_default_sg_invalid_input(fake_plugin, q_ctx, t_ctx,
-                                                   'pod_id_1', TOP_SGS,
-                                                   TOP_SG_RULES, BOTTOM1_SGS)
-
     @patch.object(FakeClient, 'create_security_group_rules')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_security_group_rule_exception(self, mock_context,
@@ -3357,6 +3358,19 @@ class PluginTest(unittest.TestCase,
         self._test_delete_security_group_rule_exception(
             fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, TOP_SG_RULES,
             BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_default_sg(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_update_default_sg(fake_plugin, q_ctx, t_ctx,
+                                     'pod_id_1', TOP_SGS,
+                                     TOP_SG_RULES, BOTTOM1_SGS)
 
     @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
     @patch.object(FakeClient, 'update_ports')
