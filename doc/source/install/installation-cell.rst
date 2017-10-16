@@ -23,7 +23,12 @@ Setup
   friendly). End user can access CentralRegion endpoint of Nova and Neutron to
   experience the integration of Nova cell v2 and Tricircle.
 
-- 2 Enter the screen section in node2, stop n-api and n-sch.
+- 2 Stop the following services in node2::
+
+    systemctl stop devstack@n-sch.service
+    systemctl stop devstack@n-super-cond.service
+    systemctl stop devstack@n-api.service
+    systemctl stop devstack@n-api-meta.service
 
 .. note:: Actually for cell v2, only one Nova API is required. We enable n-api
    in node2 because we need DevStack to help us create the necessary cell
@@ -32,7 +37,7 @@ Setup
 
 - 3 In node2, run the following command::
 
-    mysql -u$user -p$password -Dnova -e 'select host, mapped from compute_nodes
+    mysql -u$user -p$password -Dnova_cell1 -e 'select host, mapped from compute_nodes'
 
   you can see that this command returns you one row showing the host of node2
   is already mapped::
@@ -46,15 +51,15 @@ Setup
   This host is registered to Nova API in node2, which is already stopped by us,
   We need to update this row to set "mapped" to 0::
 
-    mysql -u$user -p$password -Dnova -e 'update compute_nodes set mapped = 0 where host = "zhiyuan-2"'
+    mysql -u$user -p$password -Dnova_cell1 -e 'update compute_nodes set mapped = 0 where host = "zhiyuan-2"'
 
   then we can register this host again in step4.
 
 - 4 In node1, run the following commands to register the new cell::
 
     nova-manage cell_v2 create_cell --name cell2 \
-      --transport-url rabbit://$rabbit_user:$rabbit_passwd@$node2_ip:5672/ \
-      --database_connection mysql+pymysql://$db_user:$db_passwd@$node2_ip/nova?charset=utf8
+      --transport-url rabbit://$rabbit_user:$rabbit_passwd@$node2_ip:5672/nova_cell1 \
+      --database_connection mysql+pymysql://$db_user:$db_passwd@$node2_ip/nova_cell1?charset=utf8
 
     nova-manage cell_v2 discover_hosts
 
@@ -86,17 +91,17 @@ Setup
     +----+------------------+-----------+----------+---------+-------+----------------------------+
     | ID | Binary           | Host      | Zone     | Status  | State | Updated At                 |
     +----+------------------+-----------+----------+---------+-------+----------------------------+
-    |  5 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:37.000000 |
-    |  7 | nova-scheduler   | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:36.000000 |
-    |  8 | nova-consoleauth | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:39.000000 |
-    |  9 | nova-compute     | zhiyuan-1 | nova     | enabled | up    | 2017-05-27T06:04:42.000000 |
-    |  4 | nova-conductor   | zhiyuan-2 | internal | enabled | up    | 2017-05-27T06:04:40.000000 |
-    |  6 | nova-scheduler   | zhiyuan-2 | internal | enabled | down  | 2017-05-27T02:56:50.000000 |
-    |  7 | nova-consoleauth | zhiyuan-2 | internal | enabled | up    | 2017-05-27T06:04:36.000000 |
-    |  8 | nova-compute     | zhiyuan-2 | nova     | enabled | up    | 2017-05-27T06:04:38.000000 |
+    |  5 | nova-scheduler   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:56:02.000000 |
+    |  6 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:56:09.000000 |
+    |  8 | nova-consoleauth | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:56:01.000000 |
+    |  1 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:56:07.000000 |
+    |  3 | nova-compute     | zhiyuan-1 | nova     | enabled | up    | 2017-09-20T06:56:10.000000 |
+    |  1 | nova-conductor   | zhiyuan-2 | internal | enabled | up    | 2017-09-20T06:56:07.000000 |
+    |  3 | nova-compute     | zhiyuan-2 | nova     | enabled | up    | 2017-09-20T06:56:09.000000 |
     +----+------------------+-----------+----------+---------+-------+----------------------------+
 
-  Nova scheduler in host zhiyuan-2 is down because we stop it in step2.
+    zhiyuan-1 has two nova-conductor services, because one of them is a super
+    conductor service.
 
 - 6 Create two aggregates and put the two hosts in each aggregate::
 
@@ -128,22 +133,13 @@ Trouble Shooting
     +----+------------------+-----------+----------+---------+-------+----------------------------+
     | ID | Binary           | Host      | Zone     | Status  | State | Updated At                 |
     +----+------------------+-----------+----------+---------+-------+----------------------------+
-    |  5 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:37.000000 |
-    |  7 | nova-scheduler   | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:36.000000 |
-    |  8 | nova-consoleauth | zhiyuan-1 | internal | enabled | up    | 2017-05-27T06:04:39.000000 |
-    |  9 | nova-compute     | zhiyuan-1 | nova     | enabled | up    | 2017-05-27T06:04:42.000000 |
+    |  5 | nova-scheduler   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:55:52.000000 |
+    |  6 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:55:59.000000 |
+    |  8 | nova-consoleauth | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:56:01.000000 |
+    |  1 | nova-conductor   | zhiyuan-1 | internal | enabled | up    | 2017-09-20T06:55:57.000000 |
+    |  3 | nova-compute     | zhiyuan-1 | nova     | enabled | up    | 2017-09-20T06:56:00.000000 |
     +----+------------------+-----------+----------+---------+-------+----------------------------+
 
   Though new cell has been registered in the database, the running n-api process
   in node1 may not recognize it. We find that restarting n-api can solve this
   problem.
-
-- 2 After you create a server, the server turns into Error status with error
-  "No valid host was found"
-
-  We check the log of n-sch process in node1 and find it says: "Found 2 cells",
-  this is incorrect since we have three cells including cell0. After restarting
-  n-sch, the log says "Found 3 cells". Try creating server again after that.
-
-  Another reason for this problem we have found is that n-cpu doesn't sync
-  available resource with n-sch, restarting n-cpu can slove this problem.
