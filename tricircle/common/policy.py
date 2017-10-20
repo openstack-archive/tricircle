@@ -65,50 +65,132 @@ ADMIN_API_JOB_DELETE = 'admin_api:jobs:delete'
 
 
 tricircle_admin_api_policies = [
-    policy.RuleDefault(ADMIN_API_PODS_CREATE,
-                       'rule:admin_api',
-                       description='Create pod'),
-    policy.RuleDefault(ADMIN_API_PODS_DELETE,
-                       'rule:admin_api',
-                       description='Delete pod'),
-    policy.RuleDefault(ADMIN_API_PODS_SHOW,
-                       'rule:admin_api',
-                       description='Show pod detail'),
-    policy.RuleDefault(ADMIN_API_PODS_LIST,
-                       'rule:admin_api',
-                       description='List pods'),
-
-    policy.RuleDefault(ADMIN_API_ROUTINGS_CREATE,
-                       'rule:admin_api',
-                       description='Create resource routing'),
-    policy.RuleDefault(ADMIN_API_ROUTINGS_DELETE,
-                       'rule:admin_api',
-                       description='Delete resource routing'),
-    policy.RuleDefault(ADMIN_API_ROUTINGS_PUT,
-                       'rule:admin_api',
-                       description='Update resource routing'),
-    policy.RuleDefault(ADMIN_API_ROUTINGS_SHOW,
-                       'rule:admin_api',
-                       description='Show resource routing detail'),
-    policy.RuleDefault(ADMIN_API_ROUTINGS_LIST,
-                       'rule:admin_api',
-                       description='List resource routings'),
-
-    policy.RuleDefault(ADMIN_API_JOB_CREATE,
-                       'rule:admin_api',
-                       description='Create job'),
-    policy.RuleDefault(ADMIN_API_JOB_LIST,
-                       'rule:admin_api',
-                       description='List jobs'),
-    policy.RuleDefault(ADMIN_API_JOB_SCHEMA_LIST,
-                       'rule:admin_api',
-                       description='List job schemas'),
-    policy.RuleDefault(ADMIN_API_JOB_REDO,
-                       'rule:admin_api',
-                       description='Redo job'),
-    policy.RuleDefault(ADMIN_API_JOB_DELETE,
-                       'rule:admin_api',
-                       description='Delete job')
+    policy.DocumentedRuleDefault(ADMIN_API_PODS_CREATE,
+                                 'rule:admin_api',
+                                 description='Create pod.',
+                                 operations=[
+                                     {
+                                         'path': '/pods',
+                                         'method': 'POST'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_PODS_DELETE,
+                                 'rule:admin_api',
+                                 description='Delete specified pod.',
+                                 operations=[
+                                     {
+                                         'path': '/pods/{pod_id}',
+                                         'method': 'DELETE'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_PODS_SHOW,
+                                 'rule:admin_api',
+                                 description='Show pod details.',
+                                 operations=[
+                                     {
+                                         'path': '/pods/{pod_id}',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_PODS_LIST,
+                                 'rule:admin_api',
+                                 description='List pods.',
+                                 operations=[
+                                     {
+                                         'path': '/pods',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_ROUTINGS_CREATE,
+                                 'rule:admin_api',
+                                 description='Create resource routing',
+                                 operations=[
+                                     {
+                                         'path': '/routings',
+                                         'method': 'POST'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_ROUTINGS_DELETE,
+                                 'rule:admin_api',
+                                 description='Delete resource routing',
+                                 operations=[
+                                     {
+                                         'path': '/routings/{id}',
+                                         'method': 'DELETE'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_ROUTINGS_PUT,
+                                 'rule:admin_api',
+                                 description='Update resource routing',
+                                 operations=[
+                                     {
+                                         'path': '/routings/{id}',
+                                         'method': 'PUT'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_ROUTINGS_SHOW,
+                                 'rule:admin_api',
+                                 description='Show resource routing detail',
+                                 operations=[
+                                     {
+                                         'path': '/routings/{id}',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_ROUTINGS_LIST,
+                                 'rule:admin_api',
+                                 description='List resource routings',
+                                 operations=[
+                                     {
+                                         'path': '/routings',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_JOB_CREATE,
+                                 'rule:admin_api',
+                                 description='Create job',
+                                 operations=[
+                                     {
+                                         'path': '/jobs',
+                                         'method': 'POST'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_JOB_LIST,
+                                 'rule:admin_api',
+                                 description='List jobs',
+                                 operations=[
+                                     {
+                                         'path': '/jobs',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_JOB_SCHEMA_LIST,
+                                 'rule:admin_api',
+                                 description='List job schemas',
+                                 operations=[
+                                     {
+                                         'path': '/jobs/schemas',
+                                         'method': 'GET'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_JOB_REDO,
+                                 'rule:admin_api',
+                                 description='Redo job',
+                                 operations=[
+                                     {
+                                         'path': '/jobs/{id}',
+                                         'method': 'PUT'
+                                     }
+                                 ]),
+    policy.DocumentedRuleDefault(ADMIN_API_JOB_DELETE,
+                                 'rule:admin_api',
+                                 description='Delete job',
+                                 operations=[
+                                     {
+                                         'path': '/jobs/{id}',
+                                         'method': 'DELETE'
+                                     }
+                                 ])
 ]
 
 
