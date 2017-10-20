@@ -43,16 +43,18 @@ from neutron.db import l3_dvr_db
 from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.extensions import availability_zone as az_ext
 from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
+from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
+from neutron_lib.api.validators import availability_zone as az_validator
 import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
 from neutron_lib import exceptions
+from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import directory
 import neutronclient.common.exceptions as q_cli_exceptions
 
@@ -199,7 +201,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._validate_availability_zones(context, availability_zones)
 
     def get_router_availability_zones(self, router_db):
-        return router_db.get(az_ext.AZ_HINTS)
+        return router_db.get(az_def.AZ_HINTS)
 
     @staticmethod
     def _validate_availability_zones(context, az_list):
@@ -216,14 +218,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
             diff = az_set - known_az_set
             if diff:
-                raise az_ext.AvailabilityZoneNotFound(
+                raise az_exc.AvailabilityZoneNotFound(
                     availability_zone=diff.pop())
 
     @staticmethod
     @resource_extend.extends([attributes.NETWORKS])
     def _extend_availability_zone(net_res, net_db):
-        net_res[az_ext.AZ_HINTS] = az_ext.convert_az_string_to_list(
-            net_db[az_ext.AZ_HINTS])
+        net_res[az_def.AZ_HINTS] = az_validator.convert_az_string_to_list(
+            net_db[az_def.AZ_HINTS])
 
     @staticmethod
     def _ensure_az_set_for_external_network(context, req_data):
@@ -231,10 +233,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         external_set = validators.is_attr_set(external)
         if not external_set or not external:
             return False
-        if az_ext.AZ_HINTS in req_data and req_data[az_ext.AZ_HINTS]:
+        if az_def.AZ_HINTS in req_data and req_data[az_def.AZ_HINTS]:
             return True
         # if no az_hints are specified, we will use default region_name
-        req_data[az_ext.AZ_HINTS] = \
+        req_data[az_def.AZ_HINTS] = \
             [cfg.CONF.tricircle.default_region_for_external_network]
         return True
 
@@ -248,7 +250,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _create_bottom_external_network(self, context, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         # use the first pod
-        az_name = net[az_ext.AZ_HINTS][0]
+        az_name = net[az_def.AZ_HINTS][0]
         pod = db_api.find_pod_by_az_or_region(t_ctx, az_name)
         body = {
             'network': {
@@ -265,7 +267,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _create_bottom_external_subnet(self, context, subnet, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
-        region_name = net[az_ext.AZ_HINTS][0]
+        region_name = net[az_def.AZ_HINTS][0]
         pod = db_api.get_pod_by_name(t_ctx, region_name)
         b_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, net['id'], region_name, t_constants.RT_NETWORK)
@@ -294,9 +296,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         tenant_id = net_data['tenant_id']
         is_external = self._ensure_az_set_for_external_network(context,
                                                                net_data)
-        if az_ext.AZ_HINTS in net_data:
+        if az_def.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
-                                              net_data[az_ext.AZ_HINTS])
+                                              net_data[az_def.AZ_HINTS])
         with q_db_api.context_manager.writer.using(context):
             net_db = self.create_network_db(context, network)
             res = self._make_network_dict(net_db, process_extensions=False,
@@ -306,11 +308,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.type_manager.create_network_segments(context, net_data,
                                                       tenant_id)
             self.type_manager.extend_network_dict_provider(context, res)
-            if az_ext.AZ_HINTS in net_data:
-                az_hints = az_ext.convert_az_list_to_string(
-                    net_data[az_ext.AZ_HINTS])
-                net_db[az_ext.AZ_HINTS] = az_hints
-                res[az_ext.AZ_HINTS] = net_data[az_ext.AZ_HINTS]
+            if az_def.AZ_HINTS in net_data:
+                az_hints = az_validator.convert_az_list_to_string(
+                    net_data[az_def.AZ_HINTS])
+                net_db[az_def.AZ_HINTS] = az_hints
+                res[az_def.AZ_HINTS] = net_data[az_def.AZ_HINTS]
             # put inside a session so when bottom operations fails db can
             # rollback
             if is_external:
@@ -409,10 +411,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self._convert_az2region_for_net(context, net)
 
     def _convert_az2region_for_net(self, context, net):
-        az_hints = net.get(az_ext.AZ_HINTS)
+        az_hints = net.get(az_def.AZ_HINTS)
         if context.is_admin and az_hints:
             t_ctx = t_context.get_context_from_neutron_context(context)
-            net[az_ext.AZ_HINTS] = self._convert_az2region(t_ctx, az_hints)
+            net[az_def.AZ_HINTS] = self._convert_az2region(t_ctx, az_hints)
 
     def _convert_az2region(self, t_ctx, az_hints):
         return self.helper.convert_az2region(t_ctx, az_hints)
@@ -1441,14 +1443,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # az hint parameter, so tricircle plugin knows where to create the
         # corresponding bottom external network. here we get bottom external
         # network ID from resource routing table.
-        if not network.get(az_ext.AZ_HINTS):
+        if not network.get(az_def.AZ_HINTS):
             raise t_exceptions.ExternalNetPodNotSpecify()
 
         t_router = self._get_router(context, router_id)
         self.validate_router_net_location_match(t_ctx, t_router, network)
         is_local_router = self.helper.is_local_router(t_ctx, t_router)
 
-        region_name = network[az_ext.AZ_HINTS][0]
+        region_name = network[az_def.AZ_HINTS][0]
         pod = db_api.get_pod_by_name(t_ctx, region_name)
         b_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, ext_net_id, region_name, t_constants.RT_NETWORK)
@@ -1544,12 +1546,12 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             return
         ext_net_id = gw_port['network_id']
         t_network = self.get_network(context, ext_net_id)
-        if az_ext.AZ_HINTS not in t_network:
+        if az_def.AZ_HINTS not in t_network:
             raise t_exceptions.ExternalNetPodNotSpecify()
-        if not t_network[az_ext.AZ_HINTS]:
+        if not t_network[az_def.AZ_HINTS]:
             raise t_exceptions.ExternalNetPodNotSpecify()
 
-        region_name = t_network[az_ext.AZ_HINTS][0]
+        region_name = t_network[az_def.AZ_HINTS][0]
         is_local_router = self.helper.is_local_router(t_ctx, t_router)
 
         b_router_id = db_api.get_bottom_id_by_top_id_region_name(
@@ -1613,7 +1615,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         router_region_names = self._convert_az2region(t_ctx, router_az_hints)
         router_region_set = set(router_region_names)
 
-        net_az_hints = net.get(az_ext.AZ_HINTS)
+        net_az_hints = net.get(az_def.AZ_HINTS)
         if not net_az_hints:
             if is_local_router:
                 # network az hints parameter is not specified, meaning that
