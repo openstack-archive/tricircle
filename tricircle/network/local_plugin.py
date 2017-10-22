@@ -24,6 +24,7 @@ from neutron_lib.api import validators
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 from neutron_lib.plugins import directory
+from neutron_lib.utils import runtime
 
 from neutron.common import utils
 from neutron.extensions import availability_zone as az_ext
@@ -68,7 +69,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         super(TricirclePlugin, self).__init__()
         core_plugins_namespace = 'neutron.core_plugins'
         plugin_provider = cfg.CONF.tricircle.real_core_plugin
-        plugin_class = utils.load_class_by_alias_or_classname(
+        plugin_class = runtime.load_class_by_alias_or_classname(
             core_plugins_namespace, plugin_provider)
         self.core_plugin = plugin_class()
         self.neutron_handle = resource_handle.NeutronResourceHandle(
