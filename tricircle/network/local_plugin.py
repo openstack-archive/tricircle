@@ -18,6 +18,7 @@ import six
 from oslo_config import cfg
 from oslo_log import log
 
+from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
@@ -27,7 +28,6 @@ from neutron_lib.plugins import directory
 from neutron_lib.utils import runtime
 
 from neutron.common import utils
-from neutron.extensions import availability_zone as az_ext
 import neutron.extensions.securitygroup as ext_sg
 from neutron.plugins.ml2 import plugin
 
@@ -250,7 +250,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         return b_network
 
     def _is_network_located_in_region(self, t_network, region_name):
-        az_hints = t_network.get(az_ext.AZ_HINTS)
+        az_hints = t_network.get(az_def.AZ_HINTS)
         if not az_hints:
             return True
         return region_name in az_hints
@@ -326,7 +326,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                               'az_hints: %(az_hints)s',
                               {'net_id': network['id'],
                                'region_name': region_name,
-                               'az_hints': network[az_ext.AZ_HINTS]})
+                               'az_hints': network[az_def.AZ_HINTS]})
                     continue
 
                 self._adapt_network_body(network)

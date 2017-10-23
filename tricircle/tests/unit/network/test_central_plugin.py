@@ -26,6 +26,7 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_lib_exc
+from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import constants as plugin_constants
 from neutron_lib.plugins import directory
 
@@ -37,8 +38,6 @@ from neutron.db import ipam_pluggable_backend
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
-
-from neutron.extensions import availability_zone as az_ext
 
 from neutron.ipam import driver
 from neutron.ipam import exceptions as ipam_exc
@@ -1041,7 +1040,7 @@ class PluginTest(unittest.TestCase,
             'id': 'net_id', 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['az_name_1', 'az_name_3']}}
         mock_create.return_value = {'id': net_id, 'name': 'net_az'}
-        self.assertRaises(az_ext.AvailabilityZoneNotFound,
+        self.assertRaises(az_exc.AvailabilityZoneNotFound,
                           fake_plugin.create_network,
                           neutron_context, err_network)
 
@@ -1050,7 +1049,7 @@ class PluginTest(unittest.TestCase,
             'id': net_id, 'name': 'net_az', 'tenant_id': TEST_TENANT_ID,
             'availability_zone_hints': ['pod_1', 'pod_3']}}
         mock_create.return_value = {'id': net_id, 'name': 'net_az'}
-        self.assertRaises(az_ext.AvailabilityZoneNotFound,
+        self.assertRaises(az_exc.AvailabilityZoneNotFound,
                           fake_plugin.create_network,
                           neutron_context, err_network)
 
