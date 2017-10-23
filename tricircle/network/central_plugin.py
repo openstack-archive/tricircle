@@ -43,10 +43,10 @@ from neutron.db import l3_dvr_db
 from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.extensions import external_net
 from neutron.extensions import l3
 from neutron.extensions import providernet as provider
 from neutron_lib.api.definitions import availability_zone as az_def
+from neutron_lib.api.definitions import external_net
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
