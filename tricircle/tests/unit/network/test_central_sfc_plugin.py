@@ -487,7 +487,8 @@ class PluginTest(unittest.TestCase):
             "port_pairs": t_pp_ids,
             "project_id": project_id,
             "id": t_ppg_id,
-            "name": 'top_ppg_%d' % index}
+            "name": 'top_ppg_%d' % index,
+            "tap_enabled": False}
         TOP_PORTPAIRGROUPS.append(DotDict(top_ppg))
         if create_bottom:
             btm_ppg = {
@@ -498,7 +499,8 @@ class PluginTest(unittest.TestCase):
                 "port_pairs": b_pp_ids,
                 "project_id": project_id,
                 "id": b_ppg_id,
-                "name": 'btm_ppg_%d' % index}
+                "name": 'btm_ppg_%d' % index,
+                "tap_enabled": False}
             if pod_name == 'pod_1':
                 BOTTOM1_PORTPAIRGROUPS.append(DotDict(btm_ppg))
             else:
