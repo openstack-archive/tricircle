@@ -13,11 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron_lib.plugins.ml2 import api
 from oslo_config import cfg
 from oslo_log import log
 
 from neutron.common import exceptions
-from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_flat
 
 from tricircle.common import constants
@@ -45,8 +45,8 @@ class FlatTypeDriver(type_flat.FlatTypeDriver):
             # for external network, we ignore this exception and let local
             # Neutron judge whether the physical network is valid
             res = segment
-            res[driver_api.MTU] = None
-        res[driver_api.NETWORK_TYPE] = self.get_type()
+            res[api.MTU] = None
+        res[api.NETWORK_TYPE] = self.get_type()
         return res
 
     def get_mtu(self, physical_network=None):

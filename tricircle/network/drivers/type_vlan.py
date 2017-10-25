@@ -15,11 +15,11 @@
 
 import sys
 
+from neutron_lib.plugins.ml2 import api
 from oslo_config import cfg
 from oslo_log import log
 
 from neutron.plugins.common import utils as plugin_utils
-from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_vlan
 
 from tricircle.common import constants
@@ -47,13 +47,13 @@ class VLANTypeDriver(type_vlan.VlanTypeDriver):
     def reserve_provider_segment(self, context, segment):
         res = super(VLANTypeDriver,
                     self).reserve_provider_segment(context, segment)
-        res[driver_api.NETWORK_TYPE] = constants.NT_VLAN
+        res[api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
     def allocate_tenant_segment(self, context):
         res = super(VLANTypeDriver,
                     self).allocate_tenant_segment(context)
-        res[driver_api.NETWORK_TYPE] = constants.NT_VLAN
+        res[api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
     def get_mtu(self, physical):

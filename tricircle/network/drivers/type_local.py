@@ -13,12 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from neutron.plugins.ml2 import driver_api
+from neutron_lib.plugins.ml2 import api
 
 from tricircle.common import constants
 
 
-class LocalTypeDriver(driver_api.TypeDriver):
+class LocalTypeDriver(api.TypeDriver):
     def get_type(self):
         return constants.NT_LOCAL
 
@@ -35,7 +35,7 @@ class LocalTypeDriver(driver_api.TypeDriver):
         return segment
 
     def allocate_tenant_segment(self, context):
-        return {driver_api.NETWORK_TYPE: constants.NT_LOCAL}
+        return {api.NETWORK_TYPE: constants.NT_LOCAL}
 
     def release_segment(self, context, segment):
         pass
