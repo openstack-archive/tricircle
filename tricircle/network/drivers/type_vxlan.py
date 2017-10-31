@@ -13,10 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron_lib.plugins.ml2 import api
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import type_vxlan
 from neutron_lib import constants as q_lib_constants
 from neutron_lib import exceptions as n_exc
@@ -46,13 +46,13 @@ class VxLANTypeDriver(type_vxlan.VxlanTypeDriver):
     def reserve_provider_segment(self, context, segment):
         res = super(VxLANTypeDriver,
                     self).reserve_provider_segment(context, segment)
-        res[driver_api.NETWORK_TYPE] = constants.NT_VxLAN
+        res[api.NETWORK_TYPE] = constants.NT_VxLAN
         return res
 
     def allocate_tenant_segment(self, context):
         res = super(VxLANTypeDriver,
                     self).allocate_tenant_segment(context)
-        res[driver_api.NETWORK_TYPE] = constants.NT_VxLAN
+        res[api.NETWORK_TYPE] = constants.NT_VxLAN
         return res
 
     def get_mtu(self, physical_network=None):
