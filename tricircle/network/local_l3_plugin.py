@@ -16,10 +16,10 @@
 from sqlalchemy import orm
 
 from neutron_lib import constants
+from neutron_lib.exceptions import l3 as l3_exc
 
 from neutron.db.models import l3 as l3_models
 from neutron.db import models_v2
-from neutron.extensions import l3
 from neutron.services.l3_router import l3_router_plugin
 
 
@@ -54,7 +54,7 @@ class TricircleL3Plugin(l3_router_plugin.L3RouterPlugin):
         if first_router_id:
             return first_router_id
 
-        raise l3.ExternalGatewayForFloatingIPNotFound(
+        raise l3_exc.ExternalGatewayForFloatingIPNotFound(
             subnet_id=internal_subnet['id'],
             external_network_id=external_network_id,
             port_id=internal_port['id'])
