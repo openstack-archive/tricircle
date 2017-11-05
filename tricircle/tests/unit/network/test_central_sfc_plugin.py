@@ -441,7 +441,9 @@ class PluginTest(unittest.TestCase):
             'ingress': ingress,
             'egress': egress,
             'name': 'top_pp_%d' % index,
-            'service_function_parameters': {"weight": 1, "correlation": None},
+            'service_function_parameters': {
+                "weight": 1,
+                "correlation": DotDict({'value': 'null'})},
             'description': "description",
             'portpairgroup_id': portpairgroup_id
         }
@@ -454,8 +456,9 @@ class PluginTest(unittest.TestCase):
                 'ingress': ingress,
                 'egress': egress,
                 'name': 'btm_pp_%d' % index,
-                'service_function_parameters': {"weight": 1,
-                                                "correlation": None},
+                'service_function_parameters': {
+                    "weight": 1,
+                    "correlation": DotDict({'value': 'null'})},
                 'description': "description",
                 'portpairgroup_id': portpairgroup_id
             }
@@ -479,12 +482,20 @@ class PluginTest(unittest.TestCase):
         t_ppg_id = uuidutils.generate_uuid()
         b_ppg_id = uuidutils.generate_uuid()
 
+        t_client = FakeClient()
+        b_client = FakeClient(pod_name)
+        t_pps = [t_client.get_resource(
+            'port_pair', t_ctx, e) for e in t_pp_ids]
+        if create_bottom:
+            b_pps = [b_client.get_resource(
+                'port_pair', t_ctx, e) for e in b_pp_ids]
+
         top_ppg = {
             "group_id": 1,
             "description": "",
             "tenant_id": project_id,
             "port_pair_group_parameters": {"lb_fields": []},
-            "port_pairs": t_pp_ids,
+            "port_pairs": t_pps,
             "project_id": project_id,
             "id": t_ppg_id,
             "name": 'top_ppg_%d' % index,
@@ -496,7 +507,7 @@ class PluginTest(unittest.TestCase):
                 "description": "",
                 "tenant_id": project_id,
                 "port_pair_group_parameters": {"lb_fields": []},
-                "port_pairs": b_pp_ids,
+                "port_pairs": b_pps,
                 "project_id": project_id,
                 "id": b_ppg_id,
                 "name": 'btm_ppg_%d' % index,
