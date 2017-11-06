@@ -1,0 +1,5 @@
+---
+features:
+  - Provide central Neutron QoS plugin and implement QoS driver. Support QoS
+    policy creation, update and delete, QoS policy binding with network or
+    port.

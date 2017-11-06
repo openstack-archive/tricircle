@@ -140,3 +140,26 @@ class XJobAPI(object):
             ctxt, project_id,
             constants.job_handles[constants.JT_RESOURCE_RECYCLE],
             constants.JT_RESOURCE_RECYCLE, project_id)
+
+    def create_qos_policy(self, ctxt, project_id, policy_id, pod_id,
+                          res_type, res_id=None):
+        self.invoke_method(
+            ctxt, project_id, constants.job_handles[constants.JT_QOS_CREATE],
+            constants.JT_QOS_CREATE, '%s#%s#%s#%s' % (pod_id, policy_id,
+                                                      res_type, res_id))
+
+    def update_qos_policy(self, ctxt, project_id, policy_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id, constants.job_handles[constants.JT_QOS_UPDATE],
+            constants.JT_QOS_UPDATE, '%s#%s' % (pod_id, policy_id))
+
+    def delete_qos_policy(self, ctxt, project_id, policy_id, pod_id):
+        self.invoke_method(
+            ctxt, project_id, constants.job_handles[constants.JT_QOS_DELETE],
+            constants.JT_QOS_DELETE, '%s#%s' % (pod_id, policy_id))
+
+    def sync_qos_policy_rules(self, ctxt, project_id, policy_id):
+        self.invoke_method(
+            ctxt, project_id,
+            constants.job_handles[constants.JT_SYNC_QOS_RULE],
+            constants.JT_SYNC_QOS_RULE, policy_id)

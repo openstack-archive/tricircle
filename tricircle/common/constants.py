@@ -36,6 +36,7 @@ RT_ROUTER = 'router'
 RT_NS_ROUTER = 'ns_router'
 RT_SG = 'security_group'
 RT_FIP = 'floatingip'
+RT_QOS = 'qos_policy'
 
 REAL_SHADOW_TYPE_MAP = {
     RT_NETWORK: RT_SD_NETWORK,
@@ -48,7 +49,7 @@ REAL_SHADOW_TYPE_MAP = {
 def is_valid_resource_type(resource_type):
     resource_type_table = [RT_NETWORK, RT_SUBNET, RT_PORT, RT_ROUTER, RT_SG,
                            RT_TRUNK, RT_PORT_PAIR, RT_PORT_PAIR_GROUP,
-                           RT_FLOW_CLASSIFIER, RT_PORT_CHAIN]
+                           RT_FLOW_CLASSIFIER, RT_PORT_CHAIN, RT_QOS]
     return resource_type in resource_type_table
 
 
@@ -113,6 +114,10 @@ JT_SHADOW_PORT_SETUP = 'shadow_port_setup'
 JT_TRUNK_SYNC = 'trunk_sync'
 JT_SFC_SYNC = 'sfc_sync'
 JT_RESOURCE_RECYCLE = 'resource_recycle'
+JT_QOS_CREATE = 'qos_create'
+JT_QOS_UPDATE = 'qos_update'
+JT_QOS_DELETE = 'qos_delete'
+JT_SYNC_QOS_RULE = 'sync_qos_rule'
 
 # network type
 NT_LOCAL = 'local'
@@ -148,7 +153,17 @@ job_resource_map = {
     JT_SFC_SYNC: [(None, "pod_id"),
                   (RT_PORT_CHAIN, "portchain_id"),
                   (RT_NETWORK, "network_id")],
-    JT_RESOURCE_RECYCLE: [(None, "project_id")]
+    JT_RESOURCE_RECYCLE: [(None, "project_id")],
+    JT_QOS_CREATE: [(None, "pod_id"),
+                    (RT_QOS, "policy_id"),
+                    (None, "res_type"),
+                    (None, "res_id")],
+    JT_QOS_UPDATE: [(None, "pod_id"),
+                    (RT_QOS, "policy_id")],
+    JT_QOS_DELETE: [(None, "pod_id"),
+                    (RT_QOS, "policy_id")],
+    JT_SYNC_QOS_RULE: [(None, "rule_id"),
+                       (RT_QOS, "policy_id")]
 }
 
 # map raw job status to more human readable job status
@@ -173,7 +188,11 @@ job_handles = {
     JT_TRUNK_SYNC: "sync_trunk",
     JT_SHADOW_PORT_SETUP: "setup_shadow_ports",
     JT_SFC_SYNC: "sync_service_function_chain",
-    JT_RESOURCE_RECYCLE: "recycle_resources"
+    JT_RESOURCE_RECYCLE: "recycle_resources",
+    JT_QOS_CREATE: "create_qos_policy",
+    JT_QOS_UPDATE: "update_qos_policy",
+    JT_QOS_DELETE: "delete_qos_policy",
+    JT_SYNC_QOS_RULE: "sync_qos_policy_rules"
 }
 
 # map job type to its primary resource and then we only validate the project_id
@@ -189,7 +208,11 @@ job_primary_resource_map = {
     JT_TRUNK_SYNC: (RT_TRUNK, "trunk_id"),
     JT_SHADOW_PORT_SETUP: (RT_NETWORK, "network_id"),
     JT_SFC_SYNC: (RT_PORT_CHAIN, "portchain_id"),
-    JT_RESOURCE_RECYCLE: (None, "project_id")
+    JT_RESOURCE_RECYCLE: (None, "project_id"),
+    JT_QOS_CREATE: (RT_QOS, "policy_id"),
+    JT_QOS_UPDATE: (RT_QOS, "policy_id"),
+    JT_QOS_DELETE: (RT_QOS, "policy_id"),
+    JT_SYNC_QOS_RULE: (RT_QOS, "policy_id")
 }
 
 # admin API request path

@@ -209,8 +209,14 @@ class Client(object):
                     if (handle_obj.support_resource[resource] & index) == 0:
                         continue
                     self.operation_resources_map[operation].add(resource)
-                    setattr(self, '%s_%ss' % (operation, resource),
-                            functools.partial(
+                    if resource == 'qos_policy':
+                        setattr(self, '%s_qos_policies' % operation,
+                                functools.partial(
+                                    getattr(self, '%s_resources' % operation),
+                                    resource))
+                    else:
+                        setattr(self, '%s_%ss' % (operation, resource),
+                                functools.partial(
                                 getattr(self, '%s_resources' % operation),
                                 resource))
 

@@ -245,6 +245,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                               net_body['name'])
             if net_id:
                 net_body['id'] = net_id
+
+        net_body.pop('qos_policy_id', None)
+
         b_network = self.core_plugin.create_network(context,
                                                     {'network': net_body})
         return b_network
@@ -349,6 +352,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
                     continue
 
                 self._adapt_network_body(network)
+
+                network.pop('qos_policy_id', None)
                 b_network = self.core_plugin.create_network(
                     context, {'network': network})
                 subnet_ids = self._ensure_subnet(context, network)
@@ -391,6 +396,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         if not t_network:
             raise q_exceptions.NetworkNotFound(net_id=_id)
         self._adapt_network_body(t_network)
+        t_network.pop('qos_policy_id', None)
         b_network = self.core_plugin.create_network(context,
                                                     {'network': t_network})
         return t_network, b_network
@@ -594,6 +600,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
 
         self._handle_security_group(t_ctx, context, t_port)
         self._create_shadow_agent(context, port_body)
+
+        t_port.pop('qos_policy_id', None)
         b_port = self.core_plugin.create_port(context, {'port': t_port})
         return b_port
 
@@ -779,6 +787,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             self._ensure_network_subnet(context, t_port)
             self._adapt_port_body_for_call(t_port)
             self._handle_security_group(t_ctx, context, t_port)
+            t_port.pop('qos_policy_id', None)
             b_port = self.core_plugin.create_port(context, {'port': t_port})
 
         self._ensure_trunk(context, t_ctx, _id)
@@ -822,6 +831,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             self._ensure_network_subnet(context, port)
             self._adapt_port_body_for_call(port)
             self._handle_security_group(t_ctx, context, port)
+            port.pop('qos_policy_id', None)
             b_port = self.core_plugin.create_port(context,
                                                   {'port': port})
             b_ports.append(self._fields(b_port, fields))

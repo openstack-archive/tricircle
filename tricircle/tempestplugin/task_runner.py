@@ -77,12 +77,15 @@ class SDKRunner(object):
     serv_reslist_map = {
         'network_sdk': ['network', 'subnet', 'port', 'router', 'fip', 'trunk',
                         'flow_classifier', 'port_pair', 'port_pair_group',
-                        'port_chain'],
+                        'port_chain', 'qos_policy', 'qos_bandwidth_limit_rule',
+                        'qos_dscp_marking_rule', 'qos_minimum_bandwidth_rule'],
         'compute': ['server'],
         'image': ['image'],
         'tricircle_sdk': ['job']}
     res_alias_map = {
         'fip': 'ip'}
+    type_plural_map = {
+        'qos_policy': 'qos_policie'}
 
     def __init__(self, auth_url, project, username, password):
         self.res_serv_map = {}
@@ -133,6 +136,7 @@ class SDKRunner(object):
         serv = self.res_serv_map[_type]
         _type = self.res_alias_map.get(_type, _type)
         proxy = getattr(conn, serv)
+        _type = self.type_plural_map.get(_type, _type)
         _list = list(getattr(proxy, '%ss' % _type)(**params))
         if get_one:
             return _list[0]

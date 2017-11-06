@@ -55,7 +55,10 @@ class ResourceStore(object):
                       ('sfc_port_pairs', constants.RT_PORT_PAIR),
                       ('sfc_port_pair_groups', constants.RT_PORT_PAIR_GROUP),
                       ('sfc_port_chains', constants.RT_PORT_CHAIN),
-                      ('sfc_flow_classifiers', constants.RT_FLOW_CLASSIFIER)]
+                      ('sfc_flow_classifiers', constants.RT_FLOW_CLASSIFIER),
+                      ('qos_policies', constants.RT_QOS),
+                      ('qos_bandwidth_limit_rules',
+                       'qos_bandwidth_limit_rules')]
 
     def __init__(self):
         self.store_list = []
@@ -556,9 +559,13 @@ class FakeClient(object):
 
     def create_resources(self, _type, ctx, body):
         res_list = self._res_map[self.region_name][_type]
+        if _type == 'qos_policy':
+            _type = 'policy'
         res = dict(body[_type])
         if 'id' not in res:
             res['id'] = uuidutils.generate_uuid()
+        if _type == 'policy' and 'rules' not in res:
+            res['rules'] = []
         res_list.append(res)
         return res
 
@@ -586,6 +593,8 @@ class FakeClient(object):
         return None
 
     def delete_resources(self, _type, ctx, _id):
+        if _type is 'policy':
+            _type = 'qos_policy'
         index = -1
         res_list = self._res_map[self.region_name][_type]
         for i, res in enumerate(res_list):
@@ -595,7 +604,10 @@ class FakeClient(object):
             del res_list[index]
 
     def update_resources(self, _type, ctx, _id, body):
-        res_list = self._res_map[self.region_name][_type]
+        if _type == 'policy':
+            res_list = self._res_map[self.region_name]['qos_policy']
+        else:
+            res_list = self._res_map[self.region_name][_type]
         updated = False
         for res in res_list:
             if res['id'] == _id:

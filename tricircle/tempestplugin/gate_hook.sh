@@ -48,12 +48,15 @@ function _setup_tricircle_multinode {
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_START_SERVICES=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_TRUNK=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_SFC=True"
+    export DEVSTACK_LOCAL_CONFIG+=$'\n'"TRICIRCLE_ENABLE_QOS=True"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"REGION_NAME=RegionOne"
     export DEVSTACK_LOCAL_CONFIG+=$'\n'"HOST_IP=$PRIMARY_NODE_IP"
 
     ML2_CONFIG=$'\n'"ML2_L3_PLUGIN=tricircle.network.local_l3_plugin.TricircleL3Plugin"
+    ML2_CONFIG+=$'\n'"ML2_L3_PLUGIN+=,neutron.services.qos.qos_plugin.QoSPlugin"
     ML2_CONFIG+=$'\n'"[[post-config|/"'$Q_PLUGIN_CONF_FILE]]'
     ML2_CONFIG+=$'\n'"[ml2]"
+    ML2_CONFIG+=$'\n'"extension_drivers = port_security,qos"
     ML2_CONFIG+=$'\n'"mechanism_drivers = openvswitch,linuxbridge,l2population"
     ML2_CONFIG+=$'\n'"[agent]"
     ML2_CONFIG+=$'\n'"extensions=sfc"
