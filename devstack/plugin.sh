@@ -327,6 +327,14 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index tricircle type_drivers $type_drivers
     iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types
     iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
+
+    # reconfigure api-paste.ini in central neutron server
+    local API_PASTE_INI=$NEUTRON_CONF_DIR/api-paste.ini
+    sudo sed -e "
+        /^keystone.*neutronapiapp/s/neutronapiapp/request_source &/;
+        /app:neutronapiapp/i\[filter:request_source]\npaste.filter_factory = tricircle.common.request_source:RequestSource.factory\n
+    " -i $API_PASTE_INI
+
     # default value of bridge_network_type is vxlan
 
     if [ "$TRICIRCLE_ENABLE_QOS" == "True" ]; then

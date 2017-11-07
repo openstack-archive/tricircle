@@ -26,6 +26,7 @@ import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 from neutron_lib.plugins import directory
 from neutron_lib.utils import runtime
+import neutronclient.client as neutronclient
 
 from neutron.common import utils
 import neutron.extensions.securitygroup as ext_sg
@@ -78,6 +79,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             cfg.CONF.tricircle.central_neutron_url
         self.on_trunk_create = {}
         self.on_subnet_delete = {}
+        neutronclient.USER_AGENT = t_constants.LOCAL
 
     def start_rpc_listeners(self):
         return self.core_plugin.start_rpc_listeners()
