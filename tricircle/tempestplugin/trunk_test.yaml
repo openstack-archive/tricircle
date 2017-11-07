@@ -128,6 +128,73 @@
               - port_id: preparation@p2@id
                 segmentation_type: vlan
                 segmentation_id: preparation@net2@provider_segmentation_id
+- task_set_id: remove-subports
+  depend: [preparation]
+  tasks:
+    - task_id: remove-subport
+      region: central
+      type: trunk
+      action:
+        target: preparation@trunk1@id
+        method: remove_subports
+      params:
+        subports:
+          - port_id: preparation@p2@id
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [remove-subport]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check-remove-subport
+      region: region1
+      type: trunk
+      depend: [check-job]
+      validate:
+        predicate: any
+        condition:
+          - name: trunk1
+            port_id: preparation@p1@id
+            sub_ports: []
+- task_set_id: add-subports
+  depend: [preparation]
+  tasks:
+    - task_id: add-subport
+      region: central
+      type: trunk
+      action:
+        target: preparation@trunk1@id
+        method: add_subports
+      params:
+        subports:
+          - port_id: preparation@p2@id
+            segmentation_type: vlan
+            segmentation_id: preparation@net2@provider_segmentation_id
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [add-subport]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check-add-subport
+      region: region1
+      type: trunk
+      depend: [check-job]
+      validate:
+        predicate: any
+        condition:
+          - name: trunk1
+            port_id: preparation@p1@id
+            sub_ports:
+              - port_id: preparation@p2@id
+                segmentation_type: vlan
+                segmentation_id: preparation@net2@provider_segmentation_id
 - task_set_id: clean
   depend: [preparation]
   tasks:
