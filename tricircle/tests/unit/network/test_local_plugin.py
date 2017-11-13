@@ -123,6 +123,10 @@ class FakeCorePlugin(object):
     def get_subnet(self, context, _id, fields=None):
         return get_resource('subnet', False, _id)
 
+    def get_subnets(self, context, filters=None, fields=None, sorts=None,
+                    limit=None, marker=None, page_reverse=False):
+        return list_resource('subnet', False, filters)
+
     def create_port(self, context, port):
         create_resource('port', False, port['port'])
         return port['port']
@@ -180,6 +184,9 @@ class FakeTrunkPlugin(object):
 class FakeClient(object):
     def list_networks(self, **kwargs):
         return {'networks': list_resource('network', True, kwargs)}
+
+    def list_subnets(self, **kwargs):
+        return {'subnets': list_resource('subnet', True, kwargs)}
 
     def create_port(self, port):
         if 'id' not in port['port']:
@@ -313,18 +320,28 @@ class PluginTest(unittest.TestCase):
         TOP_SGS.append(t_sg)
         return t_net, t_subnet, t_port, t_sg
 
-    def _validate(self, net, subnet, port):
-        b_net = self.plugin.get_network(self.context, net['id'])
-        net.pop('provider:network_type')
-        net.pop('availability_zone_hints')
-        b_net_type = b_net.pop('provider:network_type')
+    def _get_bottom_resources_with_net(self, net, subnet, port):
+        b_net = get_resource('network', False, net['id'])
         b_subnet = get_resource('subnet', False, subnet['id'])
         b_port = get_resource('port', False, port['id'])
         b_net.pop('project_id')
+        return b_net, b_subnet, b_port
+
+    def _get_bottom_resources_without_net(self, subnet, port):
+        b_net = get_resource('network', False, subnet['network_id'])
+        b_subnet = get_resource('subnet', False, subnet['id'])
+        b_port = get_resource('port', False, port['id'])
+        return b_net, b_subnet, b_port
+
+    def _validate(self, b_net, b_subnet, b_port, t_net, t_subnet, t_port):
+
+        t_net.pop('provider:network_type')
+        t_net.pop('availability_zone_hints')
+        b_net_type = b_net.pop('provider:network_type')
         b_subnet.pop('project_id')
-        pool = subnet.pop('allocation_pools')[0]
+        pool = t_subnet.pop('allocation_pools')[0]
         b_pools = b_subnet.pop('allocation_pools')
-        t_gateway_ip = subnet.pop('gateway_ip')
+        t_gateway_ip = t_subnet.pop('gateway_ip')
         b_gateway_ip = b_subnet.pop('gateway_ip')
 
         def ip_to_digit(ip):
@@ -347,13 +364,13 @@ class PluginTest(unittest.TestCase):
                                     ip_to_digit(pool['end'])))
             b_pool_range = list(range(ip_to_digit(b_pools[0]['start']),
                                       ip_to_digit(b_pools[0]['end'])))
-        port.pop('name')
+        t_port.pop('name')
         b_port.pop('name')
-        self.assertDictEqual(net, b_net)
-        self.assertDictEqual(subnet, b_subnet)
+        self.assertDictEqual(t_net, b_net)
+        self.assertDictEqual(t_subnet, b_subnet)
         self.assertSetEqual(set(pool_range), set(b_pool_range))
         self.assertEqual('vlan', b_net_type)
-        self.assertDictEqual(port, b_port)
+        self.assertDictEqual(t_port, b_port)
 
     def _prepare_vm_port(self, t_net, t_subnet, index, t_sgs=[]):
         port_id = uuidutils.generate_uuid()
@@ -373,15 +390,38 @@ class PluginTest(unittest.TestCase):
         return t_port
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_get_subnet_no_bottom_network(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        self.plugin.get_subnet(self.context, t_subnet['id'])
+        b_net, b_subnet, b_port = self._get_bottom_resources_without_net(
+            t_subnet, t_port)
+        self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_get_subnet(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        self.plugin.get_network(self.context, t_net['id'])
+        self.plugin.get_subnet(self.context, t_subnet['id'])
+        b_net, b_subnet, b_port = self._get_bottom_resources_with_net(
+            t_net, t_subnet, t_port)
+        self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
-        self._validate(t_net, t_subnet, t_port)
+        self.plugin.get_network(self.context, t_net['id'])
+        b_net, b_subnet, b_port = self._get_bottom_resources_with_net(
+            t_net, t_subnet, t_port)
+        self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network_no_gateway(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
         update_resource('subnet', True, t_subnet['id'], {'gateway_ip': None})
-        self._validate(t_net, t_subnet, t_port)
+        self.plugin.get_network(self.context, t_net['id'])
+        b_net, b_subnet, b_port = self._get_bottom_resources_with_net(
+            t_net, t_subnet, t_port)
+        self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
@@ -393,8 +433,12 @@ class PluginTest(unittest.TestCase):
         self.plugin.get_networks(self.context,
                                  {'id': [t_net1['id'], t_net2['id'],
                                          'fake_net_id']})
-        self._validate(t_net1, t_subnet1, t_port1)
-        self._validate(t_net2, t_subnet2, t_port2)
+        b_net1, b_subnet1, b_port1 = self._get_bottom_resources_with_net(
+            t_net1, t_subnet1, t_port1)
+        b_net2, b_subnet2, b_port2 = self._get_bottom_resources_with_net(
+            t_net2, t_subnet2, t_port2)
+        self._validate(b_net1, b_subnet1, b_port1, t_net1, t_subnet1, t_port1)
+        self._validate(b_net2, b_subnet2, b_port2, t_net2, t_subnet2, t_port2)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
@@ -407,6 +451,35 @@ class PluginTest(unittest.TestCase):
         }
         nets = self.plugin.get_networks(self.context, net_filter)
         six.assertCountEqual(self, nets, [])
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
+    def test_get_subnets(self):
+        az_hints = ['Pod1', 'Pod2']
+        t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
+        t_net2, t_subnet2, t_port2, _ = self._prepare_resource(az_hints)
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        self.plugin.get_subnets(self.context,
+                                {'id': [t_subnet1['id'], t_subnet2['id'],
+                                        'fake_net_id']})
+        b_net1, b_subnet1, b_port1 = self._get_bottom_resources_without_net(
+            t_subnet1, t_port1)
+        b_net2, b_subnet2, b_port2 = self._get_bottom_resources_without_net(
+            t_subnet2, t_port2)
+        self._validate(b_net1, b_subnet1, b_port1, t_net1, t_subnet1, t_port1)
+        self._validate(b_net2, b_subnet2, b_port2, t_net2, t_subnet2, t_port2)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
+    def test_get_invaild_subnets(self):
+        az_hints = ['Pod2', 'Pod3']
+        t_net1, t_subnet1, t_port1, _ = self._prepare_resource(az_hints)
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        net_filter = {
+            'id': [t_subnet1.get('id')]
+        }
+        subnets = self.plugin.get_subnets(self.context, net_filter)
+        six.assertCountEqual(self, subnets, [])
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_create_port(self):

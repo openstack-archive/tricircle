@@ -249,6 +249,30 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                                     {'network': net_body})
         return b_network
 
+    def _is_valid_network(self, context, network_id):
+        try:
+            self.core_plugin.get_network(context, network_id)
+        except q_exceptions.NotFound:
+            if self._in_subnet_delete(context):
+                raise
+            t_ctx = t_context.get_context_from_neutron_context(context)
+
+            t_network = self.neutron_handle.handle_get(
+                t_ctx, 'network', network_id)
+            region_name = self._get_neutron_region()
+            located = self._is_network_located_in_region(t_network,
+                                                         region_name)
+            if not located:
+                LOG.error('network: %(network_id)s not located in current '
+                          'region: %(region_name)s, '
+                          'az_hints: %(az_hints)s',
+                          {'network_id': t_network['id'],
+                           'region_name': region_name,
+                           'az_hints': t_network[az_def.AZ_HINTS]})
+                return located
+            self._create_bottom_network(context, network_id)
+        return True
+
     def _is_network_located_in_region(self, t_network, region_name):
         az_hints = t_network.get(az_def.AZ_HINTS)
         if not az_hints:
@@ -268,12 +292,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             t_ctx = t_context.get_context_from_neutron_context(context)
             if self._skip_non_api_query(t_ctx):
                 raise q_exceptions.NetworkNotFound(net_id=_id)
-            t_network = self.neutron_handle.handle_get(t_ctx, 'network', _id)
-            if not t_network:
-                raise q_exceptions.NetworkNotFound(net_id=_id)
-            self._adapt_network_body(t_network)
-            b_network = self.core_plugin.create_network(context,
-                                                        {'network': t_network})
+            t_network, b_network = self._create_bottom_network(context, _id)
             subnet_ids = self._ensure_subnet(context, t_network)
         if subnet_ids:
             b_network['subnets'] = subnet_ids
@@ -363,9 +382,18 @@ class TricirclePlugin(plugin.Ml2Plugin):
             b_gateway_ip)['subnet']
         t_subnet['gateway_ip'] = subnet_body['gateway_ip']
         t_subnet['allocation_pools'] = subnet_body['allocation_pools']
-
         b_subnet = self.core_plugin.create_subnet(q_ctx, {'subnet': t_subnet})
         return b_subnet
+
+    def _create_bottom_network(self, context, _id):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        t_network = self.neutron_handle.handle_get(t_ctx, 'network', _id)
+        if not t_network:
+            raise q_exceptions.NetworkNotFound(net_id=_id)
+        self._adapt_network_body(t_network)
+        b_network = self.core_plugin.create_network(context,
+                                                    {'network': t_network})
+        return t_network, b_network
 
     def get_subnet(self, context, _id, fields=None):
         t_ctx = t_context.get_context_from_neutron_context(context)
@@ -376,6 +404,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 raise q_exceptions.SubnetNotFound(subnet_id=_id)
             t_subnet = self.neutron_handle.handle_get(t_ctx, 'subnet', _id)
             if not t_subnet:
+                raise q_exceptions.SubnetNotFound(subnet_id=_id)
+            valid = self._is_valid_network(context, t_subnet['network_id'])
+            if not valid:
                 raise q_exceptions.SubnetNotFound(subnet_id=_id)
             b_subnet = self._create_bottom_subnet(t_ctx, context, t_subnet)
         if b_subnet['enable_dhcp']:
@@ -417,6 +448,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
             missing_subnets = [subnet for subnet in t_subnets if (
                 subnet['id'] in missing_id_set)]
             for subnet in missing_subnets:
+                valid = self._is_valid_network(context, subnet['network_id'])
+                if not valid:
+                    continue
                 b_subnet = self._create_bottom_subnet(t_ctx, context, subnet)
                 if b_subnet['enable_dhcp']:
                     self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
