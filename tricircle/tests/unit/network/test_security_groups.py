@@ -37,6 +37,14 @@ class TricircleSecurityGroupTestMixin(object):
                 'port_range_min': None,
                 'ethertype': 'IPv4'}
 
+    @staticmethod
+    def _compare_rule(rule1, rule2):
+        for key in ('direction', 'remote_ip_prefix', 'protocol', 'ethertype',
+                    'port_range_max', 'port_range_min'):
+            if rule1[key] != rule2[key] and str(rule1[key]) != str(rule2[key]):
+                return False
+        return True
+
     def _test_create_security_group_rule(self, plugin, q_ctx, t_ctx, pod_id,
                                          top_sgs, bottom1_sgs):
         t_sg_id = uuidutils.generate_uuid()
@@ -67,9 +75,6 @@ class TricircleSecurityGroupTestMixin(object):
         self.assertEqual(1, len(bottom1_sgs[0]['security_group_rules']))
         b_rule = bottom1_sgs[0]['security_group_rules'][0]
         self.assertEqual(b_sg_id, b_rule['security_group_id'])
-        rule['security_group_rule'].pop('security_group_id', None)
-        b_rule.pop('security_group_id', None)
-        self.assertEqual(rule['security_group_rule'], b_rule)
 
     def _test_delete_security_group_rule(self, plugin, q_ctx, t_ctx, pod_id,
                                          top_sgs, top_rules, bottom1_sgs):
@@ -149,41 +154,6 @@ class TricircleSecurityGroupTestMixin(object):
         self.assertRaises(exceptions.RemoteGroupNotSupported,
                           plugin.delete_security_group_rule, q_ctx, t_rule1_id)
 
-    def _test_handle_default_sg_invalid_input(self, plugin, q_ctx, t_ctx,
-                                              pod_id, top_sgs, top_rules,
-                                              bottom1_sgs):
-        t_sg_id = uuidutils.generate_uuid()
-        t_rule1_id = uuidutils.generate_uuid()
-        t_rule2_id = uuidutils.generate_uuid()
-        b_sg_id = uuidutils.generate_uuid()
-        project_id = 'test_prject_id'
-        t_rule1 = self._build_test_rule(
-            t_rule1_id, t_sg_id, project_id, '10.0.0.0/24')
-        t_rule2 = self._build_test_rule(
-            t_rule2_id, t_sg_id, project_id, '10.0.1.0/24')
-        t_sg = {'id': t_sg_id, 'name': 'default', 'description': '',
-                'tenant_id': project_id,
-                'security_group_rules': [t_rule1]}
-        b_sg = {'id': b_sg_id, 'name': t_sg_id, 'description': '',
-                'tenant_id': project_id,
-                'security_group_rules': []}
-        top_sgs.append(t_sg)
-        top_rules.append(t_rule1)
-        bottom1_sgs.append(b_sg)
-        route1 = {
-            'top_id': t_sg_id,
-            'pod_id': pod_id,
-            'bottom_id': b_sg_id,
-            'resource_type': constants.RT_SG}
-        with t_ctx.session.begin():
-            core.create_resource(t_ctx, models.ResourceRouting, route1)
-
-        self.assertRaises(exceptions.DefaultGroupUpdateNotSupported,
-                          plugin.create_security_group_rule, q_ctx,
-                          {'security_group_rule': t_rule2})
-        self.assertRaises(exceptions.DefaultGroupUpdateNotSupported,
-                          plugin.delete_security_group_rule, q_ctx, t_rule1_id)
-
     def _test_create_security_group_rule_exception(
             self, plugin, q_ctx, t_ctx, pod_id, top_sgs, bottom1_sgs):
         t_sg_id = uuidutils.generate_uuid()
@@ -242,3 +212,51 @@ class TricircleSecurityGroupTestMixin(object):
 
         self.assertRaises(exceptions.BottomPodOperationFailure,
                           plugin.delete_security_group_rule, q_ctx, t_rule_id)
+
+    def _test_update_default_sg(self, plugin, q_ctx, t_ctx,
+                                pod_id, top_sgs, top_rules,
+                                bottom1_sgs):
+        t_sg_id = uuidutils.generate_uuid()
+        t_rule1_id = uuidutils.generate_uuid()
+        t_rule2_id = uuidutils.generate_uuid()
+        b_sg_id = uuidutils.generate_uuid()
+        project_id = 'test_prject_id'
+        t_rule1 = self._build_test_rule(
+            t_rule1_id, t_sg_id, project_id, '10.0.0.0/24')
+        t_sg = {'id': t_sg_id, 'name': 'default', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': [t_rule1]}
+        b_sg = {'id': b_sg_id, 'name': 'default', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': []}
+        top_sgs.append(t_sg)
+        top_rules.append(t_rule1)
+        bottom1_sgs.append(b_sg)
+        route1 = {
+            'top_id': t_sg_id,
+            'pod_id': pod_id,
+            'bottom_id': b_sg_id,
+            'resource_type': constants.RT_SG}
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.ResourceRouting, route1)
+
+        t_rule2 = {
+            'security_group_rule': self._build_test_rule(
+                t_rule2_id, t_sg_id, project_id, '10.0.1.0/24')}
+        plugin.create_security_group_rule(q_ctx, t_rule2)
+        self.assertEqual(len(top_sgs[0]['security_group_rules']),
+                         len(bottom1_sgs[0]['security_group_rules']))
+
+        for i in range(len(bottom1_sgs[0]['security_group_rules'])):
+            self.assertTrue(self._compare_rule(
+                bottom1_sgs[0]['security_group_rules'][i],
+                top_sgs[0]['security_group_rules'][i]))
+
+        plugin.delete_security_group_rule(q_ctx, t_rule1_id)
+        self.assertEqual(len(bottom1_sgs[0]['security_group_rules']),
+                         len(top_sgs[0]['security_group_rules']))
+
+        for i in range(len(bottom1_sgs[0]['security_group_rules'])):
+            self.assertTrue(self._compare_rule(
+                bottom1_sgs[0]['security_group_rules'][i],
+                top_sgs[0]['security_group_rules'][i]))

@@ -14,29 +14,17 @@
 #    under the License.
 
 from neutron.db import securitygroups_db
-import neutronclient.common.exceptions as q_exceptions
 
-from tricircle.common import constants
 from tricircle.common import context
-import tricircle.db.api as db_api
+from tricircle.common import xrpcapi
 import tricircle.network.exceptions as n_exceptions
 
 
 class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
 
-    @staticmethod
-    def _safe_create_security_group_rule(t_context, client, body):
-        try:
-            client.create_security_group_rules(t_context, body)
-        except q_exceptions.Conflict:
-            return
-
-    @staticmethod
-    def _safe_delete_security_group_rule(t_context, client, _id):
-        try:
-            client.delete_security_group_rules(t_context, _id)
-        except q_exceptions.NotFound:
-            return
+    def __init__(self):
+        super(TricircleSecurityGroupMixin, self).__init__()
+        self.xjob_handler = xrpcapi.XJobAPI()
 
     @staticmethod
     def _compare_rule(rule1, rule2):
@@ -52,57 +40,43 @@ class TricircleSecurityGroupMixin(securitygroups_db.SecurityGroupDbMixin):
             raise n_exceptions.RemoteGroupNotSupported()
         sg_id = rule['security_group_id']
         sg = self.get_security_group(q_context, sg_id)
-        if sg['name'] == 'default':
-            raise n_exceptions.DefaultGroupUpdateNotSupported()
+        if not sg:
+            raise n_exceptions.SecurityGroupNotFound(sg_id=sg_id)
 
         new_rule = super(TricircleSecurityGroupMixin,
                          self).create_security_group_rule(q_context,
                                                           security_group_rule)
 
         t_context = context.get_context_from_neutron_context(q_context)
-        mappings = db_api.get_bottom_mappings_by_top_id(
-            t_context, sg_id, constants.RT_SG)
 
         try:
-            for pod, b_sg_id in mappings:
-                client = self._get_client(pod['region_name'])
-                rule['security_group_id'] = b_sg_id
-                self._safe_create_security_group_rule(
-                    t_context, client, {'security_group_rule': rule})
+            self.xjob_handler.configure_security_group_rules(
+                t_context, rule['project_id'])
         except Exception:
-            super(TricircleSecurityGroupMixin,
-                  self).delete_security_group_rule(q_context, new_rule['id'])
             raise n_exceptions.BottomPodOperationFailure(
-                resource='security group rule', region_name=pod['region_name'])
+                resource='security group rule', region_name='')
         return new_rule
 
     def delete_security_group_rule(self, q_context, _id):
         rule = self.get_security_group_rule(q_context, _id)
+        if not rule:
+            raise n_exceptions.SecurityGroupRuleNotFound(rule_id=_id)
+
         if rule['remote_group_id']:
             raise n_exceptions.RemoteGroupNotSupported()
         sg_id = rule['security_group_id']
         sg = self.get_security_group(q_context, sg_id)
-        if sg['name'] == 'default':
-            raise n_exceptions.DefaultGroupUpdateNotSupported()
 
-        t_context = context.get_context_from_neutron_context(q_context)
-        mappings = db_api.get_bottom_mappings_by_top_id(
-            t_context, sg_id, constants.RT_SG)
-
-        try:
-            for pod, b_sg_id in mappings:
-                client = self._get_client(pod['region_name'])
-                rule['security_group_id'] = b_sg_id
-                b_sg = client.get_security_groups(t_context, b_sg_id)
-                for b_rule in b_sg['security_group_rules']:
-                    if not self._compare_rule(b_rule, rule):
-                        continue
-                    self._safe_delete_security_group_rule(t_context, client,
-                                                          b_rule['id'])
-                    break
-        except Exception:
-            raise n_exceptions.BottomPodOperationFailure(
-                resource='security group rule', region_name=pod['region_name'])
+        if not sg:
+            raise n_exceptions.SecurityGroupNotFound(sg_id=sg_id)
 
         super(TricircleSecurityGroupMixin,
               self).delete_security_group_rule(q_context, _id)
+        t_context = context.get_context_from_neutron_context(q_context)
+
+        try:
+            self.xjob_handler.configure_security_group_rules(
+                t_context, rule['project_id'])
+        except Exception:
+            raise n_exceptions.BottomPodOperationFailure(
+                resource='security group rule', region_name='')
