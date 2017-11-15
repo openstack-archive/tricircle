@@ -43,10 +43,10 @@ from neutron.db import l3_dvr_db
 from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.extensions import l3
 from neutron.extensions import providernet as provider
 from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import external_net
+from neutron_lib.api.definitions import l3 as l3_apidef
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
@@ -1435,7 +1435,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _add_router_gateway(self, context, router_id, router_data):
         # get top external network information
-        ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
+        ext_net_id = router_data[l3_apidef.EXTERNAL_GW_INFO].get('network_id')
         t_ctx = t_context.get_context_from_neutron_context(context)
         network = self.get_network(context, ext_net_id)
 
@@ -1480,7 +1480,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # both router and external network in bottom pod are ready, attach
         # external network to router in bottom pod.
         b_client = self._get_client(region_name)
-        t_info = router_data[l3.EXTERNAL_GW_INFO]
+        t_info = router_data[l3_apidef.EXTERNAL_GW_INFO]
         b_info = {'network_id': b_net_id}
         if 'enable_snat' in t_info:
             b_info['enable_snat'] = t_info['enable_snat']
@@ -1572,9 +1572,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         router_data = copy.deepcopy(router['router'])
         need_update_bottom = False
         is_add = False
-        if validators.is_attr_set(router_data.get(l3.EXTERNAL_GW_INFO)):
+        if validators.is_attr_set(router_data.get(l3_apidef.EXTERNAL_GW_INFO)):
             need_update_bottom = True
-            ext_net_id = router_data[l3.EXTERNAL_GW_INFO].get('network_id')
+            ext_net_id = router_data[l3_apidef.EXTERNAL_GW_INFO].get(
+                'network_id')
             if ext_net_id:
                 is_add = True
         # TODO(zhiyuan) solve ip address conflict issue
@@ -1594,7 +1595,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if is_add:
             ret = super(TricirclePlugin, self).update_router(
                 context, router_id, router)
-            router_data[l3.EXTERNAL_GW_INFO].update(ret[l3.EXTERNAL_GW_INFO])
+            router_data[l3_apidef.EXTERNAL_GW_INFO].update(
+                ret[l3_apidef.EXTERNAL_GW_INFO])
             self._add_router_gateway(context, router_id, router_data)
         else:
             self._remove_router_gateway(context, router_id)
