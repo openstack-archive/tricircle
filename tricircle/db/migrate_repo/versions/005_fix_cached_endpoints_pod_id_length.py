@@ -21,8 +21,8 @@ def upgrade(migrate_engine):
     cached_endpoints = Table('cached_endpoints', meta, autoload=True)
     pods = Table('pods', meta, autoload=True)
 
-    col_pod_id_fkey = getattr(cached_endpoints.c, 'pod_id')
-    col_pod_id_pkey = getattr(pods.c, 'pod_id')
+    col_pod_id_fkey = cached_endpoints.c.pod_id
+    col_pod_id_pkey = pods.c.pod_id
 
     # In the migration script 001_init.py, the pod_id string length in
     # cached_endpoints table is 64, but pod_id string length in pods table

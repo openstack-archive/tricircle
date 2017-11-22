@@ -21,8 +21,8 @@ def upgrade(migrate_engine):
     resource_routings = Table('resource_routings', meta, autoload=True)
     pods = Table('pods', meta, autoload=True)
 
-    col_pod_id_fkey = getattr(resource_routings.c, 'pod_id')
-    col_pod_id_pkey = getattr(pods.c, 'pod_id')
+    col_pod_id_fkey = resource_routings.c.pod_id
+    col_pod_id_pkey = pods.c.pod_id
 
     # In the migration script 002_resource.py, the pod_id string length in
     # resource_routings table is 64, but pod_id string length in pods table
