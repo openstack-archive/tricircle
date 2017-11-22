@@ -1466,10 +1466,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                'distributed': is_distributed}}
 
         else:
-            # TODO(zhiyuan) decide router is distributed or not from pod table
-            # currently "distributed" is set to False, should add a metadata
-            # field to pod table, and decide distributed or not from the
-            # metadata later
             router_type = t_constants.RT_NS_ROUTER
             body = {'router': {'name': t_constants.ns_router_name % router_id,
                                'distributed': False}}
@@ -1578,17 +1574,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 'network_id')
             if ext_net_id:
                 is_add = True
-        # TODO(zhiyuan) solve ip address conflict issue
-        # if user creates floating ip before set router gateway, we may trigger
-        # ip address conflict here. let's say external cidr is 163.3.124.0/24,
-        # creating floating ip before setting router gateway, the gateway ip
-        # will be 163.3.124.3 since 163.3.124.2 is used by floating ip, however
-        # in the bottom pod floating ip is not created when creating floating
-        # ip on top, so the gateway ip in the bottom pod is still 163.3.124.2,
-        # thus conflict may occur.
-        #
-        # before this issue is solved, user should set router gateway before
-        # create floating ip.
         if not need_update_bottom:
             return super(TricirclePlugin, self).update_router(
                 context, router_id, router)
