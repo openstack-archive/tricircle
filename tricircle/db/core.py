@@ -22,13 +22,9 @@ from oslo_config import cfg
 import oslo_db.options as db_options
 import oslo_db.sqlalchemy.session as db_session
 from oslo_db.sqlalchemy import utils as sa_utils
-from oslo_log import log as logging
 from oslo_utils import strutils
 
 from tricircle.common import exceptions
-
-
-LOG = logging.getLogger(__name__)
 
 db_opts = [
     cfg.StrOpt('tricircle_db_connection',
