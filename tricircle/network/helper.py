@@ -244,9 +244,6 @@ class NetworkHelper(object):
                 value = t_constants.shadow_port_name % ele_['id']
             elif _type_ == t_constants.RT_NETWORK:
                 value = utils.get_bottom_network_name(ele_)
-            elif _type_ == t_constants.RT_SD_PORT:
-                _type_ = t_constants.RT_PORT
-                value = t_constants.shadow_port_name % ele_['id']
             else:
                 value = ele_['id']
             return client.list_resources(_type_, t_ctx_,
@@ -259,8 +256,6 @@ class NetworkHelper(object):
             elif _type_ == t_constants.RT_SD_PORT:
                 _type_ = t_constants.RT_PORT
             client = self._get_client(pod_['region_name'])
-            if _type_ == t_constants.RT_SD_PORT:
-                _type_ = t_constants.RT_PORT
             return client.create_resources(_type_, t_ctx_, body_)
 
         return t_lock.get_or_create_element(
