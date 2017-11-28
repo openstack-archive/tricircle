@@ -1,0 +1,861 @@
+- task_set_id: preparation
+  tasks:
+    - task_id: policy1
+      type: qos_policy
+      region: central
+      params:
+        name: policy1
+    - task_id: bandwidth_limit_rule1
+      region: central
+      type: qos_bandwidth_limit_rule
+      depend: [policy1]
+      params:
+        max_kbps: 3000
+        max_burst_kbps: 300
+        qos_policy: policy1@id
+    - task_id: policy2
+      type: qos_policy
+      region: central
+      params:
+        name: policy2
+    - task_id: bandwidth_limit_rule2
+      region: central
+      type: qos_bandwidth_limit_rule
+      depend: [policy2]
+      params:
+        max_kbps: 3000
+        max_burst_kbps: 300
+        qos_policy: policy2@id
+    - task_id: policy3
+      type: qos_policy
+      region: central
+      params:
+        name: policy3
+    - task_id: policy4
+      type: qos_policy
+      region: central
+      params:
+        name: policy4
+    - task_id: policy5
+      type: qos_policy
+      region: central
+      params:
+        name: policy5
+    - task_id: bandwidth_limit_rule5
+      region: central
+      type: qos_bandwidth_limit_rule
+      depend: [policy5]
+      params:
+        max_kbps: 3000
+        max_burst_kbps: 300
+        qos_policy: policy5@id
+    - task_id: dscp_marking_rule1
+      region: central
+      type: qos_dscp_marking_rule
+      depend: [policy1]
+      params:
+        dscp_mark: 30
+        qos_policy: policy1@id
+    - task_id: net1
+      region: central
+      type: network
+      params:
+        name: net1
+    - task_id: subnet1
+      region: central
+      type: subnet
+      depend: [net1]
+      params:
+        name: subnet1
+        ip_version: 4
+        cidr: 10.0.1.0/24
+        network_id: net1@id
+    - task_id: port1
+      region: central
+      type: port
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: port1
+        network_id: net1@id
+    - task_id: net2
+      region: central
+      type: network
+      params:
+        name: net2
+    - task_id: subnet2
+      region: central
+      type: subnet
+      depend: [net2]
+      params:
+        name: subnet2
+        ip_version: 4
+        cidr: 10.0.2.0/24
+        network_id: net2@id
+    - task_id: port2
+      region: central
+      type: port
+      depend:
+        - net2
+        - subnet2
+      params:
+        name: port2
+        network_id: net2@id
+    - task_id: net3
+      region: central
+      type: network
+      params:
+        name: net3
+    - task_id: subnet3
+      region: central
+      type: subnet
+      depend: [net3]
+      params:
+        name: subnet3
+        ip_version: 4
+        cidr: 10.0.3.0/24
+        network_id: net3@id
+    - task_id: port3
+      region: central
+      type: port
+      depend:
+        - net3
+        - subnet3
+      params:
+        name: port3
+        network_id: net3@id
+    - task_id: net4
+      region: central
+      type: network
+      params:
+        name: net4
+    - task_id: subnet4
+      region: central
+      type: subnet
+      depend: [net4]
+      params:
+        name: subnet4
+        ip_version: 4
+        cidr: 10.0.4.0/24
+        network_id: net4@id
+    - task_id: port4
+      region: central
+      type: port
+      depend:
+        - net4
+        - subnet4
+      params:
+        name: port4
+        network_id: net4@id
+    - task_id: net5
+      region: central
+      type: network
+      params:
+        name: net5
+    - task_id: image1
+      region: region1
+      type: image
+      query:
+        get_one: true
+- task_set_id: check_qos_create
+  depend: [preparation]
+  tasks:
+    - task_id: check_policy1_central
+      region: central
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy1
+    - task_id: check_bandwidth_limit_rule1
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: any
+        condition:
+          - id: preparation@bandwidth_limit_rule1@id
+    - task_id: check_dscp_marking_rule1
+      region: central
+      type: qos_dscp_marking_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: any
+        condition:
+          - id: preparation@dscp_marking_rule1@id
+    - task_id: check_policy1_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+- task_set_id: policy_update_only_central
+  depend: [preparation]
+  tasks:
+    - task_id: policy1_update_only_central
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy1@id
+        method: update
+      params:
+        name: policy1_update_only_central
+    - task_id: bandwidth_limit_rule1_update_only_central
+      region: central
+      type: qos_bandwidth_limit_rule
+      action:
+        target: preparation@bandwidth_limit_rule1@id
+        method: update
+      params:
+        qos_policy: preparation@policy1@id
+        max_kbps: 4000
+    - task_id: dscp_marking_rule1_update_only_central
+      region: central
+      type: qos_dscp_marking_rule
+      action:
+        target: preparation@dscp_marking_rule1@id
+        method: update
+      params:
+        qos_policy: preparation@policy1@id
+        dscp_mark: 40
+- task_set_id: check_qos_update_only_central
+  depend: [preparation]
+  tasks:
+    - task_id: check_policy1_update_only_central
+      region: central
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy1_update_only_central
+    - task_id: check_limit_rule1_update_only_central
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: any
+        condition:
+          - id: preparation@bandwidth_limit_rule1@id
+            max_kbps: 4000
+    - task_id: check_dscp_rule1_update_only_central
+      region: central
+      type: qos_dscp_marking_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: any
+        condition:
+          - id: preparation@dscp_marking_rule1@id
+            dscp_mark: 40
+- task_set_id: central_bound_policy
+  depend: [preparation]
+  tasks:
+    - task_id: net1_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net1@id
+        method: update
+      params:
+        qos_policy_id: preparation@policy1@id
+    - task_id: net5_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net5@id
+        method: update
+      params:
+        qos_policy_id: preparation@policy5@id
+    - task_id: port3_policy
+      region: central
+      type: port
+      action:
+        target: preparation@port3@id
+        method: update
+      params:
+        qos_policy_id: preparation@policy3@id
+- task_set_id: create_vm
+  depend: [preparation]
+  tasks:
+    - task_id: vm1
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm1
+        networks:
+          - uuid: preparation@net1@id
+            port: preparation@port1@id
+    - task_id: vm2
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm2
+        networks:
+          - uuid: preparation@net2@id
+    - task_id: vm3
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm3
+        networks:
+          - uuid: preparation@net3@id
+            port: preparation@port3@id
+    - task_id: vm4
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm4
+        networks:
+          - uuid: preparation@net4@id
+            port: preparation@port4@id
+- task_set_id: check_vm
+  depend: [preparation]
+  tasks:
+    - task_id: check_vm1
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm1
+    - task_id: check_vm2
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm2
+    - task_id: check_vm3
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm3
+    - task_id: check_vm4
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm4
+- task_set_id: wait_for_vm
+  tasks:
+    - task_id: check_job_vm
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: local_bound_policy
+  depend: [preparation]
+  tasks:
+    - task_id: net2_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net2@id
+        method: update
+      params:
+        qos_policy_id: preparation@policy2@id
+    - task_id: port4_policy
+      region: central
+      type: port
+      action:
+        target: preparation@port4@id
+        method: update
+      params:
+        qos_policy_id: preparation@policy4@id
+- task_set_id: wait_for_bound
+  tasks:
+    - task_id: check_job_bound
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: check_bound_policy
+  depend: [preparation]
+  tasks:
+    - task_id: check_net1_policy_central
+      region: central
+      type: network
+      validate:
+        predicate: any
+        condition:
+          - qos_policy_id: preparation@policy1@id
+    - task_id: check_net2_policy_central
+      region: central
+      type: network
+      validate:
+        predicate: any
+        condition:
+          - qos_policy_id: preparation@policy2@id
+    - task_id: check_net5_policy_central
+      region: central
+      type: network
+      validate:
+        predicate: any
+        condition:
+          - qos_policy_id: preparation@policy5@id
+    - task_id: check_port3_policy_central
+      region: central
+      type: port
+      validate:
+        predicate: any
+        condition:
+          - qos_policy_id: preparation@policy3@id
+    - task_id: check_port4_policy_central
+      region: central
+      type: port
+      validate:
+        predicate: any
+        condition:
+          - qos_policy_id: preparation@policy4@id
+    - task_id: check_policy1_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy1_update_only_central
+    - task_id: check_policy2_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy2
+    - task_id: check_policy3_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy3
+    - task_id: check_policy4_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy4
+- task_set_id: policy_update_with_local
+  depend: [preparation]
+  tasks:
+    - task_id: policy4_update_with_local
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy4@id
+        method: update
+      params:
+        name: policy4_update_with_local
+    - task_id: bandwidth_limit_rule2_update_with_local
+      region: central
+      type: qos_bandwidth_limit_rule
+      action:
+        target: preparation@bandwidth_limit_rule2@id
+        method: update
+      params:
+        qos_policy: preparation@policy2@id
+        max_kbps: 5000
+- task_set_id: wait_for_job_update
+  tasks:
+    - task_id: check_job_update
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: check_qos_update_with_local
+  depend: [preparation]
+  tasks:
+    - task_id: check_policy4_update_with_local
+      region: central
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy4_update_with_local
+    - task_id: check_policy4_update_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: any
+        condition:
+          - name: policy4_update_with_local
+    - task_id: check_limit_rule2_update_with_local
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy2@id
+      validate:
+        predicate: any
+        condition:
+          - id: preparation@bandwidth_limit_rule2@id
+            max_kbps: 5000
+- task_set_id: unbound_policy
+  depend: [preparation]
+  tasks:
+    - task_id: net1_no_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net1@id
+        method: update
+      params:
+        qos_policy_id:
+    - task_id: net2_no_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net2@id
+        method: update
+      params:
+        qos_policy_id:
+    - task_id: port3_no_policy
+      region: central
+      type: port
+      action:
+        target: preparation@port3@id
+        method: update
+      params:
+        qos_policy_id:
+    - task_id: port4_no_policy
+      region: central
+      type: port
+      action:
+        target: preparation@port4@id
+        method: update
+      params:
+        qos_policy_id:
+    - task_id: net5_no_policy
+      region: central
+      type: network
+      action:
+        target: preparation@net5@id
+        method: update
+      params:
+        qos_policy_id:
+- task_set_id: wait_for_qos_unbound
+  tasks:
+    - task_id: check_job_qos_unbound
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: qos-rule-delete
+  depend: [preparation]
+  tasks:
+    - task_id: bandwidth_limit_rule1_delete
+      region: central
+      type: qos_bandwidth_limit_rule
+      action:
+        target: preparation@bandwidth_limit_rule1@id
+        method: delete
+      params:
+        qos_policy: preparation@policy1@id
+    - task_id: bandwidth_limit_rule2_delete
+      region: central
+      type: qos_bandwidth_limit_rule
+      action:
+        target: preparation@bandwidth_limit_rule2@id
+        method: delete
+      params:
+        qos_policy: preparation@policy2@id
+    - task_id: dscp_marking_rule1_delete
+      region: central
+      type: qos_dscp_marking_rule
+      action:
+        target: preparation@dscp_marking_rule1@id
+        method: delete
+      params:
+        qos_policy: preparation@policy1@id
+    - task_id: bandwidth_limit_rule5_delete
+      region: central
+      type: qos_bandwidth_limit_rule
+      action:
+        target: preparation@bandwidth_limit_rule5@id
+        method: delete
+      params:
+        qos_policy: preparation@policy5@id
+- task_set_id: wait_for_rule_delete
+  depend: [preparation]
+  tasks:
+    - task_id: check_job_rule_delete
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check_for_bandwidth_limit1_delete_central
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            id: invalid-id
+    - task_id: check_for_bandwidth_limit2_delete_central
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy2@id
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            id: invalid-id
+    - task_id: check_for_bandwidth_limit5_delete_central
+      region: central
+      type: qos_bandwidth_limit_rule
+      params:
+        qos_policy: preparation@policy5@id
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            id: invalid-id
+    - task_id: check_for_dscp_marking1_delete_central
+      region: central
+      type: qos_dscp_marking_rule
+      params:
+        qos_policy: preparation@policy1@id
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            id: invalid-id
+- task_set_id: qos-policy-delete
+  depend: [preparation]
+  tasks:
+    - task_id: policy1_delete
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy1@id
+        method: delete
+    - task_id: policy2_delete
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy2@id
+        method: delete
+    - task_id: policy3_delete
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy3@id
+        method: delete
+    - task_id: policy4_delete
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy4@id
+        method: delete
+    - task_id: policy5_delete
+      region: central
+      type: qos_policy
+      action:
+        target: preparation@policy5@id
+        method: delete
+- task_set_id: wait_for_policy_delete
+  tasks:
+    - task_id: check_for_policy_delete_central
+      region: central
+      type: qos_policy
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            name: invalid-name
+    - task_id: check_for_policy_delete_region
+      region: region1
+      type: qos_policy
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            name: invalid-name
+- task_set_id: delete_vm
+  depend: [create_vm]
+  tasks:
+    - task_id: delete_vm1
+      region: region1
+      type: server
+      action:
+        target: create_vm@vm1@id
+        method: delete
+    - task_id: delete_vm2
+      region: region1
+      type: server
+      action:
+        target: create_vm@vm2@id
+        method: delete
+    - task_id: delete_vm3
+      region: region1
+      type: server
+      action:
+        target: create_vm@vm3@id
+        method: delete
+    - task_id: delete_vm4
+      region: region1
+      type: server
+      action:
+        target: create_vm@vm4@id
+        method: delete
+- task_set_id: wait_for_vm_delete
+  tasks:
+    - task_id: check_for_vm_delete
+      region: region1
+      type: server
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+            name: invalid-name
+- task_set_id: delete_net
+  depend: [preparation]
+  tasks:
+    - task_id: delete_port1
+      region: central
+      type: port
+      action:
+        target: preparation@port1@id
+        method: delete
+    - task_id: delete_port2
+      region: central
+      type: port
+      action:
+        target: preparation@port2@id
+        method: delete
+    - task_id: delete_port3
+      region: central
+      type: port
+      action:
+        target: preparation@port3@id
+        method: delete
+    - task_id: delete_port4
+      region: central
+      type: port
+      action:
+        target: preparation@port4@id
+        method: delete
+    - task_id: delete_subnet1
+      region: central
+      type: subnet
+      depend: [delete_port1]
+      action:
+        target: preparation@subnet1@id
+        method: delete
+        retries: 3
+    - task_id: delete_subnet2
+      region: central
+      type: subnet
+      depend: [delete_port2]
+      action:
+        target: preparation@subnet2@id
+        method: delete
+        retries: 3
+    - task_id: delete_subnet3
+      region: central
+      type: subnet
+      depend: [delete_port3]
+      action:
+        target: preparation@subnet3@id
+        method: delete
+        retries: 3
+    - task_id: delete_subnet4
+      region: central
+      type: subnet
+      depend: [delete_port4]
+      action:
+        target: preparation@subnet4@id
+        method: delete
+        retries: 3
+    - task_id: delete_net1
+      region: central
+      type: network
+      depend: [delete_subnet1]
+      action:
+        target: preparation@net1@id
+        method: delete
+    - task_id: delete_net2
+      region: central
+      type: network
+      depend: [delete_subnet2]
+      action:
+        target: preparation@net2@id
+        method: delete
+    - task_id: delete_net3
+      region: central
+      type: network
+      depend: [delete_subnet3]
+      action:
+        target: preparation@net3@id
+        method: delete
+    - task_id: delete_net4
+      region: central
+      type: network
+      depend: [delete_subnet4]
+      action:
+        target: preparation@net4@id
+        method: delete
+    - task_id: delete_net5
+      region: central
+      type: network
+      action:
+        target: preparation@net5@id
+        method: delete
+- task_set_id: check_net_delete
+  tasks:
+    - task_id: check_net_delete_job
+      region: region1
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-jobs
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS

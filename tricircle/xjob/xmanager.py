@@ -159,7 +159,12 @@ class XManager(PeriodicTasks):
             constants.JT_NETWORK_UPDATE: self.update_network,
             constants.JT_SUBNET_UPDATE: self.update_subnet,
             constants.JT_SHADOW_PORT_SETUP: self.setup_shadow_ports,
-            constants.JT_TRUNK_SYNC: self.sync_trunk}
+            constants.JT_TRUNK_SYNC: self.sync_trunk,
+            constants.JT_QOS_CREATE: self.create_qos_policy,
+            constants.JT_QOS_UPDATE: self.update_qos_policy,
+            constants.JT_QOS_DELETE: self.delete_qos_policy,
+            constants.JT_SYNC_QOS_RULE: self.sync_qos_policy_rules
+        }
         self.helper = helper.NetworkHelper()
         self.xjob_handler = xrpcapi.XJobAPI()
         super(XManager, self).__init__()
@@ -898,8 +903,9 @@ class XManager(PeriodicTasks):
                 ctx, t_network_id, constants.RT_NETWORK)
             b_pods = [mapping[0] for mapping in mappings]
             for b_pod in b_pods:
-                self.xjob_handler.update_network(ctx, project_id,
-                                                 t_network_id, b_pod['pod_id'])
+                self.xjob_handler.update_network(
+                    ctx, project_id, t_network_id,
+                    b_pod['pod_id'])
             return
 
         b_pod = db_api.get_pod(ctx, b_pod_id)
@@ -917,6 +923,9 @@ class XManager(PeriodicTasks):
                 'shared': t_network['shared']
             }
         }
+
+        if not t_network.get('qos_policy_id', None):
+            body['network']['qos_policy_id'] = None
 
         try:
             b_client.update_networks(ctx, b_network_id, body)
@@ -1527,3 +1536,287 @@ class XManager(PeriodicTasks):
             fc_id=b_fc_ids[0])
 
         self.xjob_handler.recycle_resources(ctx, t_pc['project_id'])
+
+    @_job_handle(constants.JT_QOS_CREATE)
+    def create_qos_policy(self, ctx, payload):
+        (b_pod_id, t_policy_id, res_type, res_id) = payload[
+            constants.JT_QOS_CREATE].split('#')
+
+        t_client = self._get_client()
+        t_policy = t_client.get_qos_policies(ctx, t_policy_id)
+
+        if not t_policy:
+            # we just end this job if top policy no longer exists
+            return
+
+        project_id = t_policy['tenant_id']
+
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, res_id, res_type)
+            for b_pod, _ in mappings:
+                self.xjob_handler.create_qos_policy(ctx, project_id,
+                                                    t_policy_id,
+                                                    b_pod['pod_id'],
+                                                    res_type,
+                                                    res_id)
+            return
+
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_region_name = b_pod['region_name']
+        b_client = self._get_client(region_name=b_region_name)
+
+        body = {
+            'policy': {
+                'description': t_policy.get('description', ''),
+                'tenant_id': t_policy.get('tenant_id', ''),
+                'project_id': t_policy.get('project_id', ''),
+                'shared': t_policy.get('shared', False),
+                'name': t_policy.get('name', '')
+            }
+        }
+
+        try:
+            _, b_policy_id = self.helper.prepare_bottom_element(
+                ctx, project_id, b_pod, t_policy, constants.RT_QOS, body)
+            if res_id:
+                if res_type == constants.RT_NETWORK:
+                    body = {
+                        "network": {
+                            "qos_policy_id": b_policy_id
+                        }
+                    }
+                    b_client.update_networks(ctx, res_id, body)
+                if res_type == constants.RT_PORT:
+                    body = {
+                        "port": {
+                            "qos_policy_id": b_policy_id
+                        }
+                    }
+                    b_client.update_ports(ctx, res_id, body)
+            if t_policy['rules']:
+                self.xjob_handler.sync_qos_policy_rules(
+                    ctx, project_id, t_policy_id)
+        except q_cli_exceptions.NotFound:
+            LOG.error('qos policy: %(policy_id)s not found,'
+                      'pod name: %(name)s',
+                      {'policy_id': t_policy_id, 'name': b_region_name})
+
+    @_job_handle(constants.JT_QOS_UPDATE)
+    def update_qos_policy(self, ctx, payload):
+        (b_pod_id, t_policy_id) = payload[
+            constants.JT_QOS_UPDATE].split('#')
+
+        t_client = self._get_client()
+        t_policy = t_client.get_qos_policies(ctx, t_policy_id)
+        if not t_policy:
+            return
+        project_id = t_policy['tenant_id']
+
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_policy_id, constants.RT_QOS)
+            for b_pod, _ in mappings:
+                self.xjob_handler.update_qos_policy(ctx, project_id,
+                                                    t_policy_id,
+                                                    b_pod['pod_id'])
+            return
+
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_region_name = b_pod['region_name']
+        b_client = self._get_client(region_name=b_region_name)
+        b_policy_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_policy_id, b_region_name, constants.RT_QOS)
+
+        if not b_policy_id:
+            return
+
+        body = {
+            'policy': {
+                'description': t_policy.get('description', ''),
+                'shared': t_policy.get('shared', ''),
+                'name': t_policy.get('name', '')
+            }
+        }
+
+        try:
+            b_client.update_qos_policies(ctx, b_policy_id, body)
+        except q_cli_exceptions.NotFound:
+            LOG.error('qos policy: %(policy_id)s not found,'
+                      'pod name: %(name)s',
+                      {'policy_id': t_policy_id, 'name': b_region_name})
+
+    @_job_handle(constants.JT_QOS_DELETE)
+    def delete_qos_policy(self, ctx, payload):
+        (b_pod_id, t_policy_id) = payload[
+            constants.JT_QOS_DELETE].split('#')
+
+        project_id = ctx.tenant_id
+        if b_pod_id == constants.POD_NOT_SPECIFIED:
+            mappings = db_api.get_bottom_mappings_by_top_id(
+                ctx, t_policy_id, constants.RT_QOS)
+            for b_pod, _ in mappings:
+                self.xjob_handler.delete_qos_policy(ctx, project_id,
+                                                    t_policy_id,
+                                                    b_pod['pod_id'])
+            return
+
+        b_pod = db_api.get_pod(ctx, b_pod_id)
+        b_region_name = b_pod['region_name']
+        b_client = self._get_client(region_name=b_region_name)
+        b_policy_id = db_api.get_bottom_id_by_top_id_region_name(
+            ctx, t_policy_id, b_region_name, constants.RT_QOS)
+
+        try:
+            b_client.delete_qos_policies(ctx, b_policy_id)
+            db_api.delete_mappings_by_bottom_id(ctx, b_policy_id)
+        except q_cli_exceptions.NotFound:
+            LOG.error('qos policy: %(policy_id)s not found,'
+                      'pod name: %(name)s',
+                      {'policy_id': t_policy_id, 'name': b_region_name})
+
+    @staticmethod
+    def _safe_create_policy_rule(
+            t_context, client, rule_type, policy_id, body):
+        try:
+            return getattr(client, 'create_%s_rules' % rule_type)(
+                t_context, policy_id, body)
+        except q_exceptions.Conflict:
+            return
+
+    @staticmethod
+    def _safe_get_policy_rule(t_context, client, rule_type, rule_id,
+                              policy_id):
+        combine_id = '%s#%s' % (rule_id, policy_id)
+        return getattr(client, 'get_%s_rules' % rule_type)(
+            t_context, combine_id)
+
+    @staticmethod
+    def _safe_delete_policy_rule(t_context, client, rule_type, rule_id,
+                                 policy_id):
+        combine_id = '%s#%s' % (rule_id, policy_id)
+        getattr(client, 'delete_%s_rules' % rule_type)(
+            t_context, combine_id)
+
+    @staticmethod
+    def _construct_bottom_bandwidth_limit_rule(t_rule):
+        return {
+            "max_kbps": t_rule["max_kbps"],
+            "max_burst_kbps": t_rule["max_burst_kbps"]
+        }
+
+    @staticmethod
+    def _construct_bottom_dscp_marking_rule(t_rule):
+        return {
+            "dscp_mark": t_rule["dscp_mark"]
+        }
+
+    @staticmethod
+    def _construct_bottom_minimum_bandwidth_rule(t_rule):
+        return {
+            "min_kbps": t_rule["min_kbps"],
+            "direction": t_rule["direction"]
+        }
+
+    def _construct_bottom_policy_rule(self, rule_type, rule_data):
+        return getattr(self, '_construct_bottom_%s_rule' % rule_type)(
+            rule_data)
+
+    @staticmethod
+    def _compare_bandwidth_limit_rule(rule1, rule2):
+        for key in ('max_kbps', 'max_burst_kbps'):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
+    @staticmethod
+    def _compare_dscp_marking_rule(rule1, rule2):
+        for key in ('dscp_mark',):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
+    @staticmethod
+    def _compare_minimum_bandwidth_rule(rule1, rule2):
+        for key in ('min_kbps', 'direction'):
+            if rule1[key] != rule2[key]:
+                return False
+        return True
+
+    def _compare_policy_rule(self, rule_type, rule1, rule2):
+        return getattr(self, '_compare_%s_rule' % rule_type)(rule1, rule2)
+
+    @_job_handle(constants.JT_SYNC_QOS_RULE)
+    def sync_qos_policy_rules(self, ctx, payload):
+        policy_id = payload[constants.JT_SYNC_QOS_RULE]
+        top_client = self._get_client()
+
+        bandwidth_limit_rules = \
+            top_client.list_bandwidth_limit_rules(ctx, filters=[{
+                'key': 'policy_id', 'comparator': 'eq', 'value': policy_id}])
+        dscp_marking_rules = \
+            top_client.list_dscp_marking_rules(ctx, filters=[{
+                'key': 'policy_id', 'comparator': 'eq', 'value': policy_id}])
+        minimum_bandwidth_rules = \
+            top_client.list_minimum_bandwidth_rules(ctx, filters=[{
+                'key': 'policy_id', 'comparator': 'eq', 'value': policy_id}])
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            ctx, policy_id, constants.RT_QOS)
+
+        self._sync_policy_rules(
+            ctx, mappings, 'bandwidth_limit_rule', bandwidth_limit_rules)
+
+        self._sync_policy_rules(
+            ctx, mappings, 'dscp_marking_rule', dscp_marking_rules)
+
+        self._sync_policy_rules(
+            ctx, mappings, 'minimum_bandwidth_rule', minimum_bandwidth_rules)
+
+    def _sync_policy_rules(self, ctx, mappings, rule_type, rules):
+        if rule_type == 'bandwidth_limit_rule':
+            rule_types = 'bandwidth_limit_rules'
+            prefix = 'bandwidth_limit'
+        elif rule_type == 'dscp_marking_rule':
+            rule_types = 'dscp_marking_rules'
+            prefix = 'dscp_marking'
+        else:
+            rule_types = 'minimum_bandwidth_rules'
+            prefix = 'minimum_bandwidth'
+
+        new_b_rules = []
+        for t_rule in rules:
+            new_b_rules.append(
+                getattr(self, '_construct_bottom_%s' % rule_type)(t_rule))
+
+        for pod, b_policy_id in mappings:
+            client = self._get_client(pod['region_name'])
+            b_rules = getattr(client, 'list_%s' % rule_types)(
+                ctx, filters=[{'key': 'policy_id',
+                               'comparator': 'eq',
+                               'value': b_policy_id}])
+            add_rules = []
+            del_rules = []
+            match_index = set()
+            for b_rule in b_rules:
+                match = False
+                for i, rule in enumerate(new_b_rules):
+                    if getattr(self, '_compare_%s' % rule_type)(b_rule, rule):
+                        match = True
+                        match_index.add(i)
+                        break
+                if not match:
+                    del_rules.append(b_rule)
+            for i, rule in enumerate(new_b_rules):
+                if i not in match_index:
+                    add_rules.append(rule)
+
+            for del_rule in del_rules:
+                self._safe_delete_policy_rule(
+                    ctx, client, prefix, del_rule['id'],
+                    b_policy_id)
+            if add_rules:
+                for new_rule in add_rules:
+                    rule_body = {rule_type: new_rule}
+                    self._safe_create_policy_rule(
+                        ctx, client, prefix,
+                        b_policy_id, rule_body)

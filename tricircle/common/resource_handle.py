@@ -35,6 +35,9 @@ LIST, CREATE, DELETE, GET, ACTION, UPDATE = 1, 2, 4, 8, 16, 32
 operation_index_map = {'list': LIST, 'create': CREATE, 'delete': DELETE,
                        'get': GET, 'action': ACTION, 'update': UPDATE}
 
+policy_rules = ('bandwidth_limit_rule', 'dscp_marking_rule',
+                'minimum_bandwidth_rule')
+
 LOG = logging.getLogger(__name__)
 
 
@@ -98,7 +101,11 @@ class NeutronResourceHandle(ResourceHandle):
         'port_chain': LIST | CREATE | DELETE | GET | UPDATE,
         'port_pair_group': LIST | CREATE | DELETE | GET | UPDATE,
         'port_pair': LIST | CREATE | DELETE | GET | UPDATE,
-        'flow_classifier': LIST | CREATE | DELETE | GET | UPDATE}
+        'flow_classifier': LIST | CREATE | DELETE | GET | UPDATE,
+        'qos_policy': LIST | CREATE | DELETE | GET | UPDATE,
+        'bandwidth_limit_rule': LIST | CREATE | DELETE | GET | UPDATE,
+        'dscp_marking_rule': LIST | CREATE | DELETE | GET | UPDATE,
+        'minimum_bandwidth_rule': LIST | CREATE | DELETE | GET | UPDATE}
 
     def _get_client(self, cxt):
         token = cxt.auth_token
@@ -113,7 +120,10 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_list(self, cxt, resource, filters):
         try:
             client = self._get_client(cxt)
-            collection = '%ss' % resource
+            if resource == 'qos_policy':
+                collection = 'qos_policies'
+            else:
+                collection = '%ss' % resource
             search_opts = _transform_filters(filters)
             return [res for res in getattr(
                 client, 'list_%s' % collection)(**search_opts)[collection]]
@@ -126,6 +136,10 @@ class NeutronResourceHandle(ResourceHandle):
             client = self._get_client(cxt)
             ret = getattr(client, 'create_%s' % resource)(
                 *args, **kwargs)
+
+            if resource == 'qos_policy':
+                return ret['policy']
+
             if resource in ret:
                 return ret[resource]
             else:
@@ -137,6 +151,9 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_update(self, cxt, resource, *args, **kwargs):
         try:
             client = self._get_client(cxt)
+            if resource == 'qos_policy':
+                return getattr(client, 'update_%s' % resource)(
+                    *args, **kwargs)['policy']
             return getattr(client, 'update_%s' % resource)(
                 *args, **kwargs)[resource]
         except q_exceptions.ConnectionFailed:
@@ -146,6 +163,13 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_get(self, cxt, resource, resource_id):
         try:
             client = self._get_client(cxt)
+            if resource == 'qos_policy':
+                return getattr(client, 'show_%s' % resource)(
+                    resource_id)['policy']
+            if resource in policy_rules:
+                (rule_id, policy_id) = resource_id.split('#')
+                return getattr(client, 'show_%s' % resource)(
+                    rule_id, policy_id)[resource]
             return getattr(client, 'show_%s' % resource)(resource_id)[resource]
         except q_exceptions.ConnectionFailed:
             raise exceptions.EndpointNotAvailable(
@@ -157,6 +181,10 @@ class NeutronResourceHandle(ResourceHandle):
     def handle_delete(self, cxt, resource, resource_id):
         try:
             client = self._get_client(cxt)
+            if resource in policy_rules:
+                (rule_id, policy_id) = resource_id.split('#')
+                return getattr(client, 'delete_%s' % resource)(
+                    rule_id, policy_id)
             return getattr(client, 'delete_%s' % resource)(resource_id)
         except q_exceptions.ConnectionFailed:
             raise exceptions.EndpointNotAvailable(

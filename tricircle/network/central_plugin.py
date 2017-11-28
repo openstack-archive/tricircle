@@ -28,7 +28,9 @@ from neutron.callbacks import exceptions as callbacks_exc
 from neutron.callbacks import registry
 from neutron.callbacks import resources
 import neutron.common.exceptions as ml2_exceptions
+from neutron.conf.plugins.ml2 import config  # noqa
 from neutron.db import _resource_extend as resource_extend
+from neutron.db import agents_db
 from neutron.db import api as q_db_api
 from neutron.db.availability_zone import router as router_az
 from neutron.db import db_base_plugin_v2
@@ -44,6 +46,8 @@ from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.extensions import providernet as provider
+from neutron.objects.qos import policy as policy_object
+from neutron.plugins.ml2 import managers as n_managers
 from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import external_net
 from neutron_lib.api.definitions import l3 as l3_apidef
@@ -72,6 +76,7 @@ from tricircle.db import models
 import tricircle.network.exceptions as t_network_exc
 from tricircle.network import helper
 from tricircle.network import managers
+from tricircle.network import qos_driver
 from tricircle.network import security_groups
 
 
@@ -80,6 +85,11 @@ tricircle_opts = [
                 default=['vxlan,local'],
                 help=_('List of network type driver entry points to be loaded '
                        'from the tricircle.network.type_drivers namespace.')),
+    cfg.ListOpt('extension_drivers',
+                default=[],
+                help=_('List of network extension driver entry points to be '
+                       'loaded from the neutron.ml2.extension_drivers '
+                       'namespace.')),
     cfg.ListOpt('tenant_network_types',
                 default=['vxlan,local'],
                 help=_('Ordered list of network_types to allocate as tenant '
@@ -128,6 +138,7 @@ NON_VM_PORT_TYPES = [constants.DEVICE_OWNER_ROUTER_INTF,
 
 
 class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
+                      agents_db.AgentDbMixin,
                       security_groups.TricircleSecurityGroupMixin,
                       external_net_db.External_net_db_mixin,
                       portbindings_db.PortBindingMixin,
@@ -165,12 +176,15 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def __init__(self):
         super(TricirclePlugin, self).__init__()
         LOG.info("Starting Tricircle Neutron Plugin")
-        self.clients = {}
+        self.clients = {'top': t_client.Client()}
         self.xjob_handler = xrpcapi.XJobAPI()
         self._setup_rpc()
         self.type_manager = managers.TricircleTypeManager()
+        self.extension_manager = n_managers.ExtensionManager()
+        self.extension_manager.initialize()
         self.type_manager.initialize()
         self.helper = helper.NetworkHelper(self)
+        qos_driver.register()
 
     def _setup_rpc(self):
         self.endpoints = []
@@ -303,6 +317,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             net_db = self.create_network_db(context, network)
             res = self._make_network_dict(net_db, process_extensions=False,
                                           context=context)
+            self.extension_manager.process_create_network(context, net_data,
+                                                          res)
             self._process_l3_create(context, res, net_data)
             net_data['id'] = res['id']
             self.type_manager.create_network_segments(context, net_data,
@@ -392,19 +408,55 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._raise_if_updates_external_attribute(net_data)
 
         with context.session.begin():
-            net = super(TricirclePlugin, self).update_network(context,
-                                                              network_id,
-                                                              network)
+            original_network = super(TricirclePlugin, self).get_network(
+                context, network_id)
+            policy = policy_object.QosPolicy.get_network_policy(
+                context, network_id)
+            if policy:
+                original_network['qos_policy_id'] = policy['id']
+            else:
+                original_network['qos_policy_id'] = None
+
+            updated_network = super(
+                TricirclePlugin, self).update_network(
+                context, network_id, network)
+
+            self.extension_manager.process_update_network(
+                context, net_data, updated_network)
+
+            self.type_manager.extend_network_dict_provider(context,
+                                                           updated_network)
+
+            updated_network = self.get_network(context, network_id)
+
+            if net_data.get('qos_policy_id', None):
+                updated_network['qos_policy_id'] = net_data['qos_policy_id']
+
+            if not updated_network.get('qos_policy_id', None):
+                updated_network['qos_policy_id'] = None
+
+            need_network_update_notify = (
+                'qos_policy_id' in net_data and
+                original_network['qos_policy_id'] !=
+                updated_network['qos_policy_id'])
+
             t_ctx = t_context.get_context_from_neutron_context(context)
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, network_id, t_constants.RT_NETWORK)
             if mappings:
                 self.xjob_handler.update_network(
-                    t_ctx, net['tenant_id'], network_id,
+                    t_ctx, updated_network['tenant_id'], network_id,
                     t_constants.POD_NOT_SPECIFIED)
 
-            self.type_manager.extend_network_dict_provider(context, net)
-            return net
+            if need_network_update_notify and \
+                    updated_network['qos_policy_id'] and mappings:
+                t_policy_id = updated_network['qos_policy_id']
+                self.xjob_handler.create_qos_policy(
+                    t_ctx, updated_network['tenant_id'], t_policy_id,
+                    t_constants.POD_NOT_SPECIFIED, t_constants.RT_NETWORK,
+                    updated_network['id'])
+
+            return updated_network
 
     def _convert_az2region_for_nets(self, context, nets):
         for net in nets:
@@ -419,6 +471,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def _convert_az2region(self, t_ctx, az_hints):
         return self.helper.convert_az2region(t_ctx, az_hints)
 
+    def _get_network_qos_info(self, context, net_id):
+        policy = policy_object.QosPolicy.get_network_policy(
+            context.elevated(), net_id)
+        return policy['id'] if policy else None
+
     def get_network(self, context, network_id, fields=None):
         net = super(TricirclePlugin, self).get_network(context, network_id,
                                                        fields)
@@ -426,6 +483,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.type_manager.extend_network_dict_provider(context, net)
 
         self._convert_az2region_for_net(context, net)
+
+        net['qos_policy_id'] = \
+            self._get_network_qos_info(context.elevated(), net['id'])
 
         return net
 
@@ -438,6 +498,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.type_manager.extend_networks_dict_provider(context, nets)
 
         self._convert_az2region_for_nets(context, nets)
+
+        for net in nets:
+            net['qos_policy_id'] = \
+                self._get_network_qos_info(context.elevated(), net['id'])
+
         return nets
 
     def create_subnet(self, context, subnet):
@@ -561,6 +626,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self._ensure_default_security_group_on_port(context, port)
         sgids = self._get_security_groups_on_port(context, port)
         result = self._make_port_dict(db_port)
+        self.extension_manager.process_create_port(context, port_body, result)
         self._process_port_create_security_group(context, result, sgids)
         return result
 
@@ -671,7 +737,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def update_port(self, context, port_id, port):
         t_ctx = t_context.get_context_from_neutron_context(context)
         top_port = super(TricirclePlugin, self).get_port(context, port_id)
-
+        updated_port = None
         # be careful that l3_db will call update_port to update device_id of
         # router interface, we cannot directly update bottom port in this case,
         # otherwise we will fail when attaching bottom port to bottom router
@@ -679,15 +745,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if t_constants.PROFILE_REGION in port['port'].get(
                 'binding:profile', {}):
             # this update request comes from local Neutron
-            res = super(TricirclePlugin, self).update_port(context, port_id,
-                                                           port)
+            updated_port = super(TricirclePlugin, self).update_port(context,
+                                                                    port_id,
+                                                                    port)
+
             profile_dict = port['port']['binding:profile']
             region_name = profile_dict[t_constants.PROFILE_REGION]
             device_name = profile_dict[t_constants.PROFILE_DEVICE]
             t_ctx = t_context.get_context_from_neutron_context(context)
             pod = db_api.get_pod_by_name(t_ctx, region_name)
 
-            net = self.get_network(context, res['network_id'])
+            net = self.get_network(context, updated_port['network_id'])
             is_vxlan_network = (
                 net[provider_net.NETWORK_TYPE] == t_constants.NT_VxLAN)
             if is_vxlan_network:
@@ -700,20 +768,41 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # gateway port, but we only need to create resource routing
                 # entries, trigger xjob and configure security group rules for
                 # instance port
-                self._create_mapping_for_vm_port(t_ctx, res, pod)
+                self._create_mapping_for_vm_port(t_ctx, updated_port, pod)
                 self._process_trunk_port(context, t_ctx,
-                                         res, pod, profile_dict)
+                                         updated_port, pod, profile_dict)
                 # only trigger setup_bottom_router job
-                self._trigger_router_xjob_for_vm_port(context, res, pod)
+                self._trigger_router_xjob_for_vm_port(context, updated_port,
+                                                      pod)
                 self.xjob_handler.configure_security_group_rules(
-                    t_ctx, res['tenant_id'])
+                    t_ctx, updated_port['tenant_id'])
 
             if is_vxlan_network and (
                     cfg.CONF.client.cross_pod_vxlan_mode in (
                         t_constants.NM_P2P, t_constants.NM_L2GW)):
-                self.xjob_handler.setup_shadow_ports(t_ctx, res['tenant_id'],
-                                                     pod['pod_id'],
-                                                     res['network_id'])
+                self.xjob_handler.setup_shadow_ports(
+                    t_ctx, updated_port['tenant_id'], pod['pod_id'],
+                    updated_port['network_id'])
+
+            network_binding_policy = \
+                policy_object.QosPolicy.get_network_policy(
+                    context, updated_port['network_id'])
+
+            port_binding_policy = policy_object.QosPolicy.get_port_policy(
+                context, port_id)
+
+            if network_binding_policy:
+                t_policy_id = network_binding_policy['id']
+                self.xjob_handler.create_qos_policy(
+                    t_ctx, t_ctx.project_id, t_policy_id, pod['pod_id'],
+                    t_constants.RT_NETWORK, updated_port['network_id'])
+
+            if port_binding_policy:
+                t_policy_id = port_binding_policy['id']
+                self.xjob_handler.create_qos_policy(
+                    t_ctx, t_ctx.project_id, t_policy_id, pod['pod_id'],
+                    t_constants.RT_PORT, port_id)
+
         # for vm port or port with empty device_owner, update top port and
         # bottom port
         elif top_port.get('device_owner') not in NON_VM_PORT_TYPES:
@@ -722,6 +811,9 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             request_body = port[attributes.PORT]
             if mappings:
                 with context.session.begin():
+                    original_qos_policy_id = \
+                        self._get_port_qos_info(context, port_id)
+
                     b_pod, b_port_id = mappings[0]
                     b_region_name = b_pod['region_name']
                     b_client = self._get_client(region_name=b_region_name)
@@ -733,36 +825,58 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                         self._handle_bottom_security_group(
                             t_ctx, request_body['security_groups'], b_pod)
 
-                    res = super(TricirclePlugin, self).update_port(
+                    updated_port = super(TricirclePlugin, self).update_port(
                         context, port_id, port)
+                    self.extension_manager.process_update_port(
+                        context, request_body, updated_port)
+                    updated_port = \
+                        super(TricirclePlugin, self).get_port(context, port_id)
                     # name is not allowed to be updated, because it is used by
                     # lock_handle to retrieve bottom/local resources that have
                     # been created but not registered in the resource routing
                     # table
                     request_body.pop('name', None)
 
-                    try:
-                        b_client.update_ports(t_ctx, b_port_id, port)
-                    except q_cli_exceptions.NotFound:
-                        LOG.error(
-                            ('port: %(port_id)s not found, '
-                             'region name: %(name)s'),
-                            {'port_id': b_port_id, 'name': b_region_name})
+                    request_body_policy_id = \
+                        request_body.get('qos_policy_id', None)
+                    if request_body_policy_id:
+                            request_body.pop('qos_policy_id')
+
+                    if request_body:
+                        try:
+                            b_client.update_ports(t_ctx, b_port_id, port)
+                        except q_cli_exceptions.NotFound:
+                            LOG.error(
+                                ('port: %(port_id)s not found, '
+                                 'region name: %(name)s'),
+                                {'port_id': b_port_id, 'name': b_region_name})
 
                     if request_body.get('security_groups', None):
                         self.xjob_handler.configure_security_group_rules(
-                            t_ctx, res['tenant_id'])
+                            t_ctx, updated_port['tenant_id'])
+
+                    updated_port['qos_policy_id'] = request_body_policy_id
+                    if request_body_policy_id and \
+                        original_qos_policy_id != \
+                            request_body_policy_id:
+                        t_policy_id = updated_port['qos_policy_id']
+                        self.xjob_handler.create_qos_policy(
+                            t_ctx, t_ctx.project_id,
+                            t_policy_id, b_pod['pod_id'],
+                            t_constants.RT_PORT, b_port_id)
             else:
                 self._filter_unsupported_attrs(request_body)
-                res = super(TricirclePlugin, self).update_port(
+                updated_port = super(TricirclePlugin, self).update_port(
                     context, port_id, port)
+                self.extension_manager.process_update_port(
+                    context, request_body, updated_port)
         else:
             # for router interface, router gw, dhcp port, not directly
             # update bottom port
-            res = super(TricirclePlugin, self).update_port(
+            updated_port = super(TricirclePlugin, self).update_port(
                 context, port_id, port)
         self._log_update_port_sensitive_attrs(port_id, port)
-        return res
+        return updated_port
 
     def _pre_delete_port(self, context, port_id, port_check):
         """Do some preliminary operations before deleting the port."""
@@ -816,6 +930,10 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                 'value': port_id}])
         super(TricirclePlugin, self).delete_port(context, port_id)
 
+    def _get_port_qos_info(self, context, port_id):
+        policy = policy_object.QosPolicy.get_port_policy(context, port_id)
+        return policy['id'] if policy else None
+
     def get_port(self, context, port_id, fields=None):
         t_ctx = t_context.get_context_from_neutron_context(context)
         mappings = db_api.get_bottom_mappings_by_top_id(
@@ -830,27 +948,29 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if fields:
                 port = dict(
                     [(k, v) for k, v in six.iteritems(port) if k in fields])
-            if 'network_id' not in port and 'fixed_ips' not in port:
-                return port
-
-            bottom_top_map = {}
-            with t_ctx.session.begin():
-                for resource in (t_constants.RT_SUBNET, t_constants.RT_NETWORK,
-                                 t_constants.RT_ROUTER):
-                    route_filters = [{'key': 'resource_type',
-                                      'comparator': 'eq',
-                                      'value': resource}]
-                    routes = core.query_resource(
-                        t_ctx, models.ResourceRouting, route_filters, [])
-                    for route in routes:
-                        if route['bottom_id']:
-                            bottom_top_map[
-                                route['bottom_id']] = route['top_id']
-            self._map_port_from_bottom_to_top(port, bottom_top_map)
-            return port
+            if 'network_id' in port or 'fixed_ips' in port:
+                bottom_top_map = {}
+                with t_ctx.session.begin():
+                    for resource in (t_constants.RT_SUBNET,
+                                     t_constants.RT_NETWORK,
+                                     t_constants.RT_ROUTER):
+                        route_filters = [{'key': 'resource_type',
+                                          'comparator': 'eq',
+                                          'value': resource}]
+                        routes = core.query_resource(
+                            t_ctx, models.ResourceRouting, route_filters, [])
+                        for route in routes:
+                            if route['bottom_id']:
+                                bottom_top_map[
+                                    route['bottom_id']] = route['top_id']
+                self._map_port_from_bottom_to_top(port, bottom_top_map)
         else:
-            return super(TricirclePlugin, self).get_port(context,
+            port = super(TricirclePlugin, self).get_port(context,
                                                          port_id, fields)
+
+        port['qos_policy_id'] = \
+            self._get_port_qos_info(context, port_id)
+        return port
 
     @staticmethod
     def _apply_ports_filters(query, model, filters):
@@ -1051,8 +1171,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if not filters or 'id' not in filters:
             # if filter is empty or "id" is not in the filter, no special
             # handle is required
-            return self._get_ports(context, filters, fields, sorts, limit,
-                                   marker, page_reverse)
+            ports = self._get_ports(context, filters, fields, sorts, limit,
+                                    marker, page_reverse)
+            for port in ports:
+                port['qos_policy_id'] = \
+                    self._get_port_qos_info(context, port['id'])
+
+            return ports
         if len(filters) == 1:
             # only "id" is in the filter, we use get_port to get all the ports
             ports = []
@@ -1068,9 +1193,14 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             id_filters = filters.pop('id')
             ports = self._get_ports(context, filters, None, sorts, limit,
                                     marker, page_reverse)
-            return [super(TricirclePlugin,
-                          self)._fields(
+            ports = [super(TricirclePlugin,
+                           self)._fields(
                 p, fields) for p in ports if p['id'] in id_filters]
+            for port in ports:
+                port['qos_policy_id'] = \
+                    self._get_port_qos_info(context, port['id'])
+
+            return ports
 
     def _get_ports(self, context, filters=None, fields=None, sorts=None,
                    limit=None, marker=None, page_reverse=False):

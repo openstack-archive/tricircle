@@ -291,6 +291,11 @@ function start_central_neutron_server {
         iniset $NEUTRON_CONF.$server_index sfc drivers tricircle_sfc
         iniset $NEUTRON_CONF.$server_index flowclassifier drivers tricircle_fc
     fi
+
+    if [ "$TRICIRCLE_ENABLE_QOS" == "True" ]; then
+        service_plugins+=",tricircle.network.central_qos_plugin.TricircleQosPlugin"
+    fi
+
     if [ -n service_plugins ]; then
         service_plugins=$(echo $service_plugins| sed 's/^,//')
         iniset $NEUTRON_CONF.$server_index DEFAULT service_plugins "$service_plugins"
@@ -323,6 +328,17 @@ function start_central_neutron_server {
     iniset $NEUTRON_CONF.$server_index tricircle tenant_network_types $tenant_network_types
     iniset $NEUTRON_CONF.$server_index tricircle enable_api_gateway False
     # default value of bridge_network_type is vxlan
+
+    if [ "$TRICIRCLE_ENABLE_QOS" == "True" ]; then
+        local p_exist=$(grep "^extension_drivers" /$Q_PLUGIN_CONF_FILE)
+        if [[ $p_exist != "" ]];then
+            if ! [[ $(echo $p_exist | grep "qos") ]];then
+                sed -i "s/$p_exist/$p_exist,qos/g" /$Q_PLUGIN_CONF_FILE
+            fi
+        else
+            sed -i "s/^\[ml2\]/\[ml2\]\nextension_drivers = qos/g" /$Q_PLUGIN_CONF_FILE
+        fi
+    fi
 
     recreate_database $Q_DB_NAME$server_index
     $NEUTRON_BIN_DIR/neutron-db-manage --config-file $NEUTRON_CONF.$server_index --config-file /$Q_PLUGIN_CONF_FILE upgrade head

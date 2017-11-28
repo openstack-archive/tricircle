@@ -38,6 +38,9 @@ from neutron.db import ipam_pluggable_backend
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
+from neutron.services.qos.drivers import manager as q_manager
+
+from neutron.plugins.ml2 import managers as n_managers
 
 from neutron.ipam import driver
 from neutron.ipam import exceptions as ipam_exc
@@ -60,12 +63,15 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.central_plugin as plugin
+from tricircle.network import central_qos_plugin
 from tricircle.network.drivers import type_flat
 from tricircle.network.drivers import type_local
 from tricircle.network.drivers import type_vlan
 from tricircle.network.drivers import type_vxlan
 from tricircle.network import helper
 from tricircle.network import managers
+from tricircle.network import qos_driver
+from tricircle.tests.unit.network import test_qos
 from tricircle.tests.unit.network import test_security_groups
 import tricircle.tests.unit.utils as test_utils
 from tricircle.xjob import xmanager
@@ -84,18 +90,24 @@ TOP_SEGMENTS = _resource_store.TOP_NETWORKSEGMENTS
 TOP_FLOATINGIPS = _resource_store.TOP_FLOATINGIPS
 TOP_SGS = _resource_store.TOP_SECURITYGROUPS
 TOP_SG_RULES = _resource_store.TOP_SECURITYGROUPRULES
+TOP_POLICIES = _resource_store.TOP_QOS_POLICIES
+TOP_POLICY_RULES = _resource_store.TOP_QOS_BANDWIDTH_LIMIT_RULES
 BOTTOM1_NETS = _resource_store.BOTTOM1_NETWORKS
 BOTTOM1_SUBNETS = _resource_store.BOTTOM1_SUBNETS
 BOTTOM1_PORTS = _resource_store.BOTTOM1_PORTS
 BOTTOM1_SGS = _resource_store.BOTTOM1_SECURITYGROUPS
 BOTTOM1_FIPS = _resource_store.BOTTOM1_FLOATINGIPS
 BOTTOM1_ROUTERS = _resource_store.BOTTOM1_ROUTERS
+BOTTOM1_POLICIES = _resource_store.BOTTOM1_QOS_POLICIES
+BOTTOM1_POLICY_RULES = _resource_store.BOTTOM1_QOS_BANDWIDTH_LIMIT_RULES
 BOTTOM2_NETS = _resource_store.BOTTOM2_NETWORKS
 BOTTOM2_SUBNETS = _resource_store.BOTTOM2_SUBNETS
 BOTTOM2_PORTS = _resource_store.BOTTOM2_PORTS
 BOTTOM2_SGS = _resource_store.BOTTOM2_SECURITYGROUPS
 BOTTOM2_FIPS = _resource_store.BOTTOM2_FLOATINGIPS
 BOTTOM2_ROUTERS = _resource_store.BOTTOM2_ROUTERS
+BOTTOM2_POLICIES = _resource_store.BOTTOM2_QOS_POLICIES
+BOTTOM2_POLICY_RULES = _resource_store.BOTTOM2_QOS_BANDWIDTH_LIMIT_RULES
 TEST_TENANT_ID = test_utils.TEST_TENANT_ID
 FakeNeutronContext = test_utils.FakeNeutronContext
 
@@ -271,7 +283,9 @@ class FakeClient(test_utils.FakeClient):
             if 'gateway_ip' not in body[_type]:
                 cidr = body[_type]['cidr']
                 body[_type]['gateway_ip'] = cidr[:cidr.rindex('.')] + '.1'
-        if 'id' not in body[_type]:
+        if _type == 'qos_policy':
+            body['policy']['id'] = uuidutils.generate_uuid()
+        elif 'id' not in body[_type]:
             body[_type]['id'] = uuidutils.generate_uuid()
         return super(FakeClient, self).create_resources(_type, ctx, body)
 
@@ -419,7 +433,7 @@ class FakeClient(test_utils.FakeClient):
         elif action == 'remove_interface':
             return self.remove_interface_routers(ctx, *args, **kwargs)
 
-    def _is_bridge_network_attached():
+    def _is_bridge_network_attached(self):
         pass
 
     def create_floatingips(self, ctx, body):
@@ -484,7 +498,86 @@ class FakeClient(test_utils.FakeClient):
         # group
         return copy.deepcopy(sg)
 
-    def get_security_group(self, context, _id, fields=None, tenant_id=None):
+    def get_security_group(self, ctx, _id, fields=None, tenant_id=None):
+        pass
+
+    def get_qos_policies(self, ctx, policy_id):
+        rules = {'rules': []}
+        rule_list = \
+            self._res_map[self.region_name]['qos_bandwidth_limit_rules']
+        for rule in rule_list:
+            if rule['qos_policy_id'] == policy_id:
+                rules['rules'].append(rule)
+
+        res_list = self._res_map[self.region_name]['qos_policy']
+        for policy in res_list:
+            if policy['id'] == policy_id:
+                policy['rules'] = rules['rules']
+                return policy
+
+    def update_qos_policies(self, ctx, policy_id, body):
+        self.update_resources('policy', ctx, policy_id, body)
+
+    def delete_qos_policies(self, ctx, policy_id):
+        self.delete_resources('policy', ctx, policy_id)
+
+    def list_bandwidth_limit_rules(self, ctx, filters):
+        policy_id = filters[0].get("value")
+        if self.region_name == 'top':
+            res_list = \
+                self._res_map[self.region_name]['qos_bandwidth_limit_rules']
+        else:
+            res_list = self._res_map[self.region_name]['qos_policy']
+            for policy in res_list:
+                if policy['id'] == policy_id:
+                    res_list = policy.get('rules', [])
+
+        ret_rules = []
+        for rule in res_list:
+            if rule['qos_policy_id'] == policy_id:
+                ret_rules.append(rule)
+
+        return ret_rules
+
+    def list_dscp_marking_rules(self, ctx, filters):
+        return []
+
+    def list_minimum_bandwidth_rules(self, ctx, filters):
+        return []
+
+    def create_bandwidth_limit_rules(self, ctx, policy_id, body):
+        res_list = self._res_map[self.region_name]['qos_policy']
+        for policy in res_list:
+            if policy['id'] == policy_id:
+                rule_id = uuidutils.generate_uuid()
+                body['bandwidth_limit_rule']['id'] = rule_id
+                body['bandwidth_limit_rule']['qos_policy_id'] = policy_id
+                policy['rules'].append(body['bandwidth_limit_rule'])
+                return body
+
+        raise q_exceptions.Conflict()
+
+    def create_dscp_marking_rules(self, ctx, policy_id, body):
+        pass
+
+    def create_minimum_bandwidth_rules(self, ctx, policy_id, body):
+        pass
+
+    def delete_bandwidth_limit_rules(self, ctx, combined_id):
+        (rule_id, policy_id) = combined_id.split('#')
+        res_list = self._res_map[self.region_name]['qos_policy']
+        for policy in res_list:
+            if policy['id'] == policy_id:
+                for rule in policy['rules']:
+                    if rule['id'] == rule_id:
+                        policy['rules'].remove(rule)
+                        return
+        raise q_exceptions.Conflict()
+
+    def delete_dscp_marking_rules(self, ctx, combined_id):
+        pass
+
+    def delete_minimum_bandwidth_rules(self, ctx, combined_id):
         pass
 
     def list_security_groups(self, ctx, sg_filters):
@@ -585,6 +678,26 @@ class FakeBaseRPCAPI(object):
     def setup_shadow_ports(self, ctxt, project_id, pod_id, net_id):
         pass
 
+    def create_qos_policy(self, ctxt, project_id, policy_id, pod_id,
+                          res_type, res_id=None):
+        combine_id = '%s#%s#%s#%s' % (pod_id, policy_id, res_type, res_id)
+        self.xmanager.create_qos_policy(
+            ctxt, payload={constants.JT_QOS_CREATE: combine_id})
+
+    def update_qos_policy(self, ctxt, project_id, policy_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, policy_id)
+        self.xmanager.update_qos_policy(
+            ctxt, payload={constants.JT_QOS_UPDATE: combine_id})
+
+    def delete_qos_policy(self, ctxt, project_id, policy_id, pod_id):
+        combine_id = '%s#%s' % (pod_id, policy_id)
+        self.xmanager.delete_qos_policy(
+            ctxt, payload={constants.JT_QOS_DELETE: combine_id})
+
+    def sync_qos_policy_rules(self, ctxt, project_id, policy_id):
+        self.xmanager.sync_qos_policy_rules(
+            ctxt, payload={constants.JT_SYNC_QOS_RULE: policy_id})
+
 
 class FakeRPCAPI(FakeBaseRPCAPI):
     def __init__(self, fake_plugin):
@@ -659,12 +772,46 @@ class FakeTypeManager(managers.TricircleTypeManager):
                 break
 
 
-class FakePlugin(plugin.TricirclePlugin):
+class FakeExtensionManager(n_managers.ExtensionManager):
+    def __init__(self):
+        super(FakeExtensionManager, self).__init__()
+
+
+class FakeTricircleQoSDriver(qos_driver.TricircleQoSDriver):
+    def __init__(self, name, vif_types, vnic_types,
+                 supported_rules,
+                 requires_rpc_notifications):
+        super(FakeTricircleQoSDriver, self).__init__(
+            name, vif_types, vnic_types, supported_rules,
+            requires_rpc_notifications)
+        self.xjob_handler = FakeRPCAPI(self)
+
+    @staticmethod
+    def create():
+        return FakeTricircleQoSDriver(
+            name='tricircle',
+            vif_types=qos_driver.VIF_TYPES,
+            vnic_types=portbindings.VNIC_TYPES,
+            supported_rules=qos_driver.SUPPORTED_RULES,
+            requires_rpc_notifications=False)
+
+
+class FakeQosServiceDriverManager(q_manager.QosServiceDriverManager):
+    def __init__(self):
+        self._drivers = [FakeTricircleQoSDriver.create()]
+        self.rpc_notifications_required = False
+
+
+class FakePlugin(plugin.TricirclePlugin,
+                 central_qos_plugin.TricircleQosPlugin):
     def __init__(self):
         self.set_ipam_backend()
         self.helper = FakeHelper(self)
         self.xjob_handler = FakeRPCAPI(self)
         self.type_manager = FakeTypeManager()
+        self.extension_manager = FakeExtensionManager()
+        self.extension_manager.initialize()
+        self.driver_manager = FakeQosServiceDriverManager()
 
     def _get_client(self, region_name):
         return FakeClient(region_name)
@@ -809,7 +956,8 @@ class FakeTrunkPlugin(object):
 
 
 class PluginTest(unittest.TestCase,
-                 test_security_groups.TricircleSecurityGroupTestMixin):
+                 test_security_groups.TricircleSecurityGroupTestMixin,
+                 test_qos.TricircleQosTestMixin):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
@@ -909,10 +1057,14 @@ class PluginTest(unittest.TestCase,
         port2 = fake_plugin.get_port(neutron_context, 'top_id_2')
         fake_plugin.get_port(neutron_context, 'top_id_3')
 
-        self.assertEqual({'id': 'top_id_1', 'name': 'bottom'}, port1)
-        self.assertEqual({'id': 'top_id_2', 'name': 'bottom'}, port2)
+        self.assertEqual({'id': 'top_id_1', 'name': 'bottom',
+                          'qos_policy_id': None}, port1)
+        self.assertEqual({'id': 'top_id_2', 'name': 'bottom',
+                          'qos_policy_id': None}, port2)
         calls = [mock.call(neutron_context, 'top_id_0', None),
-                 mock.call(neutron_context, 'top_id_3', None)]
+                 mock.call().__setitem__('qos_policy_id', None),
+                 mock.call(neutron_context, 'top_id_3', None),
+                 mock.call().__setitem__('qos_policy_id', None)]
         mock_plugin_method.assert_has_calls(calls)
 
     @patch.object(context, 'get_context_from_neutron_context',
@@ -934,11 +1086,15 @@ class PluginTest(unittest.TestCase,
                                        marker=ports3[-1]['id'])
         ports = []
         expected_ports = [{'id': 'top_id_0', 'name': 'top',
+                           'qos_policy_id': None,
                            'fixed_ips': [{'subnet_id': 'top_subnet_id',
                                           'ip_address': '10.0.0.1'}]},
-                          {'id': 'top_id_1', 'name': 'bottom'},
-                          {'id': 'top_id_2', 'name': 'bottom'},
-                          {'id': 'top_id_3', 'name': 'top'}]
+                          {'id': 'top_id_1', 'name': 'bottom',
+                           'qos_policy_id': None},
+                          {'id': 'top_id_2', 'name': 'bottom',
+                           'qos_policy_id': None},
+                          {'id': 'top_id_3', 'name': 'top',
+                           'qos_policy_id': None}]
         for _ports in (ports1, ports2, ports3, ports4):
             ports.extend(_ports)
         six.assertCountEqual(self, expected_ports, ports)
@@ -963,9 +1119,11 @@ class PluginTest(unittest.TestCase,
         ports3 = fake_plugin.get_ports(neutron_context,
                                        filters={'id': ['top_id_4']})
         self.assertEqual([{'id': 'top_id_0', 'name': 'top',
+                           'qos_policy_id': None,
                            'fixed_ips': [{'subnet_id': 'top_subnet_id',
                                           'ip_address': '10.0.0.1'}]}], ports1)
-        self.assertEqual([{'id': 'top_id_1', 'name': 'bottom'}], ports2)
+        self.assertEqual([{'id': 'top_id_1', 'name': 'bottom',
+                           'qos_policy_id': None}], ports2)
         self.assertEqual([], ports3)
 
         TOP_ROUTERS.append({'id': 'router_id'})
@@ -990,9 +1148,9 @@ class PluginTest(unittest.TestCase,
         ports = fake_plugin.get_ports(neutron_context,
                                       filters={'device_id': ['router_id']})
         expected = [{'id': 'top_id_1', 'name': 'bottom',
-                     'device_id': 'router_id'},
+                     'qos_policy_id': None, 'device_id': 'router_id'},
                     {'id': 'top_id_2', 'name': 'bottom',
-                     'device_id': 'router_id'}]
+                     'qos_policy_id': None, 'device_id': 'router_id'}]
         six.assertCountEqual(self, expected, ports)
 
     @patch.object(context, 'get_context_from_neutron_context')
@@ -3371,6 +3529,97 @@ class PluginTest(unittest.TestCase,
         self._test_update_default_sg(fake_plugin, q_ctx, t_ctx,
                                      'pod_id_1', TOP_SGS,
                                      TOP_SG_RULES, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_policy(self, mock_context):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_create_policy(fake_plugin, q_ctx, t_ctx)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_policy(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_update_policy(fake_plugin, q_ctx, t_ctx, 'pod_id_1',
+                                 BOTTOM1_POLICIES)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_policy(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_delete_policy(fake_plugin, q_ctx, t_ctx, 'pod_id_1',
+                                 BOTTOM1_POLICIES)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_policy_rule(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_create_policy_rule(fake_plugin, q_ctx, t_ctx, 'pod_id_1',
+                                      BOTTOM1_POLICIES)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_policy_rule(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_delete_policy_rule(fake_plugin, q_ctx, t_ctx, 'pod_id_1',
+                                      BOTTOM1_POLICIES)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_network_with_qos_policy(self, mock_context):
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        q_ctx = FakeNeutronContext()
+        mock_context.return_value = t_ctx
+
+        tenant_id = TEST_TENANT_ID
+        net_id, _, _, _ = \
+            self._prepare_network_subnet(tenant_id, t_ctx, 'pod_1', 1)
+
+        self._test_update_network_with_qos_policy(fake_plugin, fake_client,
+                                                  q_ctx, t_ctx, 'pod_id_1',
+                                                  net_id, BOTTOM1_POLICIES)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port_with_qos_policy(self, mock_context):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        q_ctx = FakeNeutronContext()
+        fake_client = FakeClient('pod_1')
+        t_ctx = context.get_db_context()
+        fake_plugin = FakePlugin()
+        mock_context.return_value = t_ctx
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, t_ctx, 'pod_1', 1)
+        t_port_id, b_port_id = self._prepare_port_test(
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+
+        self._test_update_port_with_qos_policy(fake_plugin, fake_client,
+                                               q_ctx, t_ctx,
+                                               'pod_id_1', t_port_id,
+                                               b_port_id, BOTTOM1_POLICIES)
 
     @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
     @patch.object(FakeClient, 'update_ports')
