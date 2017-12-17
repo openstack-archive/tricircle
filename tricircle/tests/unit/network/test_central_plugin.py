@@ -38,6 +38,7 @@ from neutron.db import ipam_pluggable_backend
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
+import neutron.objects.base as base_object
 from neutron.services.qos.drivers import manager as q_manager
 
 from neutron.plugins.ml2 import managers as n_managers
@@ -113,15 +114,17 @@ FakeNeutronContext = test_utils.FakeNeutronContext
 
 
 def _fill_external_gateway_info(router):
-    if router.gw_port:
-        ext_gw_info = {
-            'network_id': router.gw_port['network_id'],
-            'external_fixed_ips': [
-                {'subnet_id': ip["subnet_id"],
-                 'ip_address': ip["ip_address"]}
-                for ip in router.gw_port['fixed_ips']]}
-    else:
-        ext_gw_info = None
+    ext_gw_info = None
+    for router_port in TOP_ROUTERPORTS:
+        if router_port['router_id'] == router['id']:
+            ext_gw_info = {
+                'network_id': router_port['port']['network_id'],
+                'external_fixed_ips': [
+                    {'subnet_id': ip["subnet_id"],
+                     'ip_address': ip["ip_address"]}
+                    for ip in router_port['port']['fixed_ips']]}
+            break
+
     router['external_gateway_info'] = ext_gw_info
     return router
 
@@ -447,7 +450,7 @@ class FakeClient(test_utils.FakeClient):
         fips = self.list_resources('floatingip', ctx, filters)
         for fip in fips:
             if 'port_id' not in fip:
-                fip['port_id'] = None
+                fip['port_id'] = fip.get('fixed_port_id', None)
         return fips
 
     def update_floatingips(self, ctx, _id, body):
@@ -585,11 +588,21 @@ class FakeClient(test_utils.FakeClient):
 
 
 def update_floatingip_dict(fip_dict, update_dict):
+    for field in ('subnet_id', 'floating_ip_address', 'tenant_id'):
+        update_dict.pop(field, None)
+
+    def _update():
+        if type(fip_dict) == test_utils.DotDict:
+            fip_dict.update(update_dict)
+        else:
+            for key in update_dict:
+                setattr(fip_dict, key, update_dict[key])
+
     if not update_dict.get('port_id'):
         update_dict['fixed_port_id'] = None
         update_dict['fixed_ip_address'] = None
         update_dict['router_id'] = None
-        fip_dict.update(update_dict)
+        _update()
         return fip_dict
     for port in TOP_PORTS:
         if port['id'] != update_dict['port_id']:
@@ -604,7 +617,7 @@ def update_floatingip_dict(fip_dict, update_dict):
                 if _port['network_id'] == port['network_id']:
                     update_dict['router_id'] = router_port['router_id']
 
-    fip_dict.update(update_dict)
+    _update()
     return fip_dict
 
 
@@ -838,7 +851,17 @@ class FakePlugin(plugin.TricirclePlugin,
             network['tenant_id'] = network['project_id']
         return network
 
-    def _make_subnet_dict(self, subnet, fields=None, context=None):
+    def _make_subnet_dict(self, ori_subnet, fields=None, context=None):
+        if hasattr(ori_subnet, 'to_dict'):
+            subnet = ori_subnet.to_dict()
+        elif hasattr(ori_subnet, '_as_dict'):
+            subnet = ori_subnet._as_dict()
+        else:
+            subnet = ori_subnet
+        if type(subnet.get('gateway_ip')) == netaddr.ip.IPAddress:
+            subnet['gateway_ip'] = str(subnet['gateway_ip'])
+        if 'project_id' in subnet:
+            subnet['tenant_id'] = subnet['project_id']
         return subnet
 
     def _make_port_dict(self, ori_port, fields=None, process_extensions=True):
@@ -947,6 +970,11 @@ def fake_get_plugin(alias=plugin_constants.CORE):
 
 def fake_filter_non_model_columns(data, model):
     return data
+
+
+@classmethod
+def fake_load_obj(cls, context, db_obj):
+    return db_obj
 
 
 class FakeTrunkPlugin(object):
@@ -1822,6 +1850,8 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(base_object.NeutronDbObject, '_load_object',
+                  new=fake_load_obj)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):
         tenant_id = TEST_TENANT_ID
@@ -1909,7 +1939,7 @@ class PluginTest(unittest.TestCase,
 
         update_body = {
             'subnet':
-                {'enable_dhcp': 'True'}
+                {'enable_dhcp': True}
         }
         body_copy = copy.deepcopy(update_body)
         # from disable dhcp to enable dhcp, create a new dhcp port
@@ -1925,7 +1955,7 @@ class PluginTest(unittest.TestCase,
 
         update_body = {
             'subnet':
-                {'enable_dhcp': 'False'}
+                {'enable_dhcp': False}
         }
         body_copy = copy.deepcopy(update_body)
         # from enable dhcp to disable dhcp, reserved dhcp port
@@ -3075,7 +3105,9 @@ class PluginTest(unittest.TestCase,
                                         'ip_address': '100.64.0.5'}]}}})
         # create floating ip
         fip_body = {'floating_network_id': e_net['id'],
-                    'tenant_id': tenant_id}
+                    'tenant_id': tenant_id,
+                    'subnet_id': None,
+                    'floating_ip_address': None}
         fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
         # add router interface
         fake_plugin.add_router_interface(q_ctx, t_router_id,
@@ -3146,7 +3178,9 @@ class PluginTest(unittest.TestCase,
         db_api.delete_mappings_by_bottom_id(t_ctx, b_port_id)
         fip_body = {'floating_network_id': e_net['id'],
                     'port_id': t_port_id,
-                    'tenant_id': TEST_TENANT_ID}
+                    'tenant_id': TEST_TENANT_ID,
+                    'subnet_id': None,
+                    'floating_ip_address': None}
         fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
         self.assertFalse(mock_create.called)
         fake_plugin.delete_floatingip(q_ctx, fip['id'])
@@ -3157,7 +3191,9 @@ class PluginTest(unittest.TestCase,
                                        TEST_TENANT_ID, constants.RT_PORT)
         fip_body = {'floating_network_id': e_net['id'],
                     'port_id': t_port_id,
-                    'tenant_id': TEST_TENANT_ID}
+                    'tenant_id': TEST_TENANT_ID,
+                    'subnet_id': None,
+                    'floating_ip_address': None}
         fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
         b_ext_net_id = db_api.get_bottom_id_by_top_id_region_name(
             t_ctx, e_net['id'], 'pod_2', constants.RT_NETWORK)

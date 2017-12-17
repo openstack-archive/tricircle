@@ -47,6 +47,7 @@ from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.extensions import providernet as provider
 from neutron.objects.qos import policy as policy_object
+import neutron.objects.router as router_object
 from neutron.plugins.ml2 import managers as n_managers
 from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import external_net
@@ -1969,11 +1970,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         :return: None
         """
         try:
-            with context.session.begin():
-                fip_qry = context.session.query(l3_db.FloatingIP)
-                floating_ips = fip_qry.filter_by(id=_id)
-                for floating_ip in floating_ips:
-                    floating_ip.update(org_data)
+            router_object.FloatingIP.update_objects(context, org_data, id=_id)
         except Exception as e:
             # log the exception and re-raise it
             LOG.exception('Fail to rollback floating ip data, reason: '
