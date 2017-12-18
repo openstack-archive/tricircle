@@ -61,6 +61,7 @@ from neutron_lib import constants
 from neutron_lib import exceptions
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import directory
+import neutronclient.client as neutronclient
 import neutronclient.common.exceptions as q_cli_exceptions
 
 from sqlalchemy import sql
@@ -185,6 +186,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         self.extension_manager.initialize()
         self.type_manager.initialize()
         self.helper = helper.NetworkHelper(self)
+        neutronclient.USER_AGENT = t_constants.CENTRAL
         qos_driver.register()
 
     def _setup_rpc(self):

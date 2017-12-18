@@ -218,3 +218,11 @@ job_primary_resource_map = {
 # admin API request path
 ROUTING_PATH = '/v1.0/routings'
 JOB_PATH = '/v1.0/jobs'
+
+USER_AGENT = 'User-Agent'
+# The name of the source flag when the request is from central Neutron
+CENTRAL = 'central-neutronclient'
+# The name of the source flag when the request is from local Neutron
+LOCAL = 'local-neutronclient'
+
+REQUEST_SOURCE_TYPE = set([CENTRAL, LOCAL])
