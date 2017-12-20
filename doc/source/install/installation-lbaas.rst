@@ -204,7 +204,7 @@ Create the health management interface for Octavia in RegionOne.
 
 .. note:: As shown in the console, DHCP server allocates 192.168.1.5 as the
    IP of the health management interface, i.e., 0-hm. Hence, we need to
-   modify the /etc/ocatvia/octavia.conf file to make Octavia aware of it and
+   modify the /etc/octavia/octavia.conf file to make Octavia aware of it and
    use the resources we just created, including health management interface,
    amphora security group and so on.
 
@@ -323,7 +323,7 @@ Create the health management interface for Octavia in RegionTwo.
    is the bound and listened by health manager of Octavia. Please note that
    it will be used in the configuration file of Octavia.
 
-Modify the /etc/ocatvia/octavia.conf in node2.
+Modify the /etc/octavia/octavia.conf in node2.
 
 .. csv-table::
    :header: "Option", "Description", "Example"
