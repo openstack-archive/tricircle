@@ -107,6 +107,9 @@ class DotDict(dict):
             return dummy_value_map[item]
         return self.get(item)
 
+    def __setattr__(self, name, value):
+        self[name] = value
+
     def to_dict(self):
         return self
 
@@ -118,6 +121,11 @@ class DotDict(dict):
 
     def save(self, session=None):
         pass
+
+    def update_fields(self, obj_data):
+        for k, v in obj_data.items():
+            if k in self:
+                setattr(self, k, v)
 
 
 class DotList(list):
