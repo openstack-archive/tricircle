@@ -153,7 +153,7 @@ well as a listener, a pool, and two members in subnet1. When adding an instance
 of subnet2 located in region two, the local neutron-lbaas queries the central
 neutron whether subnet2 exist or not. If subnet2 exists, the local
 neutron-lbaas employ octavia to plug a port of subnet2 to the amphora. This
-triggers corss-region vxlan netowrking process, then the amphora can reach
+triggers cross-region vxlan networking process, then the amphora can reach
 the members. As a result, the LBaaS in multiple regions works.
 
 Please note that LBaaS in multiple regions should not be applied to the local
