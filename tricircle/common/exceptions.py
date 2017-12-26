@@ -244,3 +244,8 @@ class RouterNetworkLocationMismatch(exceptions.InvalidInput):
     def __init__(self, router_az_hints, net_az_hints):
         super(RouterNetworkLocationMismatch, self).__init__(
             router_az_hint=router_az_hints, net_az_hints=net_az_hints)
+
+
+class ResourceIsInDeleting(TricircleException):
+    message = 'resource is in deleting now'
+    code = 204
