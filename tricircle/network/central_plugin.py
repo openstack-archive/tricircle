@@ -23,10 +23,6 @@ from oslo_db.sqlalchemy import utils as sa_utils
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
-from neutron.callbacks import events
-from neutron.callbacks import exceptions as callbacks_exc
-from neutron.callbacks import registry
-from neutron.callbacks import resources
 import neutron.common.exceptions as ml2_exceptions
 from neutron.conf.plugins.ml2 import config  # noqa
 from neutron.db import _resource_extend as resource_extend
@@ -56,6 +52,10 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
 from neutron_lib.api.validators import availability_zone as az_validator
+from neutron_lib.callbacks import events
+from neutron_lib.callbacks import exceptions as callbacks_exc
+from neutron_lib.callbacks import registry
+from neutron_lib.callbacks import resources
 import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
 from neutron_lib import exceptions
