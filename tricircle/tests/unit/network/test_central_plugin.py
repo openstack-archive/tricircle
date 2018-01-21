@@ -65,12 +65,7 @@ from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.central_plugin as plugin
 from tricircle.network import central_qos_plugin
-from tricircle.network.drivers import type_flat
-from tricircle.network.drivers import type_local
-from tricircle.network.drivers import type_vlan
-from tricircle.network.drivers import type_vxlan
 from tricircle.network import helper
-from tricircle.network import managers
 from tricircle.network import qos_driver
 from tricircle.tests.unit.network import test_qos
 from tricircle.tests.unit.network import test_security_groups
@@ -734,11 +729,6 @@ class FakeRPCAPI(FakeBaseRPCAPI):
             ctxt, payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
 
 
-class FakeExtension(object):
-    def __init__(self, ext_obj):
-        self.obj = ext_obj
-
-
 class FakeHelper(helper.NetworkHelper):
     def _get_client(self, region_name=None):
         return FakeClient(region_name)
@@ -755,34 +745,6 @@ class FakeHelper(helper.NetworkHelper):
             q_ctx = FakeNeutronContext()
         return super(FakeHelper, self)._get_top_element(
             t_ctx, q_ctx, _type, _id)
-
-
-class FakeTypeManager(managers.TricircleTypeManager):
-    def _register_types(self):
-        local_driver = type_local.LocalTypeDriver()
-        self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
-        vlan_driver = type_vlan.VLANTypeDriver()
-        self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
-        vxlan_driver = type_vxlan.VxLANTypeDriver()
-        self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
-        local_driver = type_flat.FlatTypeDriver()
-        self.drivers[constants.NT_FLAT] = FakeExtension(local_driver)
-
-    def extend_network_dict_provider(self, cxt, net):
-        target_net = None
-        for t_net in TOP_NETS:
-            if t_net['id'] == net['id']:
-                target_net = t_net
-        if not target_net:
-            return
-        for segment in TOP_SEGMENTS:
-            if target_net['id'] == segment['network_id']:
-                target_net['provider:network_type'] = segment['network_type']
-                target_net[
-                    'provider:physical_network'] = segment['physical_network']
-                target_net[
-                    'provider:segmentation_id'] = segment['segmentation_id']
-                break
 
 
 class FakeExtensionManager(n_managers.ExtensionManager):
@@ -821,7 +783,7 @@ class FakePlugin(plugin.TricirclePlugin,
         self.set_ipam_backend()
         self.helper = FakeHelper(self)
         self.xjob_handler = FakeRPCAPI(self)
-        self.type_manager = FakeTypeManager()
+        self.type_manager = test_utils.FakeTypeManager()
         self.extension_manager = FakeExtensionManager()
         self.extension_manager.initialize()
         self.driver_manager = FakeQosServiceDriverManager()
@@ -858,6 +820,10 @@ class FakePlugin(plugin.TricirclePlugin,
             subnet = ori_subnet._as_dict()
         else:
             subnet = ori_subnet
+        if 'ipv6_ra_mode' not in subnet:
+            subnet['ipv6_ra_mode'] = None
+        if 'ipv6_address_mode' not in subnet:
+            subnet['ipv6_address_mode'] = None
         if type(subnet.get('gateway_ip')) == netaddr.ip.IPAddress:
             subnet['gateway_ip'] = str(subnet['gateway_ip'])
         if 'project_id' in subnet:

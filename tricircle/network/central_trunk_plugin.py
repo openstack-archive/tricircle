@@ -307,10 +307,10 @@ class TricircleTrunkPlugin(plugin.TrunkPlugin):
     def add_subports(self, context, trunk_id, subports):
         t_ctx = t_context.get_context_from_neutron_context(context)
         with context.session.begin():
-            res = super(TricircleTrunkPlugin, self).add_subports(
-                context, trunk_id, subports)
             self.update_subports_device_id(context, subports, trunk_id,
                                            t_constants.DEVICE_OWNER_SUBPORT)
+            res = super(TricircleTrunkPlugin, self).add_subports(
+                context, trunk_id, subports)
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, trunk_id, t_constants.RT_TRUNK)
             if mappings:
@@ -323,9 +323,9 @@ class TricircleTrunkPlugin(plugin.TrunkPlugin):
     def remove_subports(self, context, trunk_id, subports):
         t_ctx = t_context.get_context_from_neutron_context(context)
         with context.session.begin():
+            self.update_subports_device_id(context, subports, '', '')
             res = super(TricircleTrunkPlugin, self).remove_subports(
                 context, trunk_id, subports)
-            self.update_subports_device_id(context, subports, '', '')
             mappings = db_api.get_bottom_mappings_by_top_id(
                 t_ctx, trunk_id, t_constants.RT_TRUNK)
             if mappings:

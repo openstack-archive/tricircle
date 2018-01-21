@@ -215,7 +215,7 @@ def fake_get_min_search_step(self):
 
 class FakeCorePlugin(central_plugin.TricirclePlugin):
     def __init__(self):
-        pass
+        self.type_manager = test_utils.FakeTypeManager()
 
     def get_port(self, context, port_id):
         return {portbindings.HOST_ID: None,
@@ -242,6 +242,10 @@ class PluginTest(unittest.TestCase):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
         self.context = context.Context()
+        cfg.CONF.set_override('tenant_network_types', ['local', 'vlan'],
+                              group='tricircle')
+        cfg.CONF.set_override('bridge_network_type', 'vlan',
+                              group='tricircle')
         xmanager.IN_TEST = True
 
         def fake_get_plugin(alias='core'):

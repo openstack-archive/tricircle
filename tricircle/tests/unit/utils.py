@@ -27,6 +27,11 @@ import neutron_lib.context as q_context
 import neutron_lib.objects.exceptions as q_obj_exceptions
 
 from tricircle.common import constants
+from tricircle.network.drivers import type_flat
+from tricircle.network.drivers import type_local
+from tricircle.network.drivers import type_vlan
+from tricircle.network.drivers import type_vxlan
+from tricircle.network import managers
 
 
 class ResourceStore(object):
@@ -622,3 +627,36 @@ class FakeClient(object):
                 updated = True
                 res.update(body[_type])
         return updated
+
+
+class FakeTypeManager(managers.TricircleTypeManager):
+    def _register_types(self):
+        local_driver = type_local.LocalTypeDriver()
+        self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
+        vlan_driver = type_vlan.VLANTypeDriver()
+        self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
+        vxlan_driver = type_vxlan.VxLANTypeDriver()
+        self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
+        local_driver = type_flat.FlatTypeDriver()
+        self.drivers[constants.NT_FLAT] = FakeExtension(local_driver)
+
+    def extend_network_dict_provider(self, cxt, net):
+        target_net = None
+        for t_net in get_resource_store().TOP_NETWORKS:
+            if t_net['id'] == net['id']:
+                target_net = t_net
+        if not target_net:
+            return
+        for segment in get_resource_store().TOP_NETWORKSEGMENTS:
+            if target_net['id'] == segment['network_id']:
+                target_net['provider:network_type'] = segment['network_type']
+                target_net[
+                    'provider:physical_network'] = segment['physical_network']
+                target_net[
+                    'provider:segmentation_id'] = segment['segmentation_id']
+                break
+
+
+class FakeExtension(object):
+    def __init__(self, ext_obj):
+        self.obj = ext_obj
