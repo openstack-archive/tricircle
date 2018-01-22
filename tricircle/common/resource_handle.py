@@ -94,7 +94,7 @@ class NeutronResourceHandle(ResourceHandle):
         'subnet': LIST | CREATE | DELETE | GET | UPDATE,
         'port': LIST | CREATE | DELETE | GET | UPDATE,
         'router': LIST | CREATE | DELETE | ACTION | GET | UPDATE,
-        'security_group': LIST | CREATE | GET,
+        'security_group': LIST | CREATE | GET | DELETE,
         'security_group_rule': LIST | CREATE | DELETE,
         'floatingip': LIST | CREATE | UPDATE | DELETE,
         'trunk': LIST | CREATE | UPDATE | GET | DELETE | ACTION,

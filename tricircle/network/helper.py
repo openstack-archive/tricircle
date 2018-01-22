@@ -971,11 +971,14 @@ class NetworkHelper(object):
 
     @staticmethod
     def get_real_shadow_resource_iterator(t_ctx, res_type, res_id):
-        shadow_res_type = t_constants.REAL_SHADOW_TYPE_MAP[res_type]
+        shadow_res_type = None
+        if res_type in t_constants.REAL_SHADOW_TYPE_MAP:
+            shadow_res_type = t_constants.REAL_SHADOW_TYPE_MAP[res_type]
         mappings = db_api.get_bottom_mappings_by_top_id(
             t_ctx, res_id, res_type)
-        mappings.extend(db_api.get_bottom_mappings_by_top_id(
-            t_ctx, res_id, shadow_res_type))
+        if shadow_res_type:
+            mappings.extend(db_api.get_bottom_mappings_by_top_id(
+                t_ctx, res_id, shadow_res_type))
 
         processed_pod_set = set()
         for pod, bottom_res_id in mappings:

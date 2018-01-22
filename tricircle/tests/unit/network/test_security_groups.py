@@ -13,9 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron.extensions import securitygroup as ext_sg
 from oslo_utils import uuidutils
 
 from tricircle.common import constants
+import tricircle.common.constants as t_constants
+import tricircle.common.exceptions as t_exceptions
 from tricircle.db import core
 from tricircle.db import models
 from tricircle.network import exceptions
@@ -260,3 +263,95 @@ class TricircleSecurityGroupTestMixin(object):
             self.assertTrue(self._compare_rule(
                 bottom1_sgs[0]['security_group_rules'][i],
                 top_sgs[0]['security_group_rules'][i]))
+
+    def _test_get_security_group(self, plugin, q_ctx, t_ctx,
+                                 pod_id, top_sgs, bottom1_sgs):
+        t_sg_id = uuidutils.generate_uuid()
+        t_rule1_id = uuidutils.generate_uuid()
+        t_rule2_id = uuidutils.generate_uuid()
+        b_sg_id = uuidutils.generate_uuid()
+        project_id = 'test_prject_id'
+        t_rule1 = self._build_test_rule(
+            t_rule1_id, t_sg_id, project_id, '10.0.0.0/24')
+        t_rule2 = self._build_test_rule(
+            t_rule2_id, t_sg_id, project_id, '192.168.56.0/24')
+        t_sg = {'id': t_sg_id, 'name': 'top_sg', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': [t_rule1, t_rule2]}
+        b_sg = {'id': b_sg_id, 'name': 'bottom_sg', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': [t_rule1, t_rule2]}
+        top_sgs.append(t_sg)
+        bottom1_sgs.append(b_sg)
+
+        route1 = {
+            'top_id': t_sg_id,
+            'pod_id': pod_id,
+            'bottom_id': b_sg_id,
+            'resource_type': constants.RT_SG}
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.ResourceRouting, route1)
+
+        # test get_sg for normal situation
+        res = plugin.get_security_group(q_ctx, t_sg_id)
+        self.assertTrue(res['id'] == t_sg_id and res['name'] == 'top_sg')
+
+        # test get_sg when the top_sg is under deleting
+        dict_para = {'resource_id': t_sg_id,
+                     'resource_type': t_constants.RT_SG}
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.DeletingResources,
+                                 dict_para)
+
+        q_ctx.USER_AGENT = t_constants.LOCAL
+        self.assertRaises(t_exceptions.ResourceNotFound,
+                          plugin.get_security_group,
+                          q_ctx, t_sg_id)
+
+        # test get_sg when the request is from user_agent
+        q_ctx.USER_AGENT = t_constants.USER_AGENT
+        self.assertRaises(t_exceptions.ResourceIsInDeleting,
+                          plugin.get_security_group,
+                          q_ctx, t_sg_id)
+
+    def _test_delete_security_group(self, plugin, q_ctx, t_ctx,
+                                    pod_id, top_sgs, bottom1_sgs):
+        t_sg_id = uuidutils.generate_uuid()
+        t_rule1_id = uuidutils.generate_uuid()
+        t_rule2_id = uuidutils.generate_uuid()
+        b_sg_id = uuidutils.generate_uuid()
+        project_id = 'test_prject_id'
+        t_rule1 = self._build_test_rule(
+            t_rule1_id, t_sg_id, project_id, '10.0.0.0/24')
+        t_rule2 = self._build_test_rule(
+            t_rule2_id, t_sg_id, project_id, '192.168.56.0/24')
+        t_sg = {'id': t_sg_id, 'name': 'top_sg', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': [t_rule1, t_rule2]}
+        b_sg = {'id': b_sg_id, 'name': 'bottom_sg', 'description': '',
+                'tenant_id': project_id,
+                'security_group_rules': [t_rule1, t_rule2]}
+        top_sgs.append(t_sg)
+        bottom1_sgs.append(b_sg)
+
+        route1 = {
+            'top_id': t_sg_id,
+            'pod_id': pod_id,
+            'bottom_id': b_sg_id,
+            'resource_type': constants.RT_SG}
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.ResourceRouting, route1)
+
+        # test delete_sg when sg is not exit
+        rand_id = uuidutils.generate_uuid()
+        self.assertRaises(ext_sg.SecurityGroupNotFound,
+                          plugin.delete_security_group, q_ctx, rand_id)
+        # when sg is under deleting from Local
+        dict_para = {'resource_id': t_sg_id,
+                     'resource_type': t_constants.RT_SG}
+        q_ctx.USER_AGENT = t_constants.LOCAL
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.DeletingResources,
+                                 dict_para)
+        self.assertRaises(t_exceptions.ResourceNotFound,
+                          plugin.delete_security_group, q_ctx, t_sg_id)

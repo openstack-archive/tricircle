@@ -499,6 +499,12 @@ class FakeClient(test_utils.FakeClient):
     def get_security_group(self, ctx, _id, fields=None, tenant_id=None):
         pass
 
+    def delete_security_groups(self, ctx, sg_id):
+        res_list = self._res_map[self.region_name]['security_group']
+        for sg in res_list:
+            if sg['id'] == sg_id:
+                res_list.remove(sg)
+
     def get_qos_policies(self, ctx, policy_id):
         rules = {'rules': []}
         rule_list = \
@@ -864,6 +870,9 @@ class FakePlugin(plugin.TricirclePlugin,
 
     def _make_security_group_dict(self, security_group, fields=None):
         return security_group
+
+    def _get_port_security_group_bindings(self, context, filters):
+        return None
 
 
 def fake_get_context_from_neutron_context(q_context):
@@ -3531,6 +3540,30 @@ class PluginTest(unittest.TestCase,
         self._test_update_default_sg(fake_plugin, q_ctx, t_ctx,
                                      'pod_id_1', TOP_SGS,
                                      TOP_SG_RULES, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_get_security_group(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_get_security_group(fake_plugin, q_ctx, t_ctx,
+                                      'pod_id_1', TOP_SGS, BOTTOM1_SGS)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_security_group(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        self._test_delete_security_group(fake_plugin, q_ctx, t_ctx,
+                                         'pod_id_1', TOP_SGS, BOTTOM1_SGS)
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_policy(self, mock_context):
