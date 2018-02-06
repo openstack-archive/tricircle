@@ -20,7 +20,6 @@ import traceback
 import yaml
 
 from openstack import connection
-from openstack import profile
 
 from tricircle.tests.network_sdk import network_service
 from tricircle.tests.tricircle_sdk import multiregion_network_service
@@ -87,46 +86,63 @@ class SDKRunner(object):
     type_plural_map = {
         'qos_policy': 'qos_policie'}
 
-    def __init__(self, auth_url, project, username, password):
+    def __init__(self, auth_url, project, username, password,
+                 project_domain_id, user_domain_id):
         self.res_serv_map = {}
         for serv in self.serv_reslist_map:
             for res in self.serv_reslist_map[serv]:
                 self.res_serv_map[res] = serv
 
         self.connection_map = {}
-        param = {
+        auth = {
             'auth_url': auth_url,
             'project_name': project,
             'user_domain_name': 'default',
             'project_domain_name': 'default',
             'username': username,
-            'password': password}
+            'password': password,
+            'project_domain_id': project_domain_id,
+            'user_domain_id': user_domain_id}
 
         for region in ('CentralRegion', 'RegionOne', 'RegionTwo'):
-            prof = profile.Profile()
+            extra_services = []
             if region == 'CentralRegion':
                 serv = multiregion_network_service.MultiregionNetworkService(
                     version='v1')
-                prof._add_service(serv)
+                extra_services.append(serv)
             net_serv = network_service.NetworkService(version='v2')
-            prof._add_service(net_serv)
-            prof.set_region(profile.Profile.ALL, region)
-            param['profile'] = prof
-            conn = connection.Connection(**param)
+            extra_services.append(net_serv)
+            conn = connection.Connection(region_name=region,
+                                         auth=auth,
+                                         extra_services=extra_services)
+            conn.config.config['network_sdk_service_type'] = 'network'
+            conn.config.config['tricircle_sdk_service_type'] = 'tricircle'
+            conn.config.config['network_sdk_api_version'] = 'v2'
+            conn.config.config['tricircle_sdk_api_version'] = 'v1'
+            for service in extra_services:
+                conn.add_service(service)
             self.connection_map[region] = conn
 
     def create(self, region, _type, params):
         conn = self.connection_map[self.region_map[region]]
         serv = self.res_serv_map[_type]
         _type = self.res_alias_map.get(_type, _type)
-        proxy = getattr(conn, serv)
+        desc = getattr(conn, serv)
+        try:
+            proxy = desc.__get__(conn, '')
+        except Exception:
+            proxy = desc
         return getattr(proxy, 'create_%s' % _type)(**params)
 
     def action(self, region, _type, target, method, params):
         conn = self.connection_map[self.region_map[region]]
         serv = self.res_serv_map[_type]
         _type = self.res_alias_map.get(_type, _type)
-        proxy = getattr(conn, serv)
+        desc = getattr(conn, serv)
+        try:
+            proxy = desc.__get__(conn, '')
+        except Exception:
+            proxy = desc
         if method in ('update', 'delete'):
             method = '%s_%s' % (method, _type)
         getattr(proxy, method)(target, **params)
@@ -135,7 +151,11 @@ class SDKRunner(object):
         conn = self.connection_map[self.region_map[region]]
         serv = self.res_serv_map[_type]
         _type = self.res_alias_map.get(_type, _type)
-        proxy = getattr(conn, serv)
+        desc = getattr(conn, serv)
+        try:
+            proxy = desc.__get__(conn, '')
+        except Exception:
+            proxy = desc
         _type = self.type_plural_map.get(_type, _type)
         _list = list(getattr(proxy, '%ss' % _type)(**params))
         if get_one:

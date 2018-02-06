@@ -12,16 +12,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from openstack import resource2
-
-from tricircle.tests.tricircle_sdk import multiregion_network_service
+from openstack import resource as resource2
 
 
 class Job(resource2.Resource):
     resource_key = 'job'
     resources_key = 'jobs'
     base_path = '/jobs'
-    service = multiregion_network_service.MultiregionNetworkService()
 
     allow_list = True
     allow_get = True

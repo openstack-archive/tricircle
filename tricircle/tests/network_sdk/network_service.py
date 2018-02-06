@@ -10,15 +10,18 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from openstack import service_description
 from openstack import service_filter
 
+from tricircle.tests.network_sdk.v2 import _proxy
 
-class NetworkService(service_filter.ServiceFilter):
+
+class NetworkService(service_description.ServiceDescription):
     """The network service."""
 
     valid_versions = [service_filter.ValidVersion('v2', 'v2.0')]
+    proxy_class = _proxy.Proxy
 
     def __init__(self, version=None):
         """Create a network service."""
-        super(NetworkService, self).__init__(service_type='network',
-                                             version=version)
+        super(NetworkService, self).__init__(service_type='network_sdk')

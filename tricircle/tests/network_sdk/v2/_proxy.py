@@ -33,17 +33,17 @@ class Proxy(_proxy.Proxy):
         return self._update(_trunk.Trunk, trunk, **attrs)
 
     def trunks(self, **query):
-        return self._list(_trunk.Trunk, pagination=False, **query)
+        return self._list(_trunk.Trunk, **query)
 
     def add_subports(self, trunk, subports=[]):
         trunk = self._get_resource(_trunk.Trunk, trunk)
         body = {'sub_ports': subports}
-        return trunk.add_subports(self._session, **body)
+        return trunk.add_subports(self, **body)
 
     def remove_subports(self, trunk, subports=[]):
         trunk = self._get_resource(_trunk.Trunk, trunk)
         body = {'sub_ports': subports}
-        return trunk.remove_subports(self._session, **body)
+        return trunk.remove_subports(self, **body)
 
     # port pair
     def create_port_pair(self, **attrs):
@@ -56,7 +56,7 @@ class Proxy(_proxy.Proxy):
         return self._update(_pp.PortPair, pp, **attrs)
 
     def port_pairs(self, **query):
-        return self._list(_pp.PortPair, pagination=False, **query)
+        return self._list(_pp.PortPair, **query)
 
     # port pair group
     def create_port_pair_group(self, **attrs):
@@ -69,7 +69,7 @@ class Proxy(_proxy.Proxy):
         return self._update(_ppg.PortPairGroup, ppg, **attrs)
 
     def port_pair_groups(self, **query):
-        return self._list(_ppg.PortPairGroup, pagination=False, **query)
+        return self._list(_ppg.PortPairGroup, **query)
 
     # port chain
     def create_port_chain(self, **attrs):
@@ -82,7 +82,7 @@ class Proxy(_proxy.Proxy):
         return self._update(_pc.PortChain, pc, **attrs)
 
     def port_chains(self, **query):
-        return self._list(_pc.PortChain, pagination=False, **query)
+        return self._list(_pc.PortChain, **query)
 
     # flow classifier
     def create_flow_classifier(self, **attrs):
@@ -95,4 +95,4 @@ class Proxy(_proxy.Proxy):
         return self._update(_fc.FlowClassifier, fc, **attrs)
 
     def flow_classifiers(self, **query):
-        return self._list(_fc.FlowClassifier, pagination=False, **query)
+        return self._list(_fc.FlowClassifier, **query)

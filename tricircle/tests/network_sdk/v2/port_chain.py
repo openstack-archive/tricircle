@@ -10,16 +10,13 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from openstack import resource2
-
-from tricircle.tests.network_sdk import network_service
+from openstack import resource
 
 
-class PortChain(resource2.Resource):
+class PortChain(resource.Resource):
     resource_key = 'port_chain'
     resources_key = 'port_chains'
     base_path = '/sfc/port_chains'
-    service = network_service.NetworkService()
 
     allow_create = True
     allow_get = True
@@ -27,11 +24,11 @@ class PortChain(resource2.Resource):
     allow_delete = True
     allow_list = True
 
-    _query_mapping = resource2.QueryParameters('name')
+    _query_mapping = resource.QueryParameters('name')
 
-    name = resource2.Body('name')
-    description = resource2.Body('description')
-    port_pair_groups = resource2.Body('port_pair_groups', type=list)
-    flow_classifiers = resource2.Body('flow_classifiers', type=list)
-    chain_parameters = resource2.Body('chain_parameters', type=dict)
-    chain_id = resource2.Body('chain_id')
+    name = resource.Body('name')
+    description = resource.Body('description')
+    port_pair_groups = resource.Body('port_pair_groups', type=list)
+    flow_classifiers = resource.Body('flow_classifiers', type=list)
+    chain_parameters = resource.Body('chain_parameters', type=dict)
+    chain_id = resource.Body('chain_id')

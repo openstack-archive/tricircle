@@ -18,8 +18,10 @@ import task_runner
 
 
 if __name__ == '__main__':
-    yaml_path, auth_url, project, user, password = sys.argv[1:]
-    runner = task_runner.SDKRunner(auth_url, project, user, password)
+    (yaml_path, auth_url, project, user, password,
+     project_domain_id, user_domain_id) = sys.argv[1:]
+    runner = task_runner.SDKRunner(auth_url, project, user,
+                                   password, project_domain_id, user_domain_id)
     engine = task_runner.RunnerEngine(yaml_path, runner)
 
     error_msg = engine.run_task_sets()
