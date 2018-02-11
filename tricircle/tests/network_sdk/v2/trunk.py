@@ -10,17 +10,14 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from openstack import resource2
+from openstack import resource
 from openstack import utils
 
-from tricircle.tests.network_sdk import network_service
 
-
-class Trunk(resource2.Resource):
+class Trunk(resource.Resource):
     resource_key = 'trunk'
     resources_key = 'trunks'
     base_path = '/trunks'
-    service = network_service.NetworkService()
 
     allow_create = True
     allow_get = True
@@ -28,17 +25,19 @@ class Trunk(resource2.Resource):
     allow_delete = True
     allow_list = True
 
-    status = resource2.Body('status')
-    name = resource2.Body('name')
-    port_id = resource2.Body('port_id')
-    sub_ports = resource2.Body('sub_ports', type=list)
+    status = resource.Body('status')
+    name = resource.Body('name')
+    port_id = resource.Body('port_id')
+    sub_ports = resource.Body('sub_ports', type=list)
 
     def add_subports(self, session, **body):
         url = utils.urljoin(self.base_path, self.id, 'add_subports')
-        resp = session.put(url, endpoint_filter=self.service, json=body)
+        resp = session.put(url, endpoint_filter={'service_type': 'network'},
+                           json=body)
         return resp.json()
 
     def remove_subports(self, session, **body):
         url = utils.urljoin(self.base_path, self.id, 'remove_subports')
-        resp = session.put(url, endpoint_filter=self.service, json=body)
+        resp = session.put(url, endpoint_filter={'service_type': 'network'},
+                           json=body)
         return resp.json()

@@ -10,16 +10,13 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from openstack import resource2
-
-from tricircle.tests.network_sdk import network_service
+from openstack import resource
 
 
-class PortPairGroup(resource2.Resource):
+class PortPairGroup(resource.Resource):
     resource_key = 'port_pair_group'
     resources_key = 'port_pair_groups'
     base_path = '/sfc/port_pair_groups'
-    service = network_service.NetworkService()
 
     allow_create = True
     allow_get = True
@@ -27,10 +24,10 @@ class PortPairGroup(resource2.Resource):
     allow_delete = True
     allow_list = True
 
-    _query_mapping = resource2.QueryParameters('name')
+    _query_mapping = resource.QueryParameters('name')
 
-    name = resource2.Body('name')
-    description = resource2.Body('description')
-    port_pairs = resource2.Body('port_pairs', type=list)
-    port_pair_group_parameters = resource2.Body('port_pair_group_parameters',
-                                                type=dict)
+    name = resource.Body('name')
+    description = resource.Body('description')
+    port_pairs = resource.Body('port_pairs', type=list)
+    port_pair_group_parameters = resource.Body('port_pair_group_parameters',
+                                               type=dict)

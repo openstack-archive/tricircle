@@ -10,16 +10,13 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from openstack import resource2
-
-from tricircle.tests.network_sdk import network_service
+from openstack import resource
 
 
-class FlowClassifier(resource2.Resource):
+class FlowClassifier(resource.Resource):
     resource_key = 'flow_classifier'
     resources_key = 'flow_classifiers'
     base_path = '/sfc/flow_classifiers'
-    service = network_service.NetworkService()
 
     allow_create = True
     allow_get = True
@@ -27,18 +24,18 @@ class FlowClassifier(resource2.Resource):
     allow_delete = True
     allow_list = True
 
-    _query_mapping = resource2.QueryParameters('name')
+    _query_mapping = resource.QueryParameters('name')
 
-    name = resource2.Body('name')
-    description = resource2.Body('description')
-    ethertype = resource2.Body('ingress')
-    protocol = resource2.Body('protocol')
-    source_port_range_min = resource2.Body('source_port_range_min')
-    source_port_range_max = resource2.Body('source_port_range_max')
-    destination_port_range_min = resource2.Body('destination_port_range_min')
-    destination_port_range_max = resource2.Body('destination_port_range_max')
-    source_ip_prefix = resource2.Body('source_ip_prefix')
-    destination_ip_prefix = resource2.Body('destination_ip_prefix')
-    logical_source_port = resource2.Body('logical_source_port')
-    logical_destination_port = resource2.Body('logical_destination_port')
-    l7_parameters = resource2.Body('l7_parameters', type=dict)
+    name = resource.Body('name')
+    description = resource.Body('description')
+    ethertype = resource.Body('ingress')
+    protocol = resource.Body('protocol')
+    source_port_range_min = resource.Body('source_port_range_min')
+    source_port_range_max = resource.Body('source_port_range_max')
+    destination_port_range_min = resource.Body('destination_port_range_min')
+    destination_port_range_max = resource.Body('destination_port_range_max')
+    source_ip_prefix = resource.Body('source_ip_prefix')
+    destination_ip_prefix = resource.Body('destination_ip_prefix')
+    logical_source_port = resource.Body('logical_source_port')
+    logical_destination_port = resource.Body('logical_destination_port')
+    l7_parameters = resource.Body('l7_parameters', type=dict)

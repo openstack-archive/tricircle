@@ -12,11 +12,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from openstack import proxy2
+from openstack import proxy
 
 from tricircle.tests.tricircle_sdk.v1 import job
 
 
-class Proxy(proxy2.BaseProxy):
+class Proxy(proxy.BaseProxy):
     def jobs(self, **query):
-        return self._list(job.Job, pagination=False, **query)
+        return self._list(job.Job, **query)

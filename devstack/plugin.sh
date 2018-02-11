@@ -413,6 +413,8 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
     if [[ "$TRICIRCLE_DEPLOY_WITH_CELL" == "True" ]]; then
         # update the local nova.conf
         init_local_nova_conf
+    else
+        iniset $NOVA_CONF glance region_name $REGION_NAME
     fi
 
     # add default bridges br-vlan, br-ext if needed, ovs-vsctl
