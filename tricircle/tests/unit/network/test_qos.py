@@ -140,19 +140,16 @@ class TricircleQosTestMixin(object):
                                        pod_id, project_id, constants.RT_QOS)
 
         rule_data = {
-            "bandwidth_limit_rule": {
-                "max_kbps": "10000",
-                "max_burst_kbps": "20000"
+            "minimum_bandwidth_rule": {
+                "min_kbps": "1000"
             }
         }
 
         t_rule = plugin.create_policy_rule(
-            q_ctx, rule.QosBandwidthLimitRule, res['id'], rule_data)
+            q_ctx, rule.QosMinimumBandwidthRule, res['id'], rule_data)
 
-        self.assertEqual(2, len(bottom_policy[0]['rules']))
+        self.assertEqual(1, len(bottom_policy[0]['rules']))
         b_rule = bottom_policy[0]['rules'][0]
-        self.assertEqual(b_policy_id, b_rule['qos_policy_id'])
-        b_rule = bottom_policy[0]['rules'][1]
         self.assertEqual(b_policy_id, b_rule['qos_policy_id'])
 
     def _test_delete_policy_rule(self, plugin, q_ctx,
