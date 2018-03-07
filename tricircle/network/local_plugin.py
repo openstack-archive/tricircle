@@ -182,9 +182,10 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 t_ctx = t_context.get_context_from_neutron_context(context)
                 if self._skip_non_api_query(t_ctx):
                     return []
-                para = network['id'] + '_delete'
                 t_network = self.neutron_handle.handle_get(
-                    t_ctx, 'network', para)
+                    t_ctx, 'network', network['id'])
+                if not t_network:
+                    return []
                 return self._ensure_subnet(context, t_network)
         if not subnet_ids:
             return []

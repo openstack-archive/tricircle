@@ -559,10 +559,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return policy['id'] if policy else None
 
     def get_network(self, context, network_id, fields=None):
-        delete = False
-        if network_id.endswith('_delete'):
-            delete = True
-            network_id = network_id[0: network_id.find('_delete')]
 
         dict_para = {'resource_id': network_id, 'resource_type': 'network'}
         try:
@@ -570,10 +566,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         except t_exceptions.ResourceIsInDeleting():
             return network_id
         except t_exceptions.ResourceNotFound:
-            if delete:
-                pass
-            else:
-                raise exceptions.NotFound()
+            raise exceptions.NotFound()
+
         net = super(TricirclePlugin, self).get_network(context, network_id,
                                                        fields)
 
