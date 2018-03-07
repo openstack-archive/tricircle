@@ -147,3 +147,23 @@ class RecycleResources(core.ModelBase, core.DictBase):
                                sql.String(length=64), nullable=False)
     project_id = sql.Column('project_id',
                             sql.String(length=36), nullable=False, index=True)
+
+
+class DeletingResources(core.ModelBase, core.DictBase):
+    __tablename__ = 'deleting_resources'
+
+    __table_args__ = (
+        schema.UniqueConstraint(
+            'resource_id',  'resource_type',
+            name='deleting_resources0resource_id0resource_type'),
+    )
+
+    attributes = ['resource_id', 'resource_type', 'deleted_at']
+
+    resource_id = sql.Column('resource_id', sql.String(length=127),
+                             nullable=False, primary_key=True)
+
+    resource_type = sql.Column('resource_type', sql.String(length=64),
+                               nullable=False)
+
+    deleted_at = sql.Column('deleted_at', sql.DateTime)

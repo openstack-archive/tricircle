@@ -15,6 +15,7 @@
 
 import collections
 import copy
+import datetime
 import re
 import six
 
@@ -353,14 +354,83 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         res['tags'] = []
         return res
 
+    def check_resource_not_in_deleting(self, context, dict_para):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        with t_ctx.session.begin():
+            resource_filters = []
+            for key in dict_para.keys():
+                resource_filters.append({'key': key,
+                                         'comparator': 'eq',
+                                         'value': dict_para[key]})
+
+            deleting_resource = core.query_resource(t_ctx,
+                                                    models.DeletingResources,
+                                                    resource_filters, [])
+
+            if len(deleting_resource):
+                if not hasattr(context, "USER_AGENT") or \
+                        context.USER_AGENT == t_constants.USER_AGENT:
+                    raise t_exceptions.ResourceIsInDeleting()
+                elif context.USER_AGENT == t_constants.LOCAL:
+                    raise t_exceptions.ResourceNotFound(
+                        models.DeletingResources, dict_para['resource_id'])
+
+    def _check_network_not_in_use(self, context, t_ctx, network_id):
+        # use a different name to avoid override _ensure_entwork_not_in_use
+        subnets = self._get_subnets_by_network(context, network_id)
+        auto_delete_port_names = []
+
+        for subnet in subnets:
+            subnet_id = subnet['id']
+            region_names = [e[0] for e in t_ctx.session.query(
+                sql.distinct(models.Pod.region_name)).join(
+                models.ResourceRouting,
+                models.Pod.pod_id == models.ResourceRouting.pod_id).filter(
+                models.ResourceRouting.top_id == subnet_id)]
+            auto_delete_port_names.extend([t_constants.interface_port_name % (
+                region_name, subnet_id) for region_name in region_names])
+            dhcp_port_name = t_constants.dhcp_port_name % subnet_id
+            snat_port_name = t_constants.snat_port_name % subnet_id
+            auto_delete_port_names.append(dhcp_port_name)
+            auto_delete_port_names.append(snat_port_name)
+
+        if not auto_delete_port_names:
+            # pre-created port not found, any ports left need to be deleted
+            # before deleting network
+            non_auto_delete_ports = context.session.query(
+                models_v2.Port.id).filter_by(network_id=network_id)
+            if non_auto_delete_ports.count():
+                raise exceptions.NetworkInUse(net_id=network_id)
+            return
+
+        t_pod = db_api.get_top_pod(t_ctx)
+        auto_delete_port_ids = [e[0] for e in t_ctx.session.query(
+            models.ResourceRouting.bottom_id).filter_by(
+            pod_id=t_pod['pod_id'], resource_type=t_constants.RT_PORT).filter(
+            models.ResourceRouting.top_id.in_(auto_delete_port_names))]
+
+        non_auto_delete_ports = context.session.query(
+            models_v2.Port.id).filter_by(network_id=network_id).filter(
+            ~models_v2.Port.id.in_(auto_delete_port_ids))
+        if non_auto_delete_ports.count():
+            raise exceptions.NetworkInUse(net_id=network_id)
+
     def delete_network(self, context, network_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
+        dict_para = {'resource_id': network_id, 'resource_type': 'network'}
+        self.check_resource_not_in_deleting(context, dict_para)
+        self._check_network_not_in_use(context, t_ctx, network_id)
+        dict_para['deleted_at'] = datetime.datetime.utcnow()
+        with t_ctx.session.begin():
+            core.create_resource(t_ctx, models.DeletingResources, dict_para)
+
         try:
             for pod, bottom_network_id in (
                     self.helper.get_real_shadow_resource_iterator(
                         t_ctx, t_constants.RT_NETWORK, network_id)):
                 self._get_client(pod['region_name']).delete_networks(
                     t_ctx, bottom_network_id)
+
                 # we do not specify resource_type when deleting routing entries
                 # so if both "network" and "shadow_network" type entries exist
                 # in one pod(this is possible for cross-pod network), we delete
@@ -380,9 +450,18 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                             'comparator': 'eq',
                                             'value': network_id}])
 
+        subnets = self._get_subnets_by_network(context, network_id)
+        for subnet in subnets:
+            self.delete_subnet(context, subnet['id'])
         with context.session.begin(subtransactions=True):
             self.type_manager.release_network_segments(context, network_id)
             super(TricirclePlugin, self).delete_network(context, network_id)
+
+        with t_ctx.session.begin():
+            core.delete_resources(t_ctx, models.DeletingResources,
+                                  filters=[{'key': 'resource_id',
+                                            'comparator': 'eq',
+                                            'value': network_id}])
 
     def _raise_if_updates_external_attribute(self, attrs):
         """Raise exception if external attributes are present.
@@ -480,8 +559,24 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return policy['id'] if policy else None
 
     def get_network(self, context, network_id, fields=None):
+        delete = False
+        if network_id.endswith('_delete'):
+            delete = True
+            network_id = network_id[0: network_id.find('_delete')]
+
+        dict_para = {'resource_id': network_id, 'resource_type': 'network'}
+        try:
+            self.check_resource_not_in_deleting(context, dict_para)
+        except t_exceptions.ResourceIsInDeleting():
+            return network_id
+        except t_exceptions.ResourceNotFound:
+            if delete:
+                pass
+            else:
+                raise exceptions.NotFound()
         net = super(TricirclePlugin, self).get_network(context, network_id,
                                                        fields)
+
         if not fields or 'id' in fields:
             self.type_manager.extend_network_dict_provider(context, net)
 
