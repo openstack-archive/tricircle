@@ -21,6 +21,7 @@ from oslo_log import log
 from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
+from neutron_lib.api import extensions
 from neutron_lib.api import validators
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
@@ -28,7 +29,6 @@ from neutron_lib.plugins import directory
 from neutron_lib.utils import runtime
 import neutronclient.client as neutronclient
 
-from neutron.common import utils
 import neutron.extensions.securitygroup as ext_sg
 from neutron.plugins.ml2 import plugin
 
@@ -623,7 +623,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         :param port_body: port update body
         :return: None
         """
-        if not utils.is_extension_supported(self.core_plugin, 'agent'):
+        if not extensions.is_extension_supported(self.core_plugin, 'agent'):
             return
         profile_dict = port_body.get(portbindings.PROFILE, {})
         if not validators.is_attr_set(profile_dict):
@@ -658,7 +658,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         :param profile_dict: binding profile dict in the port update body
         :return: None
         """
-        if not utils.is_extension_supported(self.core_plugin, 'agent'):
+        if not extensions.is_extension_supported(self.core_plugin, 'agent'):
             return
         if cfg.CONF.client.cross_pod_vxlan_mode == t_constants.NM_NOOP:
             return
