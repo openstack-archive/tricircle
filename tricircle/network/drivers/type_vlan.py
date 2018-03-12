@@ -16,10 +16,10 @@
 import sys
 
 from neutron_lib.plugins.ml2 import api
+from neutron_lib.plugins import utils as plugin_utils
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron.plugins.common import utils as plugin_utils
 from neutron.plugins.ml2.drivers import type_vlan
 
 from tricircle.common import constants

@@ -22,9 +22,9 @@ from six.moves import xrange
 
 import neutron.conf.common as q_config
 from neutron.db import db_base_plugin_v2
-from neutron.plugins.common import utils
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.plugins import directory
+from neutron_lib.plugins import utils
 
 from oslo_config import cfg
 from oslo_utils import uuidutils
