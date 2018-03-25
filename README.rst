@@ -15,7 +15,7 @@ The purpose of the Tricircle project is to provide networking automation
 across Neutron servers in multi-region OpenStack clouds deployment.
 
 Each OpenStack cloud includes its own Nova, Cinder and Neutron, the Neutron
-servers in these OpenStack clouds are called local Neuron servers, all these
+servers in these OpenStack clouds are called local Neutron servers, all these
 local Neutron servers will be configured with the Tricircle Local Neutron
 Plugin. A separate Neutron server will be installed and run standalone as
 the coordinator of networking automation across local Neutron servers, this
