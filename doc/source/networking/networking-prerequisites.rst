@@ -113,18 +113,18 @@ creation command.
 You can create L2 network for different purposes, and the supported network
 types for different purposes are summarized as follows.
 
-    .. _supported_network_types:
+.. _supported_network_types:
 
-    .. list-table::
-       :header-rows: 1
+.. list-table::
+   :header-rows: 1
 
-       * - Networking purpose
-         - Supported
-       * - Local L2 network for instances
-         - FLAT, VLAN, VxLAN
-       * - Cross Neutron L2 network for instances
-         - FLAT, VLAN, VxLAN
-       * - Bridge network for routers
-         - FLAT, VLAN, VxLAN
-       * - External network
-         - FLAT, VLAN
+   * - Networking purpose
+     - Supported
+   * - Local L2 network for instances
+     - FLAT, VLAN, VxLAN
+   * - Cross Neutron L2 network for instances
+     - FLAT, VLAN, VxLAN
+   * - Bridge network for routers
+     - FLAT, VLAN, VxLAN
+   * - External network
+     - FLAT, VLAN
