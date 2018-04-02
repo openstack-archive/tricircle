@@ -61,6 +61,8 @@ class ResourceStore(object):
                       ('sfc_port_pair_groups', constants.RT_PORT_PAIR_GROUP),
                       ('sfc_port_chains', constants.RT_PORT_CHAIN),
                       ('sfc_flow_classifiers', constants.RT_FLOW_CLASSIFIER),
+                      ('sfc_chain_group_associations', None),
+                      ('sfc_chain_classifier_associations', None),
                       ('qos_policies', constants.RT_QOS),
                       ('qos_bandwidth_limit_rules',
                        'qos_bandwidth_limit_rules')]

@@ -1455,8 +1455,12 @@ class XManager(PeriodicTasks):
             constants.JT_SFC_SYNC].split('#')
 
         if b_pod_id == constants.POD_NOT_SPECIFIED:
-            mappings = db_api.get_bottom_mappings_by_top_id(
-                ctx, net_id, constants.RT_NETWORK)
+            if net_id:
+                mappings = db_api.get_bottom_mappings_by_top_id(
+                    ctx, net_id, constants.RT_NETWORK)
+            elif t_port_chain_id:
+                mappings = db_api.get_bottom_mappings_by_top_id(
+                    ctx, t_port_chain_id, constants.RT_PORT_CHAIN)
             b_pods = [mapping[0] for mapping in mappings]
             for b_pod in b_pods:
                 self.xjob_handler.sync_service_function_chain(
@@ -1503,6 +1507,16 @@ class XManager(PeriodicTasks):
                     ctx, pp['project_id'], b_pod, {'id': pp_id},
                     constants.RT_PORT_PAIR, {'port_pair': pp}, b_client,
                     ingress=pp['ingress'])
+                pp_body = {'port_pair': {
+                    'name': pp['name'],
+                    'description': pp['description']}}
+                try:
+                    b_client.update_port_pairs(ctx, b_pp_id, pp_body)
+                except q_cli_exceptions.NotFound:
+                    LOG.Error(('port pair: %(pp_id)s not found,'
+                               'region name: %(name)s'),
+                              {'pp_id': pp_id, 'name': region_name})
+                    raise
                 b_pp_ids[key].append(b_pp_id)
 
         b_ppg_ids = []
@@ -1514,6 +1528,18 @@ class XManager(PeriodicTasks):
                 ctx, ppg['project_id'], b_pod, {'id': ppg_id},
                 constants.RT_PORT_PAIR_GROUP, {'port_pair_group': ppg},
                 b_client, port_pairs=ppg['port_pairs'])
+            ppg_body = {'port_pair_group': {
+                'name': ppg['name'],
+                'description': ppg['description'],
+                'port_pairs': ppg['port_pairs']
+            }}
+            try:
+                b_client.update_port_pair_groups(ctx, b_ppg_id, ppg_body)
+            except q_cli_exceptions.NotFound:
+                LOG.Error(('port pair group: %(t_ppg_id)s not found,'
+                           'region name: %(name)s'),
+                          {'t_ppg_id': ppg_id, 'name': region_name})
+                raise
             b_ppg_ids.append(b_ppg_id)
 
         b_fc_ids = []
@@ -1525,15 +1551,40 @@ class XManager(PeriodicTasks):
                     ctx, ppg['project_id'], b_pod, {'id': fc_id},
                     constants.RT_FLOW_CLASSIFIER, {'flow_classifier': fc},
                     b_client, logical_source_port=fc['logical_source_port'])
+                fc_body = {'flow_classifier': {
+                    'name': fc['name'],
+                    'description': fc['description']
+                }}
+                try:
+                    b_client.update_flow_classifiers(ctx, b_fc_id, fc_body)
+                except q_cli_exceptions.NotFound:
+                    LOG.Error(('flow classifier: %(fc_id)s not found,'
+                               'region name: %(name)s'),
+                              {'fc_id': fc_id, 'name': region_name})
+                    raise
                 b_fc_ids.append(b_fc_id)
 
         t_pc.pop('id')
         t_pc['port_pair_groups'] = b_ppg_ids
         t_pc['flow_classifiers'] = b_fc_ids
-        self._prepare_sfc_bottom_element(
+        b_pc_id = self._prepare_sfc_bottom_element(
             ctx, t_pc['project_id'], b_pod, {'id': t_port_chain_id},
             constants.RT_PORT_CHAIN, {'port_chain': t_pc}, b_client,
-            fc_id=b_fc_ids[0])
+            fc_id=b_fc_ids[0] if b_fc_ids else None)
+        pc_body = {'port_chain': {
+            'name': t_pc['name'],
+            'description': t_pc['description'],
+            'port_pair_groups': t_pc['port_pair_groups'],
+            'flow_classifiers': t_pc['flow_classifiers']
+        }}
+
+        try:
+            b_client.update_port_chains(ctx, b_pc_id, pc_body)
+        except q_cli_exceptions.NotFound:
+            LOG.Error(('port chain: %(pc_id)s not found, '
+                       'region name: %(name)s'),
+                      {'pc_id': t_port_chain_id, 'name': region_name})
+            raise
 
         self.xjob_handler.recycle_resources(ctx, t_pc['project_id'])
 
