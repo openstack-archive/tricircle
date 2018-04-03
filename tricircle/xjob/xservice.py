@@ -245,7 +245,8 @@ def serve(xservice, workers=1):
     if _launcher:
         raise RuntimeError(_('serve() can only be called once'))
 
-    _launcher = srv.launch(CONF, xservice, workers=workers)
+    _launcher = srv.ProcessLauncher(CONF, restart_method='mutate')
+    _launcher.launch_service(xservice, workers=workers)
 
 
 def wait():
