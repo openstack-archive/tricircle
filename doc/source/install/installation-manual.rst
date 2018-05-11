@@ -72,7 +72,7 @@ Installation with Central Neutron Server
    [keystone_authtoken] user_domain_name, "user domain name of service account, needed for password authentication", Default
    [keystone_authtoken] project_name, "project name of service account, needed for password authentication", service
    [keystone_authtoken] project_domain_name, "project domain name of service account, needed for password authentication", Default
-   [keystone_authtoken] auth_uri, "complete public Identity API endpoint", http://$keystone_service_host/identity
+   [keystone_authtoken] www_authenticate_uri, "complete public Identity API endpoint", http://$keystone_service_host/identity
    [keystone_authtoken] cafile, "A PEM encoded Certificate Authority to use when verifying HTTPs", /opt/stack/data/ca-bundle.pem
    [keystone_authtoken] signing_dir, "Directory used to cache files related to PKI tokens", /var/cache/tricircle
    [keystone_authtoken] memcached_servers, "Optionally specify a list of memcached server(s) to use for caching", $keystone_service_host:11211
@@ -92,10 +92,10 @@ Installation with Central Neutron Server
    keystone_service_host to the address of Keystone service.
 
 .. note:: It's worth explaining the following options that can easily make users confused. **keystone_authtoken.auth_url**
-   is the keystone endpoint url used by services to validate user tokens. **keystone_authtoken.auth_uri** will be put in
+   is the keystone endpoint url used by services to validate user tokens. **keystone_authtoken.www_authenticate_uri** will be put in
    the "WWW-Authenticate: Keystone uri=%s" header in the 401 response to tell users where they can get authentication.
    These two URLs can be the same, but sometimes people would like to use an internal URL for auth_url and a public URL
-   for auth_uri. **client.auth_url** is used by the common.client module to construct a client to get authentication and
+   for www_authenticate_uri. **client.auth_url** is used by the common.client module to construct a client to get authentication and
    access other services, it can be the either internal or public endpoint of keystone, depends on how the module can
    reach keystone. **client.identity_url** is no longer used in code since Pike release so you can simply ignore it, we
    will deprecate and remove this option later.
