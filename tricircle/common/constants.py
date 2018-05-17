@@ -228,3 +228,9 @@ CENTRAL = 'central-neutronclient'
 LOCAL = 'local-neutronclient'
 
 REQUEST_SOURCE_TYPE = set([CENTRAL, LOCAL])
+
+# for new L3 network model using routed network
+# prefix for the name of segment
+SEGMENT_NAME_PATTERN = 'newL3-(.*?)-(.*)'
+PREFIX_OF_SEGMENT_NAME = 'newL3-'
+PREFIX_OF_SEGMENT_NAME_DIVISION = '-'

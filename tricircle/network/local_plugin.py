@@ -23,9 +23,12 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import extensions
 from neutron_lib.api import validators
+from neutron_lib.callbacks import events
 import neutron_lib.constants as q_constants
 import neutron_lib.exceptions as q_exceptions
 from neutron_lib.plugins import directory
+from neutron_lib.plugins.ml2 import api
+from neutron_lib.utils import net
 from neutron_lib.utils import runtime
 import neutronclient.client as neutronclient
 
@@ -892,6 +895,8 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def _handle_security_group(self, t_ctx, q_ctx, port):
         if 'security_groups' not in port:
             return
+        if port.get('device_owner') and net.is_port_trusted(port):
+            return
         if not port['security_groups']:
             raw_client = self.neutron_handle._get_client(t_ctx)
             params = {'name': 'default'}
@@ -955,3 +960,23 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 b_sgs.append(self.core_plugin.get_security_group(
                     context, b_sg['id'], fields))
         return b_sgs
+
+    def _handle_segment_change(self, rtype, event, trigger, context, segment):
+
+        network_id = segment.get('network_id')
+
+        if event == events.PRECOMMIT_CREATE:
+            updated_segment = self.type_manager.reserve_network_segment(
+                context, segment)
+            # The segmentation id might be from ML2 type driver, update it
+            # in the original segment.
+            segment[api.SEGMENTATION_ID] = updated_segment[api.SEGMENTATION_ID]
+        elif event == events.PRECOMMIT_DELETE:
+            self.type_manager.release_network_segment(context, segment)
+
+        # change in segments could affect resulting network mtu, so let's
+        # recalculate it
+        network_db = self._get_network(context, network_id)
+        network_db.mtu = self._get_network_mtu(
+            network_db, validate=(event != events.PRECOMMIT_DELETE))
+        network_db.save(session=context.session)

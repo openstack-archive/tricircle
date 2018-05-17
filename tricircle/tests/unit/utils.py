@@ -65,7 +65,8 @@ class ResourceStore(object):
                       ('sfc_chain_classifier_associations', None),
                       ('qos_policies', constants.RT_QOS),
                       ('qos_bandwidth_limit_rules',
-                       'qos_bandwidth_limit_rules')]
+                       'qos_bandwidth_limit_rules'),
+                      ('segments', None)]
 
     def __init__(self):
         self.store_list = []

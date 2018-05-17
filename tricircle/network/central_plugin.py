@@ -128,7 +128,13 @@ tricircle_opts = [
                       ' to.')),
     cfg.BoolOpt('enable_api_gateway',
                 default=True,
-                help=_('Whether the Nova API gateway is enabled'))
+                help=_('Whether the Nova API gateway is enabled')),
+    cfg.BoolOpt('enable_l3_route_network',
+                default=False,
+                help=_('Whether using the new L3 networking model. When it is'
+                       'set to true, Tricircle will automatically create a'
+                       'bottom external network if the name of segment'
+                       'matches newL3-..'))
 ]
 
 tricircle_opt_group = cfg.OptGroup('tricircle')
@@ -267,24 +273,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if validators.is_attr_set(from_net.get(provider_attr)):
                 to_net[provider_attr] = from_net[provider_attr]
 
-    def _create_bottom_external_network(self, context, net, top_id):
-        t_ctx = t_context.get_context_from_neutron_context(context)
-        # use the first pod
-        az_name = net[az_def.AZ_HINTS][0]
-        pod = db_api.find_pod_by_az_or_region(t_ctx, az_name)
-        body = {
-            'network': {
-                'name': top_id,
-                'tenant_id': net['tenant_id'],
-                'admin_state_up': True,
-                external_net.EXTERNAL: True
-            }
-        }
-        self._fill_provider_info(net, body['network'])
-        self._prepare_bottom_element(
-            t_ctx, net['tenant_id'], pod, {'id': top_id},
-            t_constants.RT_NETWORK, body)
-
     def _create_bottom_external_subnet(self, context, subnet, net, top_id):
         t_ctx = t_context.get_context_from_neutron_context(context)
         region_name = net[az_def.AZ_HINTS][0]
@@ -303,7 +291,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         for attr in attrs:
             if validators.is_attr_set(subnet.get(attr)):
                 body['subnet'][attr] = subnet[attr]
-        self._prepare_bottom_element(
+        self.helper.prepare_bottom_element(
             t_ctx, subnet['tenant_id'], pod, {'id': top_id},
             t_constants.RT_SUBNET, body)
 
@@ -340,7 +328,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             if is_external:
                 self._fill_provider_info(res, net_data)
                 try:
-                    self._create_bottom_external_network(
+                    self.helper.prepare_bottom_external_network(
                         context, net_data, res['id'])
                 except q_cli_exceptions.Conflict as e:
                     pattern = re.compile('Physical network (.*) is in use')
@@ -544,6 +532,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
     def create_subnet(self, context, subnet):
         subnet_data = subnet['subnet']
         network = self.get_network(context, subnet_data['network_id'])
+
         is_external = network.get(external_net.EXTERNAL)
         with context.session.begin(subtransactions=True):
             res = super(TricirclePlugin, self).create_subnet(context, subnet)
@@ -589,7 +578,8 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     self.helper.get_real_shadow_resource_iterator(
                         t_ctx, t_constants.RT_SUBNET, subnet_id)):
                 region_name = pod['region_name']
-                self._get_client(region_name).delete_subnets(
+                b_client = self._get_client(region_name)
+                b_client.delete_subnets(
                     t_ctx, bottom_subnet_id)
                 interface_name = t_constants.interface_port_name % (
                     region_name, subnet_id)
@@ -607,6 +597,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                   'value': pod['pod_id']}])
         except Exception:
             raise
+
         dhcp_port_name = t_constants.dhcp_port_name % subnet_id
         self._delete_pre_created_port(t_ctx, context, dhcp_port_name)
         snat_port_name = t_constants.snat_port_name % subnet_id
@@ -1546,11 +1537,6 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         return self.helper.prepare_top_element(
             t_ctx, q_ctx, project_id, pod, ele, _type, body)
 
-    def _prepare_bottom_element(self, t_ctx,
-                                project_id, pod, ele, _type, body):
-        return self.helper.prepare_bottom_element(
-            t_ctx, project_id, pod, ele, _type, body)
-
     def _get_bridge_subnet_pool_id(self, t_ctx, q_ctx, project_id, pod):
         pool_name = t_constants.bridge_subnet_pool_name
         pool_cidr = cfg.CONF.client.bridge_cidr
@@ -1706,7 +1692,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             body = {'router': {'name': t_constants.ns_router_name % router_id,
                                'distributed': False}}
 
-        _, b_router_id = self._prepare_bottom_element(
+        _, b_router_id = self.helper.prepare_bottom_element(
             t_ctx, t_router['tenant_id'], pod, t_router, router_type, body)
 
         # both router and external network in bottom pod are ready, attach

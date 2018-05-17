@@ -19,8 +19,11 @@ import re
 import six
 from six.moves import xrange
 
+from neutron_lib.api.definitions import availability_zone as az_def
+from neutron_lib.api.definitions import external_net
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
+from neutron_lib.api import validators
 from neutron_lib import constants
 import neutronclient.common.exceptions as q_cli_exceptions
 from oslo_serialization import jsonutils
@@ -28,6 +31,7 @@ from oslo_serialization import jsonutils
 from tricircle.common import client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
+import tricircle.common.exceptions as t_exceptions
 import tricircle.common.lock_handle as t_lock
 from tricircle.common import utils
 import tricircle.db.api as db_api
@@ -968,6 +972,154 @@ class NetworkHelper(object):
             ctx, project_id, target_pod, {'id': port_body['id']},
             t_constants.RT_SD_PORT, create_body)
         return sw_port_id
+
+    def prepare_bottom_router(self, n_context, net, b_router_name):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        # use the first pod
+        az_name = net[az_def.AZ_HINTS][0]
+        pod = db_api.find_pod_by_az_or_region(t_ctx, az_name)
+        body = {
+            'router': {
+                'name': b_router_name,
+                'tenant_id': net['tenant_id'],
+                'admin_state_up': True,
+                'distributed': False
+            }
+        }
+        return self.prepare_bottom_element(
+            t_ctx, net['tenant_id'], pod, {'id': b_router_name},
+            t_constants.RT_ROUTER, body)
+
+    def remove_bottom_router_by_name(self, n_context, region_name,
+                                     router_name):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        b_client = self._get_client(region_name)
+        bottom_router = b_client.list_routers(
+            t_ctx, [{'key': 'name',
+                     'comparator': 'eq',
+                     'value': router_name}])
+        if bottom_router:
+            b_client.delete_routers(t_ctx, bottom_router[0]['id'])
+
+    def _fill_provider_info(self, from_net, to_net):
+        provider_attrs = provider_net.ATTRIBUTES
+        for provider_attr in provider_attrs:
+            if validators.is_attr_set(from_net.get(provider_attr)):
+                to_net[provider_attr] = from_net[provider_attr]
+        if validators.is_attr_set(from_net.get(az_def.AZ_HINTS)):
+            to_net[az_def.AZ_HINTS] = from_net[az_def.AZ_HINTS]
+
+    def prepare_bottom_external_network(self, n_context, net, top_id):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        # use the first pod
+        az_name = net[az_def.AZ_HINTS][0]
+        pod = db_api.find_pod_by_az_or_region(t_ctx, az_name)
+        body = {
+            'network': {
+                'name': net['name'],
+                'tenant_id': net['tenant_id'],
+                'admin_state_up': True,
+                external_net.EXTERNAL: True,
+            }
+        }
+        self._fill_provider_info(net, body['network'])
+        return self.prepare_bottom_element(
+            t_ctx, net['tenant_id'], pod, {'id': top_id},
+            t_constants.RT_NETWORK, body)
+
+    def remove_bottom_external_network_by_name(
+            self, n_context, region_name, name):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        b_client = self._get_client(region_name)
+        b_net = b_client.list_networks(
+            t_ctx, [{'key': 'name',
+                     'comparator': 'eq',
+                     'value': name}])
+        if b_net:
+            b_client.delete_networks(t_ctx, b_net[0]['id'])
+
+    def prepare_bottom_external_subnet_by_bottom_name(
+            self, context, subnet, region_name, b_net_name, top_subnet_id):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        pod = db_api.get_pod_by_name(t_ctx, region_name)
+        b_client = self._get_client(region_name)
+        bottom_network = b_client.list_networks(
+            t_ctx, [{'key': 'name',
+                     'comparator': 'eq',
+                     'value': b_net_name}]
+        )
+        if not bottom_network:
+            raise t_exceptions.InvalidInput(
+                reason='bottom network not found for %(b_net_name)s'
+                       % {'b_net_name': b_net_name})
+        body = {
+            'subnet': {
+                'name': top_subnet_id,
+                'network_id': bottom_network[0]['id'],
+                'tenant_id': subnet['tenant_id']
+            }
+        }
+        attrs = ('ip_version', 'cidr', 'gateway_ip', 'allocation_pools',
+                 'enable_dhcp')
+        for attr in attrs:
+            if validators.is_attr_set(subnet.get(attr)):
+                body['subnet'][attr] = subnet[attr]
+        self.prepare_bottom_element(
+            t_ctx, subnet['tenant_id'], pod, {'id': top_subnet_id},
+            t_constants.RT_SUBNET, body)
+
+    def remove_bottom_external_subnet_by_name(
+            self, context, region_name, b_subnet_name):
+        t_ctx = t_context.get_context_from_neutron_context(context)
+        b_client = self._get_client(region_name)
+        bottom_subnet = b_client.list_subnets(
+            t_ctx, [{'key': 'name',
+                     'comparator': 'eq',
+                     'value': b_subnet_name}]
+        )
+        if bottom_subnet:
+            b_client.delete_subnets(t_ctx, bottom_subnet[0]['id'])
+
+    def prepare_bottom_router_gateway(
+            self, n_context, region_name, segment_name):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        pod = db_api.get_pod_by_name(t_ctx, region_name)
+        b_client = self._get_client(pod['region_name'])
+        # when using new l3 network model, a local router will
+        # be created automatically for an external net, and the
+        # router's name is same to the net's id
+        b_router = b_client.list_routers(
+            t_ctx, filters=[{'key': 'name', 'comparator': 'eq',
+                             'value': segment_name}])
+        if not b_router:
+            raise t_exceptions.NotFound()
+        b_nets = b_client.list_networks(
+            t_ctx, filters=[{'key': 'name',
+                             'comparator': 'eq',
+                             'value': segment_name}]
+        )
+        if not b_nets:
+            raise t_exceptions.NotFound()
+        b_info = {'network_id': b_nets[0]['id']}
+        return b_client.action_routers(
+            t_ctx, 'add_gateway', b_router[0]['id'], b_info)
+
+    def remove_bottom_router_gateway(
+            self, n_context, region_name, b_net_name):
+        t_ctx = t_context.get_context_from_neutron_context(n_context)
+        pod = db_api.get_pod_by_name(t_ctx, region_name)
+        b_client = self._get_client(pod['region_name'])
+        # when using new l3 network model, a local router will
+        # be created automatically for an external net, and the
+        # router's name is same to the net's id
+        b_router = b_client.list_routers(
+            t_ctx, filters=[{'key': 'name', 'comparator': 'eq',
+                             'value': b_net_name}])
+        if not b_router:
+            raise t_exceptions.NotFound()
+
+        return b_client.action_routers(
+            t_ctx, 'remove_gateway', b_router[0]['id'], b_router[0]['id'])
 
     @staticmethod
     def get_real_shadow_resource_iterator(t_ctx, res_type, res_id):

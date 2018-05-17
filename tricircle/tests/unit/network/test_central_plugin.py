@@ -367,6 +367,13 @@ class FakeClient(test_utils.FakeClient):
         if index != -1:
             del TOP_IPALLOCATIONS[index]
 
+    def dhcp_allocate_ip(self, subnets):
+        fixed_ips = []
+        for subnet in subnets:
+            fixed_ips.append({'subnet_id': subnet['id'],
+                              'ip_address': '10.0.0.1'})
+        return fixed_ips
+
     def add_gateway_routers(self, ctx, *args, **kwargs):
         router_id, body = args
         try:
@@ -376,6 +383,14 @@ class FakeClient(test_utils.FakeClient):
                 ctx, [{'key': 'name', 'comparator': 'eq', 'value': t_name}])
             b_id = t_ports[0]['id'] if t_ports else uuidutils.generate_uuid()
             host_id = 'host1' if self.region_name == 'pod_1' else 'host_2'
+            if not body.get('external_fixed_ips'):
+                net_id = body['network_id']
+                subnets = self.list_subnets(ctx,
+                                            [{'key': 'network_id',
+                                              'comparator': 'eq',
+                                              'value': net_id}])
+                body['external_fixed_ips'] = self.dhcp_allocate_ip(subnets)
+
             self.create_ports(ctx, {'port': {
                 'admin_state_up': True,
                 'id': b_id,
@@ -426,6 +441,9 @@ class FakeClient(test_utils.FakeClient):
     def get_routers(self, ctx, router_id):
         router = self.get_resource(constants.RT_ROUTER, ctx, router_id)
         return _fill_external_gateway_info(router)
+
+    def list_routers(self, ctx, filters=None):
+        return self.list_resources('router', ctx, filters)
 
     def delete_routers(self, ctx, router_id):
         self.delete_resources('router', ctx, router_id)
@@ -985,6 +1003,7 @@ class PluginTest(unittest.TestCase,
         xmanager.IN_TEST = True
 
         phynet = 'bridge'
+        phynet2 = 'bridge2'
         vlan_min, vlan_max = 2000, 2001
         vxlan_min, vxlan_max = 20001, 20002
         cfg.CONF.set_override('type_drivers', ['local', 'vlan'],
@@ -992,7 +1011,8 @@ class PluginTest(unittest.TestCase,
         cfg.CONF.set_override('tenant_network_types', ['local', 'vlan'],
                               group='tricircle')
         cfg.CONF.set_override('network_vlan_ranges',
-                              ['%s:%d:%d' % (phynet, vlan_min, vlan_max)],
+                              ['%s:%d:%d' % (phynet, vlan_min, vlan_max),
+                               '%s:%d:%d' % (phynet2, vlan_min, vlan_max)],
                               group='tricircle')
         cfg.CONF.set_override('bridge_network_type', 'vlan',
                               group='tricircle')
@@ -2959,8 +2979,8 @@ class PluginTest(unittest.TestCase,
                 'external_fixed_ips': [{'subnet_id': b_subnet_id,
                                         'ip_address': '100.64.0.5'}]}
 
-        mock_action.assert_called_once_with(t_ctx, 'add_gateway',
-                                            b_router_id, body)
+        mock_action.assert_called_with(t_ctx, 'add_gateway',
+                                       b_router_id, body)
         self.assertFalse(mock_get_bridge_network.called)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)

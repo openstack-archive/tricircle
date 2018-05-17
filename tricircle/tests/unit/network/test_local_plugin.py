@@ -260,6 +260,7 @@ class FakePlugin(plugin.TricirclePlugin):
         self.neutron_handle = FakeNeutronHandle()
         self.on_trunk_create = {}
         self.on_subnet_delete = {}
+        self.type_manager = test_utils.FakeTypeManager()
 
 
 class PluginTest(unittest.TestCase):
@@ -267,6 +268,11 @@ class PluginTest(unittest.TestCase):
         self.tenant_id = uuidutils.generate_uuid()
         self.plugin = FakePlugin()
         self.context = FakeContext()
+        phynet2 = 'provider2'
+        vlan_min, vlan_max = 2000, 3000
+        cfg.CONF.set_override('network_vlan_ranges',
+                              ['%s:%d:%d' % (phynet2, vlan_min, vlan_max)],
+                              group='tricircle')
 
     def _prepare_resource(self, az_hints=None, enable_dhcp=True):
         network_id = uuidutils.generate_uuid()
