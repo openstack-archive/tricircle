@@ -14,9 +14,9 @@
 #    under the License.
 
 
-from neutron.objects import ports as ports_object
 from neutron.services.qos import qos_plugin
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.objects import registry as obj_reg
 from oslo_log import log
 
 import tricircle.common.client as t_client
@@ -41,7 +41,7 @@ class TricircleQosPlugin(qos_plugin.QoSPlugin):
     def _get_ports_with_policy(self, context, policy):
         networks_ids = policy.get_bound_networks()
 
-        ports_with_net_policy = ports_object.Port.get_objects(
+        ports_with_net_policy = obj_reg.load_class('Port').get_objects(
             context, network_id=networks_ids)
 
         # Filter only these ports which don't have overwritten policy
@@ -51,7 +51,7 @@ class TricircleQosPlugin(qos_plugin.QoSPlugin):
         ]
 
         ports_ids = policy.get_bound_ports()
-        ports_with_policy = ports_object.Port.get_objects(
+        ports_with_policy = obj_reg.load_class('Port').get_objects(
             context, id=ports_ids)
         t_ports = list(set(ports_with_policy + ports_with_net_policy))
 
@@ -64,7 +64,8 @@ class TricircleQosPlugin(qos_plugin.QoSPlugin):
                 b_region_name = b_pod['region_name']
                 b_client = self._get_client(region_name=b_region_name)
                 b_port = b_client.get_ports(t_ctx, b_port_id)
-                new_binding = ports_object.PortBinding(
+                new_binding = obj_reg.new_instance(
+                    'PortBinding',
                     port_id=t_port.id,
                     vif_type=b_port.get('binding:vif_type',
                                         portbindings.VIF_TYPE_UNBOUND),
@@ -73,7 +74,8 @@ class TricircleQosPlugin(qos_plugin.QoSPlugin):
                 )
                 t_port.binding = new_binding
             else:
-                new_binding = ports_object.PortBinding(
+                new_binding = obj_reg.new_instance(
+                    'PortBinding',
                     port_id=t_port.id,
                     vif_type=portbindings.VIF_TYPE_UNBOUND,
                     vnic_type=portbindings.VNIC_NORMAL
