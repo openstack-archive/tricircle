@@ -1031,6 +1031,7 @@ class XManager(PeriodicTasks):
         pod_port_ids_map = collections.defaultdict(set)
         pod_sw_port_ids_map = {}
         port_info_map = {}
+        target_pod_nova_map = []
         if target_pod_id not in pod_ids:
             LOG.debug('Pod %s not found %s', target_pod_id, run_label)
             # network is not mapped to the specified pod, nothing to do
@@ -1065,6 +1066,9 @@ class XManager(PeriodicTasks):
             LOG.debug('Ports %s in pod %s %s',
                       b_ports, target_pod_id, run_label)
             for b_port in b_ports:
+                if b_port['device_owner'] == constants.DEVICE_OWNER_NOVA:
+                    if b_pod['pod_id'] == target_pod_id:
+                        target_pod_nova_map.append(b_port['id'])
                 if not self.helper.is_need_top_sync_port(
                         b_port, cfg.CONF.client.bridge_cidr):
                     continue
@@ -1073,6 +1077,13 @@ class XManager(PeriodicTasks):
                 b_port_id = b_port['id']
                 pod_port_ids_map[b_pod['pod_id']].add(b_port_id)
                 port_info_map[b_port_id] = b_port
+
+        for target_nova_port in target_pod_nova_map:
+            for pod_id in pod_port_ids_map:
+                if pod_id != target_pod_id and \
+                        target_nova_port in pod_port_ids_map[pod_id]:
+                    pod_port_ids_map[pod_id] = \
+                        pod_port_ids_map[pod_id] - (target_nova_port, )
 
         all_port_ids = set()
         for port_ids in six.itervalues(pod_port_ids_map):

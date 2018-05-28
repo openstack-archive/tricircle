@@ -529,7 +529,9 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def create_port_bulk(self, context, ports):
         # NOTE(zhiyuan) currently this bulk operation is only for shadow port
         # and trunk subports creation optimization
-        for port in ports['ports']:
+        b_ports = self.core_plugin.get_ports(context, fields=['id'])
+        b_port_list = [b_port['id'] for b_port in b_ports]
+        for port in ports['ports'][:]:
             port_body = port['port']
             self.get_network(context, port_body['network_id'])
             if port_body['device_owner'] == t_constants.DEVICE_OWNER_SHADOW:
@@ -538,6 +540,10 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 helper.NetworkHelper.fill_binding_info(port_body)
                 # clear binding profile set by xmanager
                 port_body[portbindings.PROFILE] = {}
+                if port_body['id'] in b_port_list:
+                    port_body.pop('security_groups', None)
+                    self.update_port(context, port_body['id'], port)
+                    ports['ports'].remove(port)
             elif (port_body['device_owner'] ==
                     t_constants.DEVICE_OWNER_SUBPORT):
                 port_body['id'] = port_body['device_id']
@@ -692,7 +698,17 @@ class TricirclePlugin(plugin.Ml2Plugin):
                                                  tunnel_ip=l2gw_tunnel_ip)
 
     @staticmethod
-    def _need_top_update(port, update_body):
+    def _need_top_update(port_old, port, update_body):
+        if (port_old.get('device_owner', '') ==
+                t_constants.DEVICE_OWNER_SHADOW and
+                port['device_owner'] == '' and
+                port['device_id'] == ''):
+            return False
+        if (port_old.get('device_owner', '') ==
+                t_constants.DEVICE_OWNER_NOVA and
+                port['device_owner'] == '' and
+                port['device_id'] == ''):
+            return True
         if not update_body.get(portbindings.HOST_ID):
             # no need to update top port if host is not updated
             return False
@@ -704,17 +720,30 @@ class TricirclePlugin(plugin.Ml2Plugin):
     def update_port(self, context, _id, port):
         # ovs agent will not call update_port, it updates port status via rpc
         # and direct db operation
+        b_port_old = self.core_plugin.get_port(context, _id)
+        if not b_port_old:
+            return b_port_old
         profile_dict = port['port'].get(portbindings.PROFILE, {})
-        if profile_dict.pop(t_constants.PROFILE_FORCE_UP, None):
+        if profile_dict.pop(t_constants.PROFILE_FORCE_UP, None) or \
+                (b_port_old.get('device_owner', '') == '' and
+                    b_port_old.get('device_id', '') == '' and
+                    port['port'].get('device_owner') ==
+                    t_constants.DEVICE_OWNER_NOVA):
             port['port']['status'] = q_constants.PORT_STATUS_ACTIVE
             port['port'][
                 portbindings.VNIC_TYPE] = q_constants.ATTR_NOT_SPECIFIED
+
         b_port = self.core_plugin.update_port(context, _id, port)
-        if self._need_top_update(b_port, port['port']):
+        if self._need_top_update(b_port_old, b_port, port['port']):
             region_name = self._get_neutron_region()
             update_dict = {portbindings.PROFILE: {
                 t_constants.PROFILE_REGION: region_name,
-                t_constants.PROFILE_DEVICE: b_port['device_owner']}}
+                t_constants.PROFILE_DEVICE: b_port['device_owner']
+                }}
+            if b_port.get(t_constants.PROFILE_STATUS):
+                update_dict[portbindings.PROFILE].update({
+                    t_constants.PROFILE_STATUS: b_port['status']
+                })
             self._fill_agent_info_in_profile(
                 context, _id, port['port'][portbindings.HOST_ID],
                 update_dict[portbindings.PROFILE])

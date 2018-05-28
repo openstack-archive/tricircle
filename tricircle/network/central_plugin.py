@@ -768,6 +768,33 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             LOG.debug('Update port: no interfaces found, xjob not'
                       'triggered')
 
+    def _delete_bottom_unbound_port(self, t_ctx, port_id, profile_region):
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, port_id, t_constants.RT_PORT)
+        if mappings:
+            region_name = mappings[0][0]['region_name']
+            bottom_port_id = mappings[0][1]
+            bottom_port = self._get_client(region_name).get_ports(
+                t_ctx, bottom_port_id)
+            if bottom_port['device_id'] in ('', None) and \
+                    (not bottom_port['device_owner'].startswith(
+                        'compute:shadow')):
+                db_api.delete_mappings_by_bottom_id(t_ctx, bottom_port['id'])
+
+                nw_mappings = db_api.get_bottom_mappings_by_top_id(
+                    t_ctx, bottom_port['network_id'],
+                    t_constants.RT_NETWORK)
+                for nw_map in nw_mappings:
+                    region_name = nw_map[0]['region_name']
+                    if region_name != profile_region:
+                        self._get_client(region_name).update_ports(
+                            t_ctx, port_id, {'port': {
+                                'device_id': '',
+                                'device_owner': '',
+                                portbindings.HOST_ID: None,
+                                'name': bottom_port['name']
+                            }})
+
     def update_port(self, context, port_id, port):
         t_ctx = t_context.get_context_from_neutron_context(context)
         top_port = super(TricirclePlugin, self).get_port(context, port_id)
@@ -778,14 +805,17 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         # because its device_id is not empty
         if t_constants.PROFILE_REGION in port['port'].get(
                 'binding:profile', {}):
+            profile_dict = port['port']['binding:profile']
+            region_name = profile_dict[t_constants.PROFILE_REGION]
+            device_name = profile_dict[t_constants.PROFILE_DEVICE]
+            port_status = profile_dict.get(t_constants.PROFILE_STATUS, '')
+            if port_status == 'DOWN' and device_name == '':
+                self._delete_bottom_unbound_port(t_ctx, port_id, region_name)
             # this update request comes from local Neutron
             updated_port = super(TricirclePlugin, self).update_port(context,
                                                                     port_id,
                                                                     port)
 
-            profile_dict = port['port']['binding:profile']
-            region_name = profile_dict[t_constants.PROFILE_REGION]
-            device_name = profile_dict[t_constants.PROFILE_DEVICE]
             t_ctx = t_context.get_context_from_neutron_context(context)
             pod = db_api.get_pod_by_name(t_ctx, region_name)
 

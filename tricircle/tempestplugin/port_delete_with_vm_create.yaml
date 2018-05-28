@@ -1,0 +1,246 @@
+- task_set_id: preparation
+  tasks:
+    - task_id: net1
+      region: central
+      type: network
+      params:
+        name: net1
+    - task_id: subnet1
+      region: central
+      type: subnet
+      depend: [net1]
+      params:
+        name: subnet1
+        ip_version: 4
+        cidr: 10.0.1.0/24
+        network_id: net1@id
+    - task_id: port1
+      region: central
+      type: port
+      depend:
+        - net1
+        - subnet1
+      params:
+        name: port1
+        network_id: net1@id
+    - task_id: image1
+      region: region1
+      type: image
+      query:
+        get_one: true
+    - task_id: image2
+      region: region2
+      type: image
+      query:
+        get_one: true
+- task_set_id: create_vm_in_region1
+  depend: [preparation]
+  tasks:
+    - task_id: vm1
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm1
+        networks:
+          - uuid: preparation@net1@id
+            port: preparation@port1@id
+- task_set_id: check_vm_in_region1
+  depend: [preparation]
+  tasks:
+    - task_id: check_vm1
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm1
+- task_set_id: wait_for_vm1
+  tasks:
+    - task_id: check_job_vm
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: delete_vm_in_region1
+  depend: [create_vm_in_region1]
+  tasks:
+    - task_id: delete_vm1
+      region: region1
+      type: server
+      action:
+        target: create_vm_in_region1@vm1@id
+        method: delete
+- task_set_id: wait_vm_delete_in_region1
+  tasks:
+    - task_id: wait_delete_vm1
+      region: region1
+      type: server
+      validate:
+        retries: 10
+        predicate: all
+        condition:
+          - name: invalid-name
+- task_set_id: create_vm_in_region2
+  depend: [preparation]
+  tasks:
+    - task_id: vm2
+      region: region2
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image2@id
+        name: vm2
+        networks:
+          - uuid: preparation@net1@id
+            port: preparation@port1@id
+- task_set_id: check_vm_in_region2
+  depend: [preparation]
+  tasks:
+    - task_id: check_vm2
+      region: region2
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm2
+- task_set_id: wait_for_vm
+  tasks:
+    - task_id: check_job_vm2
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: delete_vm_in_region2
+  depend: [create_vm_in_region2]
+  tasks:
+    - task_id: delete_vm2
+      region: region2
+      type: server
+      action:
+        target: create_vm_in_region2@vm2@id
+        method: delete
+- task_set_id: wait_vm_delete_in_region2
+  tasks:
+    - task_id: wait_delete_vm2
+      region: region2
+      type: server
+      validate:
+        retries: 10
+        predicate: all
+        condition:
+          - name: invalid-name
+- task_set_id: create_vm_in_region1_again
+  depend: [preparation]
+  tasks:
+    - task_id: vm1
+      region: region1
+      type: server
+      params:
+        flavor_id: 1
+        image_id: preparation@image1@id
+        name: vm1
+        networks:
+          - uuid: preparation@net1@id
+            port: preparation@port1@id
+- task_set_id: check_vm_in_region1_again
+  depend: [preparation]
+  tasks:
+    - task_id: check_vm1
+      region: region1
+      type: server
+      validate:
+        predicate: any
+        retries: 10
+        condition:
+          - status: ACTIVE
+            name: vm1
+- task_set_id: wait_for_vm1_again
+  tasks:
+    - task_id: check_job_vm
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+- task_set_id: delete_vm_in_region1_again
+  depend: [create_vm_in_region1_again]
+  tasks:
+    - task_id: delete_vm1
+      region: region1
+      type: server
+      action:
+        target: create_vm_in_region1_again@vm1@id
+        method: delete
+- task_set_id: wait_vm_delete_in_region1
+  tasks:
+    - task_id: wait_delete_vm1
+      region: region1
+      type: server
+      validate:
+        retries: 10
+        predicate: all
+        condition:
+          - name: invalid-name
+- task_set_id: delete_net
+  depend: [preparation]
+  tasks:
+    - task_id: delete_port1
+      region: central
+      type: port
+      action:
+        target: preparation@port1@id
+        method: delete
+    - task_id: delete_subnet1
+      region: central
+      type: subnet
+      depend: [delete_port1]
+      action:
+        target: preparation@subnet1@id
+        method: delete
+        retries: 3
+    - task_id: delete_net1
+      region: central
+      type: network
+      depend: [delete_subnet1]
+      action:
+        target: preparation@net1@id
+        method: delete
+- task_set_id: check_net_delete
+  tasks:
+    - task_id: check_net_delete_job1
+      region: region1
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check_net_delete_job2
+      region: region2
+      type: network
+      validate:
+        predicate: all
+        condition:
+          - name: invalid-name
+    - task_id: check-jobs
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+
