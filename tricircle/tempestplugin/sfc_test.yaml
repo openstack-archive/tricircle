@@ -229,6 +229,236 @@
         retries: 10
         condition:
           - status: SUCCESS
+- task_set_id: update-port-chain
+  depend: [preparation]
+  tasks:
+    - task_id: update-pc
+      region: central
+      type: port_chain
+      action:
+        target: preparation@pc@id
+        method: update
+      params:
+        name: pc-update
+        port_pair_groups: [preparation@ppg1@id]
+        flow_classifiers: []
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [update-pc]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: ppg1-1
+      region: region1
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg1
+    - task_id: ppg1-2
+      region: region2
+      type: port_pair_group
+      query:
+        get_one: true
+      params:
+        name: ppg1
+    - task_id: check-update-pc-1
+      region: region1
+      type: port_chain
+      depend:
+        - check-job
+        - ppg1-1
+      validate:
+        predicate: any
+        condition:
+          - name: pc-update
+            port_pair_groups: [ppg1-1@id]
+            flow_classifiers: []
+    - task_id: check-update-pc-2
+      region: region2
+      type: port_chain
+      depend:
+        - check-job
+        - ppg1-2
+      validate:
+        predicate: any
+        condition:
+          - name: pc-update
+            port_pair_groups: [ppg1-2@id]
+            flow_classifiers: []
+    - task_id: update-pc-to-original
+      region: central
+      type: port_chain
+      depend:
+        - check-update-pc-1
+        - check-update-pc-2
+      action:
+        target: preparation@pc@id
+        method: update
+      params:
+        name: pc
+        flow_classifiers: [preparation@fc@id]
+        port_pair_groups:
+          - preparation@ppg1@id
+          - preparation@ppg2@id
+- task_set_id: update-flow-classifier
+  depend: [preparation]
+  tasks:
+    - task_id: update-fc
+      region: central
+      type: flow_classifier
+      action:
+        target: preparation@fc@id
+        method: update
+      params:
+        name: fc-update
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [update-fc]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check-update-fc-1
+      region: region1
+      type: flow_classifier
+      depend: [check-job]
+      query:
+        get_one: true
+      params:
+        name: fc-update
+    - task_id: check-update-fc-2
+      region: region2
+      type: flow_classifier
+      depend: [check-job]
+      query:
+        get_one: true
+      params:
+        name: fc-update
+    - task_id: update-fc-to-original
+      region: central
+      type: flow_classifier
+      depend:
+        - check-update-fc-1
+        - check-update-fc-2
+      action:
+        target: preparation@fc@id
+        method: update
+      params:
+        name: fc
+- task_set_id: update-port-pair-group
+  depend: [preparation]
+  tasks:
+    - task_id: update-ppg1
+      region: central
+      type: port_pair_group
+      action:
+        target: preparation@ppg1@id
+        method: update
+      params:
+        name: ppg1-update
+        port_pairs: []
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [update-ppg1]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check-update-ppg1-1
+      region: region1
+      type: port_pair_group
+      depend: [check-job]
+      validate:
+        predicate: any
+        condition:
+          - name: ppg1-update
+            port_pairs: []
+    - task_id: check-update-ppg1-2
+      region: region2
+      type: port_pair_group
+      depend: [check-job]
+      validate:
+        predicate: any
+        condition:
+          - name: ppg1-update
+            port_pairs: []
+    - task_id: update-ppg1-to-original
+      region: central
+      type: port_pair_group
+      depend:
+        - check-update-ppg1-1
+        - check-update-ppg1-2
+      action:
+        target: preparation@ppg1@id
+        method: update
+      params:
+          name: ppg1
+          port_pairs: [preparation@pp1@id]
+- task_set_id: update-port-pair
+  depend: [preparation]
+  tasks:
+    - task_id: update-pp1
+      region: central
+      type: port_pair
+      action:
+        target: preparation@pp1@id
+        method: update
+      params:
+        name: pp1-update
+    - task_id: check-job
+      region: central
+      type: job
+      depend: [update-pp1]
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
+    - task_id: check-update-pp1-1
+      region: region1
+      type: port_pair
+      depend: [check-job]
+      query:
+        get_one: true
+      params:
+        name: pp1-update
+    - task_id: check-update-pp1-2
+      region: region2
+      type: port_pair
+      depend: [check-job]
+      query:
+        get_one: true
+      params:
+        name: pp1-update
+    - task_id: update-pp1-to-original
+      region: central
+      type: port_pair
+      depend:
+        - check-update-pp1-1
+        - check-update-pp1-2
+      action:
+        target: preparation@pp1@id
+        method: update
+      params:
+        name: pp1
+- task_set_id: wait-for-job
+  tasks:
+    - task_id: check-job
+      region: central
+      type: job
+      validate:
+        predicate: all
+        retries: 10
+        condition:
+          - status: SUCCESS
 - task_set_id: check
   depend: [preparation]
   tasks:

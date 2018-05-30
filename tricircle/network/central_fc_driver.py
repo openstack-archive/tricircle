@@ -16,8 +16,10 @@
 from oslo_log import helpers as log_helpers
 from oslo_log import log
 
+from networking_sfc.db import sfc_db
 from networking_sfc.services.flowclassifier.drivers import base as fc_driver
 
+from neutron_lib.plugins import directory
 from neutronclient.common import exceptions as client_exceptions
 
 import tricircle.common.client as t_client
@@ -25,6 +27,8 @@ import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
+from tricircle.network import central_plugin
+import tricircle.network.exceptions as n_exceptions
 
 
 LOG = log.getLogger(__name__)
@@ -78,6 +82,53 @@ class TricircleFcDriver(fc_driver.FlowClassifierDriverBase):
         db_api.create_recycle_resource(
             t_ctx, flowclassifier_id, t_constants.RT_FLOW_CLASSIFIER,
             t_ctx.project_id)
+
+    def _get_chain_id_by_flowclassifier_id(
+            self, context, fc_plugin, flowclassifier_id):
+        chain_classifier_assoc = fc_plugin._model_query(
+            context, sfc_db.ChainClassifierAssoc).filter_by(
+            flowclassifier_id=flowclassifier_id).first()
+        if chain_classifier_assoc:
+            return chain_classifier_assoc['portchain_id']
+        return None
+
+    def _get_net_id_by_portchain_id(self, context, portchain_id):
+        sfc_plugin = directory.get_plugin('sfc')
+        port_chain = sfc_plugin.get_port_chain(context, portchain_id)
+        if not port_chain:
+            raise n_exceptions.PortChainNotFound(portchain_id=portchain_id)
+        port_pairs = sfc_plugin.get_port_pairs(
+            context, {'portpairgroup_id': port_chain['port_pair_groups']})
+        if not port_pairs:
+            raise n_exceptions.PortPairsNotFoundForPortPairGroup(
+                portpairgroup_id=port_chain['port_pair_groups'])
+        core_plugin = directory.get_plugin()
+        port = super(central_plugin.TricirclePlugin, core_plugin
+                     ).get_port(context, port_pairs[0]['ingress'])
+        if not port:
+            raise n_exceptions.PortNotFound(port_id=port_pairs[0]['ingress'])
+        return port['network_id']
+
+    def update_flow_classifier_precommit(self, context):
+        plugin_context = context._plugin_context
+        t_ctx = t_context.get_context_from_neutron_context(plugin_context)
+        flowclassifier = context.current
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, flowclassifier['id'], t_constants.RT_FLOW_CLASSIFIER)
+        if mappings:
+            portchain_id = self._get_chain_id_by_flowclassifier_id(
+                plugin_context, context._plugin, flowclassifier['id'])
+            if not portchain_id:
+                raise n_exceptions.PortChainNotFoundForFlowClassifier(
+                    flowclassifier_id=flowclassifier['id'])
+            net_id = self._get_net_id_by_portchain_id(plugin_context,
+                                                      portchain_id)
+            if not net_id:
+                raise n_exceptions.NetNotFoundForPortChain(
+                    portchain_id=portchain_id)
+            self.xjob_handler.sync_service_function_chain(
+                t_ctx, flowclassifier['project_id'], portchain_id,
+                net_id, t_constants.POD_NOT_SPECIFIED)
 
     @log_helpers.log_method_call
     def create_flow_classifier_precommit(self, context):

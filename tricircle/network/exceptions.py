@@ -55,3 +55,29 @@ class SecurityGroupRuleNotFound(exceptions.NotFound):
 class NetAttachedToNonLocalRouter(exceptions.Conflict):
     message = _('Network %(network_id)s has already been attached to non '
                 'local router %(router_id)s')
+
+
+class PortNotFound(exceptions.NotFound):
+    message = _('Port for id %(port_id)s not found')
+
+
+class PortPairsNotFoundForPortPairGroup(exceptions.NotFound):
+    message = _(
+        'Port pairs for port pair group %(portpairgroup_id)s not found')
+
+
+class PortPairNotFound(exceptions.NotFound):
+    message = _('Port pair for id %(portpair_id)s not found')
+
+
+class PortChainNotFound(exceptions.NotFound):
+    message = _('Port chain for id %(portchain_id)s not found')
+
+
+class PortChainNotFoundForFlowClassifier(exceptions.NotFound):
+    message = _(
+        'Port chain for flow classifier %(flowclassifier_id)s not found')
+
+
+class NetNotFoundForPortChain(exceptions.NotFound):
+    message = _('Net for port chain %(portchain_id)s not found')
