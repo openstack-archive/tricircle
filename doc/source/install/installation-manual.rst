@@ -35,7 +35,9 @@ Installation with Central Neutron Server
     service_port=19999
     service_region=CentralRegion
     service_url=http://$service_host:$service_port/v1.0
-    openstack endpoint create $service_id --publicurl $service_url --adminurl $service_url --internalurl $service_url --region $service_region
+    openstack endpoint create $service_id  public $service_url --region $service_region
+    openstack endpoint create $service_id  admin $service_url --region $service_region
+    openstack endpoint create $service_id  internal $service_url --region $service_region
 
   change password, service_host, service_port and service_region in the above
   commands to adapt your deployment. OpenStack CLI tool will automatically find
