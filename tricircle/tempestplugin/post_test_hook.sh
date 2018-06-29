@@ -30,16 +30,23 @@ PRIMARY_NODE_IP=$(cat /etc/nodepool/primary_node_private)
 # use admin role to create Tricircle top Pod and Pod1
 source $DEVSTACK_DIR/openrc admin admin
 unset OS_REGION_NAME
-
 mytoken=$(openstack --os-region-name=RegionOne token issue | awk 'NR==5 {print $4}')
 echo $mytoken
 
-openstack multiregion networking pod create --region-name CentralRegion
+curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
+     -H "Content-Type: application/json" \
+     -H "X-Auth-Token: $mytoken" -d '{"pod": {"region_name":  "CentralRegion"}}'
 
-openstack multiregion networking pod create --region-name RegionOne --availability-zone az1
+curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
+     -H "Content-Type: application/json" \
+     -H "X-Auth-Token: $mytoken" \
+     -d '{"pod": {"region_name":  "RegionOne", "az_name": "az1"}}'
 
 if [ "$DEVSTACK_GATE_TOPOLOGY" == "multinode" ]; then
-    openstack multiregion networking pod create --region-name RegionTwo --availability-zone az2
+     curl -X POST http://$PRIMARY_NODE_IP/tricircle/v1.0/pods \
+          -H "Content-Type: application/json" \
+          -H "X-Auth-Token: $mytoken" \
+          -d '{"pod": {"region_name":  "RegionTwo", "az_name": "az2"}}'
 fi
 
 # the usage of "nova flavor-create":
