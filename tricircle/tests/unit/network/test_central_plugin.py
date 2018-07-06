@@ -1632,7 +1632,8 @@ class PluginTest(unittest.TestCase,
                 'project_id': project_id,
                 'description': 'description',
                 'host_routes': [],
-                'dns_nameservers': []
+                'dns_nameservers': [],
+                'segment_id': 'b85fd910-e483-4ef1-bdf5-b0f747d0b0d5'
             }
             TOP_NETS.append(test_utils.DotDict(t_net))
             TOP_SUBNETS.append(test_utils.DotDict(t_subnet))
@@ -1671,7 +1672,8 @@ class PluginTest(unittest.TestCase,
             'project_id': project_id,
             'description': 'description',
             'host_routes': [],
-            'dns_nameservers': []
+            'dns_nameservers': [],
+            'segment_id': 'b85fd910-e483-4ef1-bdf5-b0f747d0b0d5'
         }
         if region_name == 'pod_1':
             BOTTOM1_NETS.append(test_utils.DotDict(b_net))
