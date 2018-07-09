@@ -25,6 +25,7 @@ import unittest
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
+from neutron_lib.db import utils as lib_db_utils
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import constants as plugin_constants
@@ -71,6 +72,13 @@ from tricircle.tests.unit.network import test_qos
 from tricircle.tests.unit.network import test_security_groups
 import tricircle.tests.unit.utils as test_utils
 from tricircle.xjob import xmanager
+
+
+# TODO(boden): remove when https://review.openstack.org/#/c/565593/ lands
+if hasattr(_utils, 'filter_non_model_columns'):
+    db_utils = _utils
+else:
+    db_utils = lib_db_utils
 
 _resource_store = test_utils.get_resource_store()
 TOP_NETS = _resource_store.TOP_NETWORKS
@@ -1951,7 +1959,7 @@ class PluginTest(unittest.TestCase,
                   '_update_ips_for_port', new=fake_update_ips_for_port)
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
-    @patch.object(_utils, 'filter_non_model_columns',
+    @patch.object(db_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_update_port(self, mock_context):
@@ -2037,7 +2045,7 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
-    @patch.object(_utils, 'filter_non_model_columns',
+    @patch.object(db_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_update_bound_port_mac(self, mock_context):
@@ -2066,7 +2074,7 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
-    @patch.object(_utils, 'filter_non_model_columns',
+    @patch.object(db_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_update_non_vm_port(self, mock_context):
@@ -2103,7 +2111,7 @@ class PluginTest(unittest.TestCase,
 
     @patch.object(FakeRPCAPI, 'setup_shadow_ports')
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
-    @patch.object(_utils, 'filter_non_model_columns',
+    @patch.object(db_utils, 'filter_non_model_columns',
                   new=fake_filter_non_model_columns)
     @patch.object(context, 'get_context_from_neutron_context')
     def test_update_vm_port(self, mock_context, mock_setup):
