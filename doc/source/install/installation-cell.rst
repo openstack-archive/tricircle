@@ -84,7 +84,15 @@ Setup
     |  3 | cell2 |
     +----+-------+
 
-- 5 In node1, check if compute services in both hosts are registered::
+- 5 In node1, run the following commands to use nova_cell1 database in nova configure files::
+
+    sed -i "s/nova_cell0/nova_cell1/g" `grep nova_cell0 -rl /etc/nova`
+
+    systemctl restart devstack@n-sch.service
+    systemctl restart devstack@n-super-cond.service
+    systemctl restart devstack@n-cpu.service
+
+- 6 In node1, check if compute services in both hosts are registered::
 
     openstack --os-region-name CentralRegion compute service list
 
@@ -103,20 +111,20 @@ Setup
     zhiyuan-1 has two nova-conductor services, because one of them is a super
     conductor service.
 
-- 6 Create two aggregates and put the two hosts in each aggregate::
+- 7 Create two aggregates and put the two hosts in each aggregate::
 
     nova --os-region-name CentralRegion aggregate-create ag1 az1
     nova --os-region-name CentralRegion aggregate-create ag2 az2
     nova --os-region-name CentralRegion aggregate-add-host ag1 zhiyuan-1
     nova --os-region-name CentralRegion aggregate-add-host ag2 zhiyuan-2
 
-- 7 Create pods, tricircle client is used::
+- 8 Create pods, tricircle client is used::
 
     openstack --os-region-name CentralRegion multiregion networking pod create --region-name CentralRegion
     openstack --os-region-name CentralRegion multiregion networking pod create --region-name RegionOne --availability-zone az1
     openstack --os-region-name CentralRegion multiregion networking pod create --region-name RegionTwo --availability-zone az2
 
-- 8 Create network and boot virtual machines::
+- 9 Create network and boot virtual machines::
 
     net_id=$(openstack --os-region-name CentralRegion network create --provider-network-type vxlan net1 -c id -f value)
     openstack --os-region-name CentralRegion subnet create --subnet-range 10.0.1.0/24 --network net1 subnet1
