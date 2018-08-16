@@ -365,7 +365,7 @@ class ClientTest(unittest.TestCase):
         mock_list.side_effect = FakeException
         self.assertRaises(exceptions.EndpointNotAvailable,
                           handle.handle_list, self.context, FAKE_RESOURCE, [])
-        # endpont_url will not be set to None
+        # endpoint_url will not be set to None
         self.assertIsNotNone(handle.endpoint_url)
 
     def tearDown(self):
