@@ -119,7 +119,7 @@ def _extract_context_from_environ(environ):
         context_paras[key] = environ.get(context_paras[key])
     role = environ.get('HTTP_X_ROLE')
     # TODO(zhiyuan): replace with policy check
-    context_paras['is_admin'] = role == 'admin'
+    context_paras['is_admin'] = 'admin' in role.split(',') if role else False
     return t_context.Context(**context_paras)
 
 
