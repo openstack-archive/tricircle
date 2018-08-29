@@ -10,3 +10,4 @@ Networking Scenario
     networking-guide-multiple-ns-with-ew-enabled.rst
     networking-guide-single-external-network.rst
     networking-guide-local-networking.rst
+    networking-guide-newL3-using-segment.rst
