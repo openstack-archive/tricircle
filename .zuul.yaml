@@ -1,0 +1,17 @@
+- project:
+    templates:
+      - openstack-python-jobs
+      - openstack-python35-jobs
+      - check-requirements
+      - publish-openstack-sphinx-docs
+      - release-notes-jobs
+    check:
+      jobs:
+        - legacy-tricircle-dsvm-functional
+        - openstack-tox-cover
+        - legacy-tricircle-dsvm-multiregion
+    gate:
+      jobs:
+        - legacy-tricircle-dsvm-functional
+        - openstack-tox-cover
+        - legacy-tricircle-dsvm-multiregion
