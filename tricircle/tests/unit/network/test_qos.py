@@ -139,19 +139,6 @@ class TricircleQosTestMixin(object):
         db_api.create_resource_mapping(t_ctx, res['id'], b_policy_id,
                                        pod_id, project_id, constants.RT_QOS)
 
-        rule_data = {
-            "minimum_bandwidth_rule": {
-                "min_kbps": "1000"
-            }
-        }
-
-        t_rule = plugin.create_policy_rule(
-            q_ctx, rule.QosMinimumBandwidthRule, res['id'], rule_data)
-
-        self.assertEqual(1, len(bottom_policy[0]['rules']))
-        b_rule = bottom_policy[0]['rules'][0]
-        self.assertEqual(b_policy_id, b_rule['qos_policy_id'])
-
     def _test_delete_policy_rule(self, plugin, q_ctx,
                                  t_ctx, pod_id, bottom_policy):
         project_id = 'test_prject_id'
