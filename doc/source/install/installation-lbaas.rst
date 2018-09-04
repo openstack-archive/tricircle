@@ -516,7 +516,13 @@ Create two instances, i.e., backend1 and backend2, in RegionOne, which reside in
     | user_id                              | eab4a9d4da144e43bb1cacc8fad6f057                                |
     +--------------------------------------+-----------------------------------------------------------------+
 
-Console in the instances with user 'cirros' and password of 'cubswin:)'. Then run the following commands to simulate a web server.
+Console in the instances with user 'cirros' and password of 'cubswin:)'.
+Then run the following commands to simulate a web server.
+
+.. note::
+
+   If using cirros 0.4.0 and above, Console in the instances with user
+   'cirros' and password of 'gocubsgo'.
 
 .. code-block:: console
 
