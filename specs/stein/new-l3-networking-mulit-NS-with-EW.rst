@@ -42,7 +42,7 @@ and EW traffic. The new networking mode is plotted in Fig. 1. ::
 
 As shown in Fig. 1, R1 connects to external network (i.e., ext-net1) and
 ext-net1 is the default gateway of R1. Meanwhile, net1 is attached to R3
-and R3’s default gateway is the bridge net. Further, interfaces of bridge
+and R3's default gateway is the bridge net. Further, interfaces of bridge
 net are only attached to R1 and R2 which are regarded as local routers.
 
 In such a scenario, all traffic (no matter NS or EW traffic) flows to R3.
