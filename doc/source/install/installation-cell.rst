@@ -28,6 +28,9 @@ Setup
     systemctl stop devstack@n-sch.service
     systemctl stop devstack@n-super-cond.service
     systemctl stop devstack@n-api.service
+
+  if the service of devstack@n-api-meta.service exists, stop it::
+
     systemctl stop devstack@n-api-meta.service
 
 .. note:: Actually for cell v2, only one Nova API is required. We enable n-api
@@ -65,7 +68,7 @@ Setup
 
   then you can see the new cell and host are added in the database::
 
-    mysql -u$user -p$password -Dnova -e 'select cell_id, host from host_mappings'
+    mysql -u$user -p$password -Dnova_api -e 'select cell_id, host from host_mappings'
 
     +---------+-----------+
     | cell_id | host      |
@@ -74,7 +77,7 @@ Setup
     |       3 | zhiyuan-2 |
     +---------+-----------+
 
-    mysql -u$user -p$password -Dnova -e 'select id, name from cell_mappings'
+    mysql -u$user -p$password -Dnova_api -e 'select id, name from cell_mappings'
 
     +----+-------+
     | id | name  |
@@ -84,13 +87,9 @@ Setup
     |  3 | cell2 |
     +----+-------+
 
-- 5 In node1, run the following commands to use nova_cell1 database in nova configure files::
-
-    sed -i "s/nova_cell0/nova_cell1/g" `grep nova_cell0 -rl /etc/nova`
+- 5 In node1, run the following commands::
 
     systemctl restart devstack@n-sch.service
-    systemctl restart devstack@n-super-cond.service
-    systemctl restart devstack@n-cpu.service
 
 - 6 In node1, check if compute services in both hosts are registered::
 

@@ -244,8 +244,12 @@ function start_central_nova_server {
     nova_legacy_url=$(openstack endpoint list --service compute_legacy --interface public --region $local_region -c URL -f value)
     get_or_create_endpoint "compute_legacy" "$central_region" "$nova_legacy_url"
 
-    image_endpoint_id=$(openstack endpoint list --service image --interface public --region $local_region -c ID -f value)
-    openstack endpoint set --region $central_region $image_endpoint_id
+    central_image_endpoint_id=$(openstack endpoint list --service image --interface public --region $central_region -c ID -f value)
+    if [[ -z "$central_image_endpoint_id" ]]; then
+        glance_url=$(openstack endpoint list --service image --interface public --region $local_region -c URL -f value)
+        get_or_create_endpoint "image" "$central_region" "$glance_url"
+    fi
+
     place_endpoint_id=$(openstack endpoint list --service placement --interface public --region $local_region -c ID -f value)
     openstack endpoint set --region $central_region $place_endpoint_id
 
