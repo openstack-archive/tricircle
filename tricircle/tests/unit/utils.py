@@ -23,10 +23,15 @@ from sqlalchemy.sql import elements
 import sqlalchemy.sql.expression as sql_expression
 from sqlalchemy.sql import selectable
 
-import neutron.objects.exceptions as q_obj_exceptions
 import neutron_lib.context as q_context
+import neutron_lib.objects.exceptions as q_obj_exceptions
 
 from tricircle.common import constants
+from tricircle.network.drivers import type_flat
+from tricircle.network.drivers import type_local
+from tricircle.network.drivers import type_vlan
+from tricircle.network.drivers import type_vxlan
+from tricircle.network import managers
 
 
 class ResourceStore(object):
@@ -104,6 +109,9 @@ class DotDict(dict):
             return dummy_value_map[item]
         return self.get(item)
 
+    def __setattr__(self, name, value):
+        self[name] = value
+
     def to_dict(self):
         return self
 
@@ -115,6 +123,11 @@ class DotDict(dict):
 
     def save(self, session=None):
         pass
+
+    def update_fields(self, obj_data):
+        for k, v in obj_data.items():
+            if k in self:
+                setattr(self, k, v)
 
 
 class DotList(list):
@@ -456,6 +469,9 @@ class FakeSession(object):
     def delete(self, model_obj):
         unlink_models(self.resource_store.store_map['routers'], model_obj,
                       'router_id', 'id', 'attached_ports', 'port_id', 'id')
+        unlink_models(self.resource_store.store_map['securitygroups'],
+                      model_obj, 'security_group_id', 'id',
+                      'security_group_rules', 'id', 'id')
         self._cascade_delete(model_obj, 'port_id', 'ipallocations', 'id')
         key = self.delete_hook(model_obj)
         for res_list in self.resource_store.store_map.values():
@@ -553,9 +569,13 @@ class FakeClient(object):
 
     def create_resources(self, _type, ctx, body):
         res_list = self._res_map[self.region_name][_type]
+        if _type == 'qos_policy':
+            _type = 'policy'
         res = dict(body[_type])
         if 'id' not in res:
             res['id'] = uuidutils.generate_uuid()
+        if _type == 'policy' and 'rules' not in res:
+            res['rules'] = []
         res_list.append(res)
         return res
 
@@ -583,6 +603,8 @@ class FakeClient(object):
         return None
 
     def delete_resources(self, _type, ctx, _id):
+        if _type is 'policy':
+            _type = 'qos_policy'
         index = -1
         res_list = self._res_map[self.region_name][_type]
         for i, res in enumerate(res_list):
@@ -592,10 +614,46 @@ class FakeClient(object):
             del res_list[index]
 
     def update_resources(self, _type, ctx, _id, body):
-        res_list = self._res_map[self.region_name][_type]
+        if _type == 'policy':
+            res_list = self._res_map[self.region_name]['qos_policy']
+        else:
+            res_list = self._res_map[self.region_name][_type]
         updated = False
         for res in res_list:
             if res['id'] == _id:
                 updated = True
                 res.update(body[_type])
         return updated
+
+
+class FakeTypeManager(managers.TricircleTypeManager):
+    def _register_types(self):
+        local_driver = type_local.LocalTypeDriver()
+        self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
+        vlan_driver = type_vlan.VLANTypeDriver()
+        self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
+        vxlan_driver = type_vxlan.VxLANTypeDriver()
+        self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
+        local_driver = type_flat.FlatTypeDriver()
+        self.drivers[constants.NT_FLAT] = FakeExtension(local_driver)
+
+    def extend_network_dict_provider(self, cxt, net):
+        target_net = None
+        for t_net in get_resource_store().TOP_NETWORKS:
+            if t_net['id'] == net['id']:
+                target_net = t_net
+        if not target_net:
+            return
+        for segment in get_resource_store().TOP_NETWORKSEGMENTS:
+            if target_net['id'] == segment['network_id']:
+                target_net['provider:network_type'] = segment['network_type']
+                target_net[
+                    'provider:physical_network'] = segment['physical_network']
+                target_net[
+                    'provider:segmentation_id'] = segment['segmentation_id']
+                break
+
+
+class FakeExtension(object):
+    def __init__(self, ext_obj):
+        self.obj = ext_obj

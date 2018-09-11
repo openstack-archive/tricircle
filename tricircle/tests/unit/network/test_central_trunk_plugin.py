@@ -215,7 +215,7 @@ def fake_get_min_search_step(self):
 
 class FakeCorePlugin(central_plugin.TricirclePlugin):
     def __init__(self):
-        pass
+        self.type_manager = test_utils.FakeTypeManager()
 
     def get_port(self, context, port_id):
         return {portbindings.HOST_ID: None,

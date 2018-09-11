@@ -61,12 +61,7 @@ import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
 import tricircle.network.central_plugin as plugin
-from tricircle.network.drivers import type_flat
-from tricircle.network.drivers import type_local
-from tricircle.network.drivers import type_vlan
-from tricircle.network.drivers import type_vxlan
 from tricircle.network import helper
-from tricircle.network import managers
 from tricircle.tests.unit.network import test_security_groups
 import tricircle.tests.unit.utils as test_utils
 from tricircle.xjob import xmanager
@@ -595,11 +590,6 @@ class FakeRPCAPI(FakeBaseRPCAPI):
             ctxt, payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
 
 
-class FakeExtension(object):
-    def __init__(self, ext_obj):
-        self.obj = ext_obj
-
-
 class FakeHelper(helper.NetworkHelper):
     def _get_client(self, region_name=None):
         return FakeClient(region_name)
@@ -618,40 +608,12 @@ class FakeHelper(helper.NetworkHelper):
             t_ctx, q_ctx, _type, _id)
 
 
-class FakeTypeManager(managers.TricircleTypeManager):
-    def _register_types(self):
-        local_driver = type_local.LocalTypeDriver()
-        self.drivers[constants.NT_LOCAL] = FakeExtension(local_driver)
-        vlan_driver = type_vlan.VLANTypeDriver()
-        self.drivers[constants.NT_VLAN] = FakeExtension(vlan_driver)
-        vxlan_driver = type_vxlan.VxLANTypeDriver()
-        self.drivers[constants.NT_VxLAN] = FakeExtension(vxlan_driver)
-        local_driver = type_flat.FlatTypeDriver()
-        self.drivers[constants.NT_FLAT] = FakeExtension(local_driver)
-
-    def extend_network_dict_provider(self, cxt, net):
-        target_net = None
-        for t_net in TOP_NETS:
-            if t_net['id'] == net['id']:
-                target_net = t_net
-        if not target_net:
-            return
-        for segment in TOP_SEGMENTS:
-            if target_net['id'] == segment['network_id']:
-                target_net['provider:network_type'] = segment['network_type']
-                target_net[
-                    'provider:physical_network'] = segment['physical_network']
-                target_net[
-                    'provider:segmentation_id'] = segment['segmentation_id']
-                break
-
-
 class FakePlugin(plugin.TricirclePlugin):
     def __init__(self):
         self.set_ipam_backend()
         self.helper = FakeHelper(self)
         self.xjob_handler = FakeRPCAPI(self)
-        self.type_manager = FakeTypeManager()
+        self.type_manager = test_utils.FakeTypeManager()
 
     def _get_client(self, region_name):
         return FakeClient(region_name)
@@ -2619,12 +2581,6 @@ class PluginTest(unittest.TestCase,
         fake_plugin.create_network(q_ctx, body)
         body['network']['name'] = ['ext-net2']
         body['network']['availability_zone_hints'] = ['pod_2']
-        fake_plugin.create_network(q_ctx, body)
-        # we have ignore the FlatNetworkInUse exception, so only one allocation
-        # record is created, and both pods have one external network
-        self.assertEqual(1, len(TOP_FLATALLOCATIONS))
-        self.assertEqual(1, len(BOTTOM1_NETS))
-        self.assertEqual(1, len(BOTTOM2_NETS))
 
     def _prepare_external_net_router_test(self, q_ctx, fake_plugin,
                                           router_az_hints=None):
