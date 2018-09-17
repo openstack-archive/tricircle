@@ -480,7 +480,7 @@ L3 bridge network E-W (East-West):
 * For example, (Net1, Router1) in ``Pod1``,  (Net2, Router1) in ``Pod2``, if
   ``Net1`` is a cross Neutron L2 network, and can be expanded to Pod2, then
   will just expand ``Net1`` to Pod2. After the ``Net1`` expansion ( just like
-  cross Neutron L2 networking to spread one network in multiple Neutron servers ), it’ll
+  cross Neutron L2 networking to spread one network in multiple Neutron servers ), it'll
   look like (Net1, Router1) in ``Pod1``, (Net1, Net2, Router1) in ``Pod2``, In
   ``Pod2``, no VM in ``Net1``, only for E-W traffic. Now the E-W traffic will
   look like this:
@@ -500,7 +500,7 @@ another.
 
 If ``Net2`` is a cross Neutron L2 network, and can be expanded to ``Pod1`` too,
 then will just expand ``Net2`` to ``Pod1``. After the ``Net2`` expansion(just
-like cross Neutron L2 networking to spread one network in multiple Neutron servers ), it’ll
+like cross Neutron L2 networking to spread one network in multiple Neutron servers ), it'll
 look like (Net2, Net1, Router1) in ``Pod1``,  (Net1, Net2, Router1) in ``Pod2``,
 In ``Pod1``, no VM in Net2, only for E-W traffic. Now the E-W traffic will look
 like this: from ``Net1`` to ``Net2``:
@@ -508,11 +508,11 @@ like this: from ``Net1`` to ``Net2``:
 Net1 in Pod1 -> Router1 in Pod1 -> Net2 in Pod1 -> L2GW in Pod1 ---> L2GW in
 Pod2 -> Net2 in Pod2.
 
-To limit the complexity, one network’s az_hint can only be specified when
+To limit the complexity, one network's az_hint can only be specified when
 creating, and no update is allowed, if az_hint need to be updated, you have
 to delete the network and create again.
 
-If the network can’t be expanded, then E-W bridge network is needed. For
+If the network can't be expanded, then E-W bridge network is needed. For
 example, Net1(AZ1, AZ2,AZ3), Router1; Net2(AZ4, AZ5, AZ6), Router1.
 Then a cross Neutron L2 bridge network has to be established:
 
