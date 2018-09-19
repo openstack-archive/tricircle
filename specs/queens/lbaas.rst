@@ -28,22 +28,22 @@ neutrons are managed by the central neutron. As a result, in order to adapt
 the central-local design and the amphorae mechanism of
 Octavia, we plan to deploy LBaaS as follows. ::
 
-                    +---------------------------+
-                    |                           |
-                    |     Central Neutron       |
-                    |                           |
-                    +---------------------------+
-                                Central Region
+                +---------------------------+
+                |                           |
+                |      Central Neutron      |
+                |                           |
+                +---------------------------+
+                       Central Region
 
-+----------------------------+    +-----------------------------+
-|     +----------------+     |    |     +----------------+      |
-|     |  LBaaS Octavia |     |    |     |  LBaaS Octavia |      |
-|     +----------------+     |    |     +----------------+      |
-| +------+ +---------------+ |    | +-------+ +---------------+ |
-| | Nova | | Local Neutron | |    | | Nova  | | Local Neutron | |
-| +------+ +---------------+ |    | +-------+ +---------------+ |
-+----------------------------+    +-----------------------------+
-                  Region One                          Region Two
+  +----------------------------+    +-----------------------------+
+  |     +----------------+     |    |     +----------------+      |
+  |     |  LBaaS Octavia |     |    |     |  LBaaS Octavia |      |
+  |     +----------------+     |    |     +----------------+      |
+  | +------+ +---------------+ |    | +-------+ +---------------+ |
+  | | Nova | | Local Neutron | |    | | Nova  | | Local Neutron | |
+  | +------+ +---------------+ |    | +-------+ +---------------+ |
+  +----------------------------+    +-----------------------------+
+            Region One                          Region Two
 
 As demonstrated in the figure above, for each region where a local neutron
 is installed, admins can optionally choose to configure and install Octavia.
@@ -96,25 +96,26 @@ LBaaS members in multiple regions
 
 1. members in the same subnet yet locating in different regions
 ---------------------------------------------------------------
+As shown below. ::
 
-+-------------------------------+  +-----------------------+
-| +---------------------------+ |  |                       |
-| |    Amphora                | |  |                       |
-| |                           | |  |                       |
-| |  +-------+  +---------+   | |  |                       |
-| +--+ mgmt  +--+ subnet1 +---+ |  |                       |
-|    +-------+  +---------+     |  |                       |
-|                               |  |                       |
-| +--------------------------+  |  | +-------------------+ |
-| | +---------+  +---------+ |  |  | | +---------+       | |
-| | | member1 |  | member2 | |  |  | | | member3 |       | |
-| | +---------+  +---------+ |  |  | | +---------+       | |
-| +--------------------------+  |  | +-------------------+ |
-|          network1(subnet1)    |  |     network1(subnet1) |
-+-------------------------------+  +-----------------------+
-                  Region One                  Region Two
-Fig. 1. The scenario of balancing load across instances of one subnet which
-reside in different regions.
+  +-------------------------------+  +-----------------------+
+  | +---------------------------+ |  |                       |
+  | |    Amphora                | |  |                       |
+  | |                           | |  |                       |
+  | |  +-------+  +---------+   | |  |                       |
+  | +--+ mgmt  +--+ subnet1 +---+ |  |                       |
+  |    +-------+  +---------+     |  |                       |
+  |                               |  |                       |
+  | +--------------------------+  |  | +-------------------+ |
+  | | +---------+  +---------+ |  |  | |    +---------+    | |
+  | | | member1 |  | member2 | |  |  | |    | member3 |    | |
+  | | +---------+  +---------+ |  |  | |    +---------+    | |
+  | +--------------------------+  |  | +-------------------+ |
+  |       network1(subnet1)       |  |   network1(subnet1)   |
+  +-------------------------------+  +-----------------------+
+             Region One                     Region Two
+  Fig. 1. The scenario of balancing load across instances of one subnet which
+  reside in different regions.
 
 As shown in Fig. 1, suppose that a load balancer is created in Region one,
 and hence a listener, a pool, and two members in subnet1. When adding an
@@ -126,27 +127,28 @@ a pool.
 
 2. members residing in different subnets and regions
 ----------------------------------------------------
+As shown below. ::
 
-+---------------------------------------+  +-----------------------+
-| +-----------------------------------+ |  |                       |
-| |            Amphora                | |  |                       |
-| |                                   | |  |                       |
-| | +---------+  +------+ +---------+ | |  |                       |
-| +-+ subnet2 +--+ mgmt +-+ subnet1 +-+ |  |                       |
-|   +---------+  +------+ +---------+   |  |                       |
-|                                       |  |                       |
-| +----------------------------------+  |  | +-------------------+ |
-| |                                  |  |  | |                   | |
-| |   +---------+        +---------+ |  |  | | +---------+       | |
-| |   | member1 |        | member2 | |  |  | | | member3 |       | |
-| |   +---------+        +---------+ |  |  | | +---------+       | |
-| |                                  |  |  | |                   | |
-| +----------------------------------+  |  | +-------------------+ |
-|                    network1(subnet1)  |  |     network2(subnet2) |
-+---------------------------------------+  +-----------------------+
-                          Region One                  Region Two
-Fig. 2. The scenario of balancing load across instances of different subnets
-which reside in different regions as well.
+  +---------------------------------------+  +-----------------------+
+  | +-----------------------------------+ |  |                       |
+  | |            Amphora                | |  |                       |
+  | |                                   | |  |                       |
+  | | +---------+  +------+ +---------+ | |  |                       |
+  | +-+ subnet2 +--+ mgmt +-+ subnet1 +-+ |  |                       |
+  |   +---------+  +------+ +---------+   |  |                       |
+  |                                       |  |                       |
+  | +----------------------------------+  |  | +-------------------+ |
+  | |                                  |  |  | |                   | |
+  | |   +---------+      +---------+   |  |  | |    +---------+    | |
+  | |   | member1 |      | member2 |   |  |  | |    | member3 |    | |
+  | |   +---------+      +---------+   |  |  | |    +---------+    | |
+  | |                                  |  |  | |                   | |
+  | +----------------------------------+  |  | +-------------------+ |
+  |           network1(subnet1)           |  |    network2(subnet2)  |
+  +---------------------------------------+  +-----------------------+
+                 Region One                         Region Two
+  Fig. 2. The scenario of balancing load across instances of different subnets
+  which reside in different regions as well.
 
 As show in Fig. 2, supposing that a load balancer is created in region one, as
 well as a listener, a pool, and two members in subnet1. When adding an instance
