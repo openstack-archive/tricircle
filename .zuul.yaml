@@ -1,3 +1,25 @@
+- job:
+    name: tricircle-functional
+    parent: legacy-dsvm-base
+    run: playbooks/tricircle-dsvm-functional/run.yaml
+    post-run: playbooks/tricircle-dsvm-functional/post.yaml
+    timeout: 7800
+    required-projects:
+      - openstack-infra/devstack-gate
+      - openstack/tricircle
+
+- job:
+    name: tricircle-multiregion
+    parent: legacy-dsvm-base-multinode
+    run: playbooks/tricircle-dsvm-multiregion/run.yaml
+    post-run: playbooks/tricircle-dsvm-multiregion/post.yaml
+    timeout: 7800
+    required-projects:
+      - openstack-infra/devstack-gate
+      - openstack/networking-sfc
+      - openstack/tricircle
+    nodeset: legacy-ubuntu-xenial-2-node
+
 - project:
     templates:
       - openstack-python-jobs
@@ -7,11 +29,11 @@
       - release-notes-jobs
     check:
       jobs:
-        - legacy-tricircle-dsvm-functional
         - openstack-tox-cover
-        - legacy-tricircle-dsvm-multiregion
+        - tricircle-functional
+        - tricircle-multiregion
     gate:
       jobs:
-        - legacy-tricircle-dsvm-functional
         - openstack-tox-cover
-        - legacy-tricircle-dsvm-multiregion
+        - tricircle-functional
+        - tricircle-multiregion
