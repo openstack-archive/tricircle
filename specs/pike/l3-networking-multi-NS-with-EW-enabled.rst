@@ -388,6 +388,6 @@ Documentation Impact
 Reference
 =========
 
-.. [1] North South Networking via Multiple External Networks: https://docs.openstack.org/developer/tricircle/networking-guide-multiple-external-networks.html
+.. [1] North South Networking via Multiple External Networks: https://docs.openstack.org/tricircle/latest/networking/networking-guide-multiple-external-networks.html
 .. [2] l3-networking-combined-bridge-net: https://github.com/openstack/tricircle/blob/master/specs/ocata/l3-networking-combined-bridge-net.rst
-.. [3] North South Networking via Single External Network: https://docs.openstack.org/developer/tricircle/networking-guide-single-external-network.html
+.. [3] North South Networking via Single External Network: https://docs.openstack.org/tricircle/latest/networking/networking-guide-single-external-network.html
