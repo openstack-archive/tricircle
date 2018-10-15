@@ -738,8 +738,11 @@ class TricirclePlugin(plugin.Ml2Plugin):
             region_name = self._get_neutron_region()
             update_dict = {portbindings.PROFILE: {
                 t_constants.PROFILE_REGION: region_name,
-                t_constants.PROFILE_DEVICE: b_port['device_owner']
-                }}
+                t_constants.PROFILE_DEVICE: b_port['device_owner'],
+                portbindings.VIF_DETAILS: b_port[portbindings.VIF_DETAILS],
+                portbindings.VNIC_TYPE: b_port[portbindings.VNIC_TYPE],
+                portbindings.VIF_TYPE: b_port[portbindings.VIF_TYPE],
+                portbindings.HOST_ID: b_port[portbindings.HOST_ID]}}
             if b_port.get(t_constants.PROFILE_STATUS):
                 update_dict[portbindings.PROFILE].update({
                     t_constants.PROFILE_STATUS: b_port['status']

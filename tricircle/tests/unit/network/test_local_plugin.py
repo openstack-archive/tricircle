@@ -646,7 +646,11 @@ class PluginTest(unittest.TestCase):
         fake_port = {
             'id': port_id,
             'network_id': b_net['id'],
-            'binding:vif_type': 'fake_vif_type'}
+            'binding:vif_type': 'fake_vif_type',
+            'binding:host_id': host_id,
+            portbindings.VIF_DETAILS: {},
+            portbindings.VNIC_TYPE: 'normal'
+        }
         fake_agent = {
             'agent_type': 'Open vSwitch agent',
             'host': host_id,
@@ -662,7 +666,11 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'fake_vif_type',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         # update network type from vlan to vxlan
         update_resource('network', False, b_net['id'],
@@ -673,7 +681,11 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'fake_vif_type',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         # update network type from fake_vif_type to ovs
         update_resource('port', False, port_id,
@@ -686,7 +698,12 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id':
+                                              'fake_another_host',
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         self.plugin.update_port(self.context, port_id, update_body)
         # default p2p mode, update with agent host tunnel ip
@@ -696,7 +713,11 @@ class PluginTest(unittest.TestCase):
                                           'tunnel_ip': '192.168.1.101',
                                           'type': 'Open vSwitch agent',
                                           'host': host_id,
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
         cfg.CONF.set_override('l2gw_tunnel_ip', '192.168.1.105', 'tricircle')
@@ -710,7 +731,11 @@ class PluginTest(unittest.TestCase):
                                           'tunnel_ip': '192.168.1.105',
                                           'type': 'Open vSwitch agent',
                                           'host': 'fake_host',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         cfg.CONF.set_override('l2gw_tunnel_ip', None, 'tricircle')
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
@@ -719,7 +744,11 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         cfg.CONF.set_override('cross_pod_vxlan_mode', 'noop', 'client')
         self.plugin.update_port(self.context, port_id, update_body)
@@ -727,7 +756,11 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
 
         FakeCorePlugin.supported_extension_aliases = []
         self.plugin.update_port(self.context, port_id, update_body)
@@ -735,7 +768,11 @@ class PluginTest(unittest.TestCase):
         mock_update.assert_called_with(
             self.context, 'port', port_id,
             {'port': {'binding:profile': {'region': 'Pod1',
-                                          'device': 'compute:None'}}})
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
         FakeCorePlugin.supported_extension_aliases = ['agent']
 
         self.plugin.update_port(self.context, port_id,

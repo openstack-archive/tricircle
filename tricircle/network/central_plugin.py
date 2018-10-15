@@ -43,6 +43,7 @@ from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
 from neutron.extensions import providernet as provider
+from neutron.objects import ports as q_ports
 from neutron.objects.qos import policy as policy_object
 import neutron.objects.router as router_object
 from neutron.plugins.ml2 import managers as n_managers
@@ -50,6 +51,7 @@ from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import external_net
 from neutron_lib.api.definitions import l3 as l3_apidef
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.api.definitions import portbindings_extended as pb_ext
 from neutron_lib.api.definitions import provider_net
 from neutron_lib.api import validators
 from neutron_lib.api.validators import availability_zone as az_validator
@@ -558,12 +560,16 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 # do not reserve snat port for bridge and external subnet
                 snat_port_id = self.helper.prepare_top_snat_port(
                     t_ctx, context, res['tenant_id'], network['id'], res['id'])
+                self._create_port_binding(context, snat_port_id)
             if res['enable_dhcp']:
-                self.helper.prepare_top_dhcp_port(
+                dhcp_port_id = self.helper.prepare_top_dhcp_port(
                     t_ctx, context, res['tenant_id'], network['id'], res['id'])
+                self._create_port_binding(context, dhcp_port_id)
         except Exception:
             if snat_port_id:
                 super(TricirclePlugin, self).delete_port(context, snat_port_id)
+                q_ports.PortBinding.delete_objects(context,
+                                                   port_id=snat_port_id)
             self.delete_subnet(context, res['id'])
             raise
         return res
@@ -573,6 +579,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             q_ctx, {'name': [port_name]})
         if ports:
             super(TricirclePlugin, self).delete_port(q_ctx, ports[0]['id'])
+            q_ports.PortBinding.delete_objects(q_ctx, port_id=ports[0]['id'])
         db_api.delete_pre_created_resource_mapping(t_ctx, port_name)
 
     def delete_subnet(self, context, subnet_id):
@@ -642,6 +649,18 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                 t_constants.POD_NOT_SPECIFIED)
             return result
 
+    def _create_port_binding(self, context, port_id):
+        port_binding = q_ports.PortBinding(context)
+        port_binding.unique_keys.append(['port_id'])
+        port_binding.port_id = port_id
+        port_binding.host = ''
+        port_binding.profile = {}
+        port_binding.vif_type = portbindings.VIF_TYPE_UNBOUND
+        port_binding.vif_details = {}
+        port_binding.vnic_type = portbindings.VNIC_NORMAL
+        port_binding.status = 'ACTIVE'
+        port_binding.create()
+
     def create_port(self, context, port):
         port_body = port['port']
         if port_body['device_id'] == t_constants.interface_port_device_id:
@@ -655,6 +674,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                 t_ctx, context, port_body['tenant_id'], pod,
                 {'id': port_body['name']}, t_constants.RT_PORT,
                 gateway_port_body)
+            self._create_port_binding(context, t_gateway_id)
             return super(TricirclePlugin, self).get_port(context, t_gateway_id)
         db_port = super(TricirclePlugin, self).create_port_db(context, port)
         self._ensure_default_security_group_on_port(context, port)
@@ -662,6 +682,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         result = self._make_port_dict(db_port)
         self.extension_manager.process_create_port(context, port_body, result)
         self._process_port_create_security_group(context, result, sgids)
+        self._create_port_binding(context, db_port.id)
         return result
 
     def _check_mac_update_allowed(self, orig_port, port):
@@ -795,10 +816,28 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                 'name': bottom_port['name']
                             }})
 
+    def _process_port_binding(self, context, port_id, port):
+        profile = port['port'].get('binding:profile')
+        if profile is not None and \
+                set([portbindings.VIF_TYPE, portbindings.HOST_ID,
+                     portbindings.VIF_DETAILS, portbindings.VNIC_TYPE]
+                    ).issubset(profile.keys()):
+            q_ports.PortBinding.update_object(
+                context,
+                {
+                    pb_ext.VIF_TYPE: profile[portbindings.VIF_TYPE],
+                    pb_ext.HOST: profile[portbindings.HOST_ID],
+                    pb_ext.VIF_DETAILS: profile[portbindings.VIF_DETAILS],
+                    pb_ext.VNIC_TYPE: profile[portbindings.VNIC_TYPE]
+                },
+                port_id=port_id
+            )
+
     def update_port(self, context, port_id, port):
         t_ctx = t_context.get_context_from_neutron_context(context)
         top_port = super(TricirclePlugin, self).get_port(context, port_id)
         updated_port = None
+        self._process_port_binding(context, port_id, port)
         # be careful that l3_db will call update_port to update device_id of
         # router interface, we cannot directly update bottom port in this case,
         # otherwise we will fail when attaching bottom port to bottom router
@@ -993,6 +1032,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                 'comparator': 'eq',
                                                 'value': port_id}])
         super(TricirclePlugin, self).delete_port(context, port_id)
+        q_ports.PortBinding.delete_objects(context, port_id=port_id)
 
     def _get_port_qos_info(self, context, port_id):
         policy = policy_object.QosPolicy.get_port_policy(context, port_id)
