@@ -48,3 +48,10 @@ Tricircle Networking Guide
    :maxdepth: 4
 
    networking/index
+
+Tricircle Devspecs Guide
+==========================
+.. toctree::
+   :maxdepth: 4
+
+   devspecs/index
