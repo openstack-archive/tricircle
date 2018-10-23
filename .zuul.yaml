@@ -20,20 +20,69 @@
       - openstack/tricircle
     nodeset: legacy-ubuntu-xenial-2-node
 
+- job:
+    name: tricircle-tox-lower-constraints
+    parent: openstack-tox-lower-constraints
+    required-projects:
+      - openstack/neutron
+      - openstack/networking-sfc
+
+- job:
+    name: tricircle-tox-cover
+    parent: openstack-tox-cover
+    required-projects:
+      - openstack/neutron
+      - openstack/networking-sfc
+
+
 - project:
     templates:
-      - openstack-cover-jobs
-      - openstack-python-jobs
-      - openstack-python35-jobs
+      - openstack-python-jobs-neutron
+      - openstack-python35-jobs-neutron
       - openstack-python36-jobs
       - check-requirements
       - publish-openstack-docs-pti
       - release-notes-jobs-python3
     check:
       jobs:
+        - tricircle-tox-cover
+        - tricircle-tox-lower-constraints
+        - openstack-tox-pep8:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py27:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py35:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py36:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
         - tricircle-functional
         - tricircle-multiregion
     gate:
       jobs:
+        - tricircle-tox-lower-constraints
+        - openstack-tox-pep8:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py27:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py35:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
+        - openstack-tox-py36:
+            required-projects:
+              - openstack/neutron
+              - openstack/networking-sfc
         - tricircle-functional
         - tricircle-multiregion
