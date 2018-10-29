@@ -28,7 +28,6 @@ import neutron.common.exceptions as ml2_exceptions
 from neutron.conf.plugins.ml2 import config  # noqa
 from neutron.db import _resource_extend as resource_extend
 from neutron.db import agents_db
-from neutron.db import api as q_db_api
 from neutron.db.availability_zone import router as router_az
 from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
@@ -61,6 +60,7 @@ from neutron_lib.callbacks import registry
 from neutron_lib.callbacks import resources
 import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
+from neutron_lib.db import api as lib_db_api
 from neutron_lib import exceptions
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import directory
@@ -319,7 +319,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         if az_def.AZ_HINTS in net_data:
             self._validate_availability_zones(context,
                                               net_data[az_def.AZ_HINTS])
-        with q_db_api.context_manager.writer.using(context):
+        with lib_db_api.CONTEXT_WRITER.using(context):
             net_db = self.create_network_db(context, network)
             res = self._make_network_dict(net_db, process_extensions=False,
                                           context=context)
