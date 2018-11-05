@@ -14,3 +14,12 @@ The CLI for Tricircle can be executed as follows ::
   openstack multiregion networking <command> [<command-arguments>]
 
 All commands will issue request to Tricircle Admin API.
+
+
+Management commands
+===================
+
+.. toctree::
+   :maxdepth: 1
+
+   tricircle-status
