@@ -421,8 +421,9 @@ class FakeSession(object):
         if model_obj.__tablename__ == 'networkrbacs':
             if (model_dict['action'] == 'access_as_shared' and
                     model_dict['target_tenant'] == '*'):
+
                 for net in self.resource_store.TOP_NETWORKS:
-                    if net['id'] == model_dict['object']:
+                    if net['id'] == model_dict['object_id']:
                         net['shared'] = True
                         break
 

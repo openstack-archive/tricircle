@@ -1312,7 +1312,6 @@ class PluginTest(unittest.TestCase,
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
                              region_names)
 
-    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
     def test_update_network(self, mock_context):
@@ -1382,7 +1381,7 @@ class PluginTest(unittest.TestCase,
     def test_update_network_provider_attrs(self, mock_context):
         tenant_id = TEST_TENANT_ID
         self._basic_pod_route_setup()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         t_net_id, _, _, _ = self._prepare_network_subnet(tenant_id, t_ctx,
                                                          'pod_1', 1)
         fake_plugin = FakePlugin()
@@ -1798,13 +1797,15 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_subnet_clean(self, mock_context):
+    def test_subnet_clean(self, mock_context, mock_check_if):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         mock_context.return_value = t_ctx
 
         tenant_id = 'test_tenant_id'
@@ -2447,9 +2448,12 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(FakeClient, 'action_routers')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_add_interface_exception(self, mock_context, mock_action):
+    def test_add_interface_exception(self, mock_context, mock_action,
+                                     mock_check_if):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
@@ -2506,15 +2510,17 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(FakeClient, '_get_connection')
     @patch.object(context, 'get_context_from_neutron_context')
     def test_add_interface_exception_port_left(self, mock_context,
-                                               mock_connect):
+                                               mock_connect, mock_check_if):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         mock_context.return_value = t_ctx
 
         tenant_id = TEST_TENANT_ID
@@ -2541,15 +2547,18 @@ class PluginTest(unittest.TestCase,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
     @patch.object(db_base_plugin_common.DbBasePluginCommon,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(FakeBaseRPCAPI, 'configure_route')
     @patch.object(FakeClient, 'remove_interface_routers')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_remove_interface(self, mock_context, mock_remove, mock_rpc):
+    def test_remove_interface(self, mock_context, mock_remove, mock_rpc,
+                              mock_check_if):
         self._basic_pod_route_setup()
 
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         mock_context.return_value = t_ctx
 
         tenant_id = TEST_TENANT_ID
@@ -2730,7 +2739,7 @@ class PluginTest(unittest.TestCase,
 
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         mock_context.return_value = t_ctx
 
         # create external network without specifying az pod name
@@ -3373,11 +3382,13 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
                   new=update_floatingip)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_delete_router(self, mock_context):
+    def test_delete_router(self, mock_context, mock_check_if):
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         t_ctx.project_id = 'test_tenant_id'
         mock_context.return_value = t_ctx
 
@@ -3426,11 +3437,13 @@ class PluginTest(unittest.TestCase,
                   '_make_subnet_dict', new=fake_make_subnet_dict)
     @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
                   new=update_floatingip)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_delete_local_router(self, mock_context):
+    def test_delete_local_router(self, mock_context, mock_check_if):
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
+        t_ctx = context.get_admin_context()
         t_ctx.project_id = 'test_tenant_id'
         mock_context.return_value = t_ctx
 
