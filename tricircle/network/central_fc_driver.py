@@ -19,6 +19,7 @@ from oslo_log import log
 from networking_sfc.db import sfc_db
 from networking_sfc.services.flowclassifier.drivers import base as fc_driver
 
+from neutron_lib.db import model_query
 from neutron_lib.plugins import directory
 from neutronclient.common import exceptions as client_exceptions
 
@@ -85,7 +86,7 @@ class TricircleFcDriver(fc_driver.FlowClassifierDriverBase):
 
     def _get_chain_id_by_flowclassifier_id(
             self, context, fc_plugin, flowclassifier_id):
-        chain_classifier_assoc = fc_plugin._model_query(
+        chain_classifier_assoc = model_query.query_with_hooks(
             context, sfc_db.ChainClassifierAssoc).filter_by(
             flowclassifier_id=flowclassifier_id).first()
         if chain_classifier_assoc:
