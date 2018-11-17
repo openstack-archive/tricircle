@@ -285,7 +285,8 @@ def delete_model(res_list, model_obj, key=None):
         return
     if not key:
         key = 'id'
-    if key not in res_list[0]:
+    if key not in res_list[0] or \
+            key not in model_obj:
         return
     index = -1
     for i, res in enumerate(res_list):
