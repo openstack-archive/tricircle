@@ -20,6 +20,7 @@ from networking_sfc.services.sfc.drivers import base as sfc_driver
 
 from oslo_log import log
 
+from neutron_lib.db import model_query
 from neutron_lib.plugins import directory
 from neutronclient.common import exceptions as client_exceptions
 
@@ -182,7 +183,7 @@ class TricircleSfcDriver(sfc_driver.SfcDriverBase):
                 net_id, t_constants.POD_NOT_SPECIFIED)
 
     def _get_chain_id_by_group_id(self, context, sfc_plugin, portpairgroup_id):
-        chain_group_assoc = sfc_plugin._model_query(
+        chain_group_assoc = model_query.query_with_hooks(
             context, sfc_db.ChainGroupAssoc).filter_by(
             portpairgroup_id=portpairgroup_id).first()
         if chain_group_assoc:
