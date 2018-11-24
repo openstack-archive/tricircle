@@ -230,4 +230,4 @@ References
 ==========
 
 .. [1] https://blueprints.launchpad.net/neutron/+spec/push-notifications
-.. [2] http://etherealmind.com/help-wanted-stitching-a-federated-sdn-on-openstack-with-evpn/
+.. [2] https://etherealmind.com/help-wanted-stitching-a-federated-sdn-on-openstack-with-evpn/
