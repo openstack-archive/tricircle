@@ -26,7 +26,6 @@ from oslo_log import log
 
 import neutron.common.exceptions as ml2_exceptions
 from neutron.conf.plugins.ml2 import config  # noqa
-from neutron.db import _resource_extend as resource_extend
 from neutron.db import agents_db
 from neutron.db.availability_zone import router as router_az
 from neutron.db import db_base_plugin_v2
@@ -61,6 +60,7 @@ from neutron_lib.callbacks import resources
 import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
 from neutron_lib.db import api as lib_db_api
+from neutron_lib.db import resource_extend
 from neutron_lib import exceptions
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import directory
