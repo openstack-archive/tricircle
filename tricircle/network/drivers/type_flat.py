@@ -13,11 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron_lib import exceptions
 from neutron_lib.plugins.ml2 import api
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron.common import exceptions
 from neutron.plugins.ml2.drivers import type_flat
 
 from tricircle.common import constants
