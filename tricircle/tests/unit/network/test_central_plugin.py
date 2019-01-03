@@ -25,14 +25,13 @@ import unittest
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import provider_net
 import neutron_lib.constants as q_constants
-from neutron_lib.db import utils as lib_db_utils
+from neutron_lib.db import utils as db_utils
 import neutron_lib.exceptions as q_lib_exc
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import constants as plugin_constants
 from neutron_lib.plugins import directory
 
 import neutron.conf.common as q_config
-from neutron.db import _utils
 from neutron.db import db_base_plugin_common
 from neutron.db import db_base_plugin_v2
 from neutron.db import ipam_pluggable_backend
@@ -73,12 +72,6 @@ from tricircle.tests.unit.network import test_security_groups
 import tricircle.tests.unit.utils as test_utils
 from tricircle.xjob import xmanager
 
-
-# TODO(boden): remove when https://review.openstack.org/#/c/565593/ lands
-if hasattr(_utils, 'filter_non_model_columns'):
-    db_utils = _utils
-else:
-    db_utils = lib_db_utils
 
 _resource_store = test_utils.get_resource_store()
 TOP_NETS = _resource_store.TOP_NETWORKS
