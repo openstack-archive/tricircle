@@ -50,7 +50,7 @@ fi
 # nova flavor-create test 1 1024 10 1
 image_id=$(openstack --os-region-name=RegionOne image list | awk 'NR==4 {print $2}')
 
-# change the tempest configruation to test Tricircle
+# change the tempest configuration to test Tricircle
 env | grep OS_
 
 #Temporary comment smoke test due to ci environment problems
