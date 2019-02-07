@@ -25,6 +25,7 @@ from neutron_lib.api import extensions
 from neutron_lib.api import validators
 from neutron_lib.callbacks import events
 import neutron_lib.constants as q_constants
+from neutron_lib.db import utils as db_utils
 import neutron_lib.exceptions as q_exceptions
 from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
@@ -306,7 +307,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             subnet_ids = self._ensure_subnet(context, t_network)
         if subnet_ids:
             b_network['subnets'] = subnet_ids
-        return self._fields(b_network, fields)
+        return db_utils.resource_fields(b_network, fields)
 
     def get_networks(self, context, filters=None, fields=None,
                      sorts=None, limit=None, marker=None, page_reverse=False):
@@ -325,7 +326,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             subnet_ids = self._ensure_subnet(context, b_network, False)
             if subnet_ids:
                 b_network['subnets'] = subnet_ids
-            b_networks.append(self._fields(b_network, fields))
+            b_networks.append(db_utils.resource_fields(b_network, fields))
 
         if len(b_networks) == len(filters['id']):
             return b_networks
@@ -366,7 +367,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 subnet_ids = self._ensure_subnet(context, network)
                 if subnet_ids:
                     b_network['subnets'] = subnet_ids
-                b_networks.append(self._fields(b_network, fields))
+                b_networks.append(db_utils.resource_fields(b_network, fields))
         return b_networks
 
     def create_subnet(self, context, subnet):
@@ -424,7 +425,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             b_subnet = self._create_bottom_subnet(t_ctx, context, t_subnet)
         if b_subnet['enable_dhcp']:
             self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
-        return self._fields(b_subnet, fields)
+        return db_utils.resource_fields(b_subnet, fields)
 
     def get_subnets(self, context, filters=None, fields=None, sorts=None,
                     limit=None, marker=None, page_reverse=False):
@@ -443,7 +444,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
         for b_subnet in b_full_subnets:
             if b_subnet['enable_dhcp']:
                 self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
-            b_subnets.append(self._fields(b_subnet, fields))
+            b_subnets.append(db_utils.resource_fields(b_subnet, fields))
         if len(b_subnets) == len(filters['id']):
             return b_subnets
 
@@ -467,7 +468,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
                 b_subnet = self._create_bottom_subnet(t_ctx, context, subnet)
                 if b_subnet['enable_dhcp']:
                     self._ensure_subnet_dhcp_port(t_ctx, context, b_subnet)
-                b_subnets.append(self._fields(b_subnet, fields))
+                b_subnets.append(db_utils.resource_fields(b_subnet, fields))
         return b_subnets
 
     def delete_subnet(self, context, _id):
@@ -830,7 +831,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             b_port = self.core_plugin.create_port(context, {'port': t_port})
 
         self._ensure_trunk(context, t_ctx, _id)
-        return self._fields(b_port, fields)
+        return db_utils.resource_fields(b_port, fields)
 
     def get_ports(self, context, filters=None, fields=None, sorts=None,
                   limit=None, marker=None, page_reverse=False):
@@ -873,7 +874,7 @@ class TricirclePlugin(plugin.Ml2Plugin):
             port.pop('qos_policy_id', None)
             b_port = self.core_plugin.create_port(context,
                                                   {'port': port})
-            b_ports.append(self._fields(b_port, fields))
+            b_ports.append(db_utils.resource_fields(b_port, fields))
         return b_ports
 
     def delete_port(self, context, _id, l3_port_check=True):

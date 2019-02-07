@@ -60,6 +60,7 @@ import neutron_lib.callbacks.resources as attributes
 from neutron_lib import constants
 from neutron_lib.db import api as lib_db_api
 from neutron_lib.db import resource_extend
+from neutron_lib.db import utils as db_utils
 from neutron_lib import exceptions
 from neutron_lib.exceptions import availability_zone as az_exc
 from neutron_lib.plugins import directory
@@ -1285,8 +1286,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             id_filters = filters.pop('id')
             ports = self._get_ports(context, filters, None, sorts, limit,
                                     marker, page_reverse)
-            ports = [super(TricirclePlugin,
-                           self)._fields(
+            ports = [db_utils.resource_fields(
                 p, fields) for p in ports if p['id'] in id_filters]
             for port in ports:
                 port['qos_policy_id'] = \
@@ -1370,8 +1370,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             # _get_ports_from_pod_with_number already traverses all the pods
             # to try to get ports equal to limit, so pod is transparent for
             # controller.
-            return [super(TricirclePlugin,
-                          self)._fields(p, fields) for p in res['ports']]
+            return [db_utils.resource_fields(p, fields) for p in res['ports']]
         else:
             ret = []
             pods = db_api.list_pods(t_ctx)
@@ -1405,8 +1404,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
             ret = self._map_ports_from_bottom_to_top(ret, bottom_top_map)
             ret.extend(self._get_ports_from_top(context, top_bottom_map,
                                                 filters))
-            return [super(TricirclePlugin,
-                          self)._fields(p, fields) for p in ret]
+            return [db_utils.resource_fields(p, fields) for p in ret]
 
     def create_router(self, context, router):
         with context.session.begin(subtransactions=True):

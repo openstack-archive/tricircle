@@ -18,6 +18,7 @@ from oslo_log import log
 
 from neutron.services.trunk import exceptions as trunk_exc
 from neutron.services.trunk import plugin as trunk_plugin
+from neutron_lib.db import utils as db_utils
 
 import six
 import tricircle.common.client as t_client
@@ -276,8 +277,7 @@ class TricircleTrunkDriver(trunk_plugin.TrunkPlugin):
                                                    top_bottom_map, filters)
             ret.extend(top_trunks)
 
-        return [super(TricircleTrunkDriver, self)._fields(trunk, fields)
-                for trunk in ret]
+        return [db_utils.resource_fields(trunk, fields) for trunk in ret]
 
     def get_trunk_subports(self, context, filters=None):
         ret = None
