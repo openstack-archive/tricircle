@@ -967,7 +967,7 @@ def fake_filter_non_model_columns(data, model):
 
 
 @classmethod
-def fake_load_obj(cls, context, db_obj):
+def fake_load_obj(cls, context, db_obj, fields=None):
     return db_obj
 
 

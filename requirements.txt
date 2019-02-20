@@ -43,10 +43,8 @@ oslo.upgradecheck>=0.1.1 # Apache-2.0
 oslo.utils>=3.33.0 # Apache-2.0
 sqlalchemy-migrate>=0.11.0 # Apache-2.0
 
-# These repos are installed from git in OpenStack CI if the job
-# configures them as required-projects:
-neutron>=12.0.0 # Apache-2.0
-networking-sfc>=6.0.0 # Apache-2.0
+# Uncomment or copy/paste the sibling requirements for release of project
+# -r ./sibling-requirements.txt
 
 # The comment below indicates this project repo is current with neutron-lib
 # and should receive neutron-lib consumption patches as they are released

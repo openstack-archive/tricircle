@@ -42,7 +42,8 @@
           set -x
           export PYTHONUNBUFFERED=true
           export BRANCH_OVERRIDE=default
-          export PROJECTS="openstack/tricircle $PROJECTS"
+          export PROJECTS="openstack/tricircle openstack/neutron openstack/networking-sfc $PROJECTS"
+          export LIBS_FROM_GIT="neutron,networking-sfc"
           export DEVSTACK_GATE_NEUTRON=1
           export DEVSTACK_GATE_TEMPEST=0
           export DEVSTACK_GATE_TEMPEST_ALL_PLUGINS=0

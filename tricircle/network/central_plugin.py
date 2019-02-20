@@ -24,7 +24,6 @@ from oslo_db.sqlalchemy import utils as sa_utils
 import oslo_log.helpers as log_helpers
 from oslo_log import log
 
-import neutron.common.exceptions as ml2_exceptions
 from neutron.conf.plugins.ml2 import config  # noqa
 from neutron.db import agents_db
 from neutron.db.availability_zone import router as router_az
@@ -336,7 +335,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     if not match:
                         raise
                     else:
-                        raise ml2_exceptions.FlatNetworkInUse(
+                        raise exceptions.FlatNetworkInUse(
                             physical_network=match.groups()[0])
         # process_extensions is set to False in _make_network_dict, so "tags"
         # field will not be set, we manually set here so openstack client can
@@ -978,13 +977,11 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         try:
             # notify interested parties of imminent port deletion;
             # a failure here prevents the operation from happening
-            kwargs = {
-                'context': context,
-                'port_id': port_id,
-                'port_check': port_check
-            }
-            registry.notify(
-                resources.PORT, events.BEFORE_DELETE, self, **kwargs)
+            registry.publish(
+                resources.PORT, events.BEFORE_DELETE, self,
+                payload=events.DBEventPayload(
+                    context, metadata={'port_check': port_check},
+                    resource_id=port_id))
         except callbacks_exc.CallbackFailure as e:
             # NOTE(xiulin): preserve old check's behavior
             if len(e.errors) == 1:

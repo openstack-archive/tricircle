@@ -1,0 +1,4 @@
+# These repos are installed from git in OpenStack CI if the job
+# configures them as required-projects:
+neutron>=12.0.0 # Apache-2.0
+networking-sfc>=6.0.0 # Apache-2.0
