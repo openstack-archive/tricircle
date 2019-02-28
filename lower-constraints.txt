@@ -55,6 +55,7 @@ msgpack-python==0.4.0
 munch==2.1.0
 netaddr==0.7.18
 netifaces==0.10.4
+networking-sfc==8.0.0.0b1
 neutron-lib==1.20.0
 openstackdocstheme==1.18.1
 openstacksdk==0.11.2
