@@ -14,8 +14,6 @@
 # tempest.api.network.admin.test_external_networks_negative.ExternalNetworksAdminNegativeTestJSON.test_create_port_with_precreated_floatingip_as_fixed_ip[id-d402ae6c-0be0-4d8e-833b-a738895d98d0,negative]
 # tempest.api.network.admin.test_floating_ips_admin_actions.FloatingIPAdminTestJSON.test_create_list_show_floating_ip_with_tenant_id_by_admin[id-32727cc3-abe2-4485-a16e-48f2d54c14f2]
 # tempest.api.network.admin.test_floating_ips_admin_actions.FloatingIPAdminTestJSON.test_list_floating_ips_from_admin_and_nonadmin[id-64f2100b-5471-4ded-b46c-ddeeeb4f231b]
-# tempest.api.network.admin.test_l3_agent_scheduler.L3AgentSchedulerTestJSON.test_add_list_remove_router_on_l3_agent[id-9464e5e7-8625-49c3-8fd1-89c52be59d66]
-# tempest.api.network.admin.test_l3_agent_scheduler.L3AgentSchedulerTestJSON.test_list_routers_on_l3_agent[id-b7ce6e89-e837-4ded-9b78-9ed3c9c6a45a]
 # tempest.api.network.admin.test_negative_quotas.QuotasNegativeTest.test_network_quota_exceeding[id-644f4e1b-1bf9-4af0-9fd8-eb56ac0f51cf]
 # tempest.api.network.admin.test_quotas.QuotasTest.test_quotas[id-2390f766-836d-40ef-9aeb-e810d78207fb]
 # tempest.api.network.admin.test_routers_dvr.RoutersTestDVR.test_centralized_router_creation[id-8a0a72b4-7290-4677-afeb-b4ffe37bc352]
