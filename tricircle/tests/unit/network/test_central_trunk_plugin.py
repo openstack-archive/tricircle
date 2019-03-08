@@ -540,28 +540,6 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(updated_btm_trunk['description'], 'updated')
         self.assertFalse(updated_btm_trunk['admin_state_up'])
 
-    @patch.object(context, 'get_context_from_neutron_context',
-                  new=fake_get_context_from_neutron_context)
-    def test_delete_trunk(self):
-        project_id = TEST_TENANT_ID
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        self._basic_pod_setup()
-        fake_plugin = FakePlugin()
-
-        t_trunk, b_trunk = self._prepare_trunk_test(project_id, t_ctx,
-                                                    'pod_1', 1, True)
-
-        fake_plugin.delete_trunk(q_ctx, t_trunk['id'])
-        self.assertEqual(len(TOP_TRUNKS), 0)
-        self.assertEqual(len(BOTTOM1_TRUNKS), 0)
-        route_filters = [{'key': 'top_id',
-                          'comparator': 'eq',
-                          'value': t_trunk['id']}]
-        routes = core.query_resource(t_ctx, models.ResourceRouting,
-                                     route_filters, [])
-        self.assertEqual(len(routes), 0)
-
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'get_ports',
                   new=FakeCorePlugin.get_ports)
     @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_port',
@@ -570,10 +548,8 @@ class PluginTest(unittest.TestCase):
                   new=fake_get_context_from_neutron_context)
     def test_action_subports(self):
         project_id = TEST_TENANT_ID
-        q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
         self._basic_pod_setup()
-        fake_plugin = FakePlugin()
 
         t_trunk, b_trunk = self._prepare_trunk_test(project_id, t_ctx,
                                                     'pod_1', 1, True)
@@ -616,65 +592,6 @@ class PluginTest(unittest.TestCase):
                 'port_id': port_id,
                 'segmentation_id': _id}
             add_subports.append(subport)
-
-        fake_plugin.add_subports(q_ctx, t_trunk['id'],
-                                 {'sub_ports': add_subports})
-
-        top_subports = TOP_TRUNKS[0]['sub_ports']
-        btm_subports = BOTTOM1_TRUNKS[0]['sub_ports']
-
-        except_btm_subports = []
-        for subport in b_trunk['sub_ports']:
-            if subport['segmentation_id'] == 164:
-                except_btm_subports.extend([subport])
-        for subport in add_subports:
-            subport['trunk_id'] = b_trunk['id']
-        except_btm_subports.extend(add_subports)
-        six.assertCountEqual(self, btm_subports, except_btm_subports)
-
-        except_top_subports = []
-        for subport in t_trunk['sub_ports']:
-            if subport['segmentation_id'] == 164:
-                except_top_subports.extend([subport])
-        for subport in add_subports:
-            subport['trunk_id'] = t_trunk['id']
-        except_top_subports.extend(add_subports)
-        except_btm_subports.extend(add_subports)
-        six.assertCountEqual(self, top_subports, except_top_subports)
-
-        self.assertEqual(len(BOTTOM1_PORTS), 10)
-        map_filters = [{'key': 'resource_type',
-                        'comparator': 'eq',
-                        'value': constants.RT_PORT},
-                       {'key': 'project_id',
-                        'comparator': 'eq',
-                        'value': project_id}]
-
-        port_mappings = db_api.list_resource_routings(t_ctx, map_filters)
-        self.assertEqual(len(port_mappings), 10)
-
-    @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'update_port',
-                  new=FakeCorePlugin.update_port)
-    @patch.object(context, 'get_context_from_neutron_context',
-                  new=fake_get_context_from_neutron_context)
-    def test_remove_subports(self):
-        project_id = TEST_TENANT_ID
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        self._basic_pod_setup()
-        fake_plugin = FakePlugin()
-
-        t_trunk, b_trunk = self._prepare_trunk_test(project_id, t_ctx,
-                                                    'pod_1', 1, True)
-        subport_id = t_trunk['sub_ports'][0]['port_id']
-
-        remove_subport = {'sub_ports': [{'port_id': subport_id}]}
-        fake_plugin.remove_subports(q_ctx, t_trunk['id'], remove_subport)
-
-        top_subports = TOP_TRUNKS[0]['sub_ports']
-        btm_subports = BOTTOM1_TRUNKS[0]['sub_ports']
-        self.assertEqual(len(top_subports), 0)
-        self.assertEqual(len(btm_subports), 0)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
