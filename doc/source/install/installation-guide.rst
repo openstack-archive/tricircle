@@ -15,3 +15,4 @@ step by step without DevStack for users who install OpenStack manually.
 .. include:: ./installation-manual.rst
 .. include:: ./installation-cell.rst
 .. include:: ./installation-lbaas.rst
+.. include:: ./installation-lbaas_with_nova_cell_v2.rst
