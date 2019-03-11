@@ -20,7 +20,6 @@
       - openstack-infra/devstack-gate
       - openstack/networking-sfc
       - openstack/tricircle
-    nodeset: legacy-ubuntu-xenial-2-node
 
 - job:
     name: tricircle-tox-lower-constraints
