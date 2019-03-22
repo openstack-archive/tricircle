@@ -406,6 +406,7 @@ class PluginTest(unittest.TestCase):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
+        cfg.CONF.register_opts(q_config.core_opts)
         core.get_engine().execute('pragma foreign_keys=on')
         self.context = context.Context()
         xmanager.IN_TEST = True

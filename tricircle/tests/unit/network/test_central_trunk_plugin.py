@@ -241,6 +241,7 @@ class PluginTest(unittest.TestCase):
     def setUp(self):
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())
+        cfg.CONF.register_opts(q_config.core_opts)
         self.context = context.Context()
         cfg.CONF.set_override('tenant_network_types', ['local', 'vlan'],
                               group='tricircle')

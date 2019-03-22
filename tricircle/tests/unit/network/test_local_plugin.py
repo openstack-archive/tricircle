@@ -260,7 +260,6 @@ class FakePlugin(plugin.TricirclePlugin):
         self.neutron_handle = FakeNeutronHandle()
         self.on_trunk_create = {}
         self.on_subnet_delete = {}
-        self.type_manager = test_utils.FakeTypeManager()
 
 
 class PluginTest(unittest.TestCase):
@@ -268,11 +267,6 @@ class PluginTest(unittest.TestCase):
         self.tenant_id = uuidutils.generate_uuid()
         self.plugin = FakePlugin()
         self.context = FakeContext()
-        phynet2 = 'provider2'
-        vlan_min, vlan_max = 2000, 3000
-        cfg.CONF.set_override('network_vlan_ranges',
-                              ['%s:%d:%d' % (phynet2, vlan_min, vlan_max)],
-                              group='tricircle')
 
     def _prepare_resource(self, az_hints=None, enable_dhcp=True):
         network_id = uuidutils.generate_uuid()
@@ -629,31 +623,6 @@ class PluginTest(unittest.TestCase):
             b_port = get_resource('port', False, t_ports[i]['id'])
             b_port.pop('project_id')
             self.assertDictEqual(t_ports[i], b_port)
-
-    @patch.object(t_context, 'get_context_from_neutron_context')
-    @patch.object(FakeNeutronHandle, 'handle_update')
-    def test_update_port(self, mock_update, mock_context):
-        t_net, t_subnet, _, _ = self._prepare_resource()
-        b_net = self.plugin.get_network(self.context, t_net['id'])
-        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
-        mock_context.return_value = self.context
-        port_id = 'fake_port_id'
-        host_id = 'fake_host'
-        fake_port = {
-            'id': port_id,
-            'network_id': b_net['id'],
-            'binding:vif_type': 'fake_vif_type',
-            'binding:host_id': host_id,
-            portbindings.VIF_DETAILS: {},
-            portbindings.VNIC_TYPE: 'normal'
-        }
-        fake_agent = {
-            'agent_type': 'Open vSwitch agent',
-            'host': host_id,
-            'configurations': {
-                'tunneling_ip': '192.168.1.101'}}
-        create_resource('port', False, fake_port)
-        create_resource('agent', False, fake_agent)
 
     @patch.object(t_context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):
