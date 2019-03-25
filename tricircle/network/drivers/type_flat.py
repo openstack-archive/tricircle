@@ -36,10 +36,12 @@ class FlatTypeDriver(type_flat.FlatTypeDriver):
     def initialize(self):
         LOG.info("FlatTypeDriver initialization complete")
 
-    def reserve_provider_segment(self, context, segment):
+    def reserve_provider_segment(self, context, segment, filters=None):
         try:
             res = super(FlatTypeDriver,
-                        self).reserve_provider_segment(context, segment)
+                        self).reserve_provider_segment(context,
+                                                       segment,
+                                                       filters=None)
         except exceptions.FlatNetworkInUse:
             # to support multiple regions sharing the same physical network
             # for external network, we ignore this exception and let local

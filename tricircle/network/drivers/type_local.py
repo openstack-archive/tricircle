@@ -31,10 +31,10 @@ class LocalTypeDriver(api.TypeDriver):
     def validate_provider_segment(self, segment):
         pass
 
-    def reserve_provider_segment(self, context, segment):
+    def reserve_provider_segment(self, context, segment, filters=None):
         return segment
 
-    def allocate_tenant_segment(self, context):
+    def allocate_tenant_segment(self, context, filters=None):
         return {api.NETWORK_TYPE: constants.NT_LOCAL}
 
     def release_segment(self, context, segment):

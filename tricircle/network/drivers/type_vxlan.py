@@ -43,15 +43,15 @@ class VxLANTypeDriver(type_vxlan.VxlanTypeDriver):
                           "Service terminated!")
             raise SystemExit()
 
-    def reserve_provider_segment(self, context, segment):
+    def reserve_provider_segment(self, context, segment, filters=None):
         res = super(VxLANTypeDriver,
-                    self).reserve_provider_segment(context, segment)
+                    self).reserve_provider_segment(context, segment, filters)
         res[api.NETWORK_TYPE] = constants.NT_VxLAN
         return res
 
-    def allocate_tenant_segment(self, context):
+    def allocate_tenant_segment(self, context, filters=None):
         res = super(VxLANTypeDriver,
-                    self).allocate_tenant_segment(context)
+                    self).allocate_tenant_segment(context, filters)
         res[api.NETWORK_TYPE] = constants.NT_VxLAN
         return res
 

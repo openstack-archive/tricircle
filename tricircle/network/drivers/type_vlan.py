@@ -44,15 +44,15 @@ class VLANTypeDriver(type_vlan.VlanTypeDriver):
     def get_type(self):
         return constants.NT_VLAN
 
-    def reserve_provider_segment(self, context, segment):
+    def reserve_provider_segment(self, context, segment, filters=None):
         res = super(VLANTypeDriver,
-                    self).reserve_provider_segment(context, segment)
+                    self).reserve_provider_segment(context, segment, filters)
         res[api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
-    def allocate_tenant_segment(self, context):
+    def allocate_tenant_segment(self, context, filters=None):
         res = super(VLANTypeDriver,
-                    self).allocate_tenant_segment(context)
+                    self).allocate_tenant_segment(context, filters)
         res[api.NETWORK_TYPE] = constants.NT_VLAN
         return res
 
