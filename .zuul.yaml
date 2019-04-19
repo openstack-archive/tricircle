@@ -5,7 +5,7 @@
     post-run: playbooks/tricircle-dsvm-functional/post.yaml
     timeout: 7800
     required-projects:
-      - openstack-infra/devstack-gate
+      - openstack/devstack-gate
       - openstack/tricircle
       - openstack/neutron
       - openstack/networking-sfc
@@ -17,7 +17,7 @@
     post-run: playbooks/tricircle-dsvm-multiregion/post.yaml
     timeout: 7800
     required-projects:
-      - openstack-infra/devstack-gate
+      - openstack/devstack-gate
       - openstack/networking-sfc
       - openstack/tricircle
 
