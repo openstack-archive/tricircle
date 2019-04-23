@@ -39,7 +39,6 @@ from neutron.db import l3_dvr_db
 from neutron.db import l3_hamode_db  # noqa
 from neutron.db import models_v2
 from neutron.db import portbindings_db
-from neutron.extensions import providernet as provider
 from neutron.objects import ports as q_ports
 from neutron.objects.qos import policy as policy_object
 import neutron.objects.router as router_object
@@ -406,6 +405,13 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
                     "router:external attribute")
             raise exceptions.InvalidInput(error_message=msg)
 
+    def _raise_if_updates_provider_attributes(self, attrs):
+
+        if any(validators.is_attr_set(attrs.get(a))
+               for a in provider_net.ATTRIBUTES):
+            msg = _("Plugin does not support updating provider attributes")
+            raise exceptions.InvalidInput(error_message=msg)
+
     def update_network(self, context, network_id, network):
         """update top network
 
@@ -418,7 +424,7 @@ class TricirclePlugin(db_base_plugin_v2.NeutronDbPluginV2,
         :return: updated network
         """
         net_data = network[attributes.NETWORK]
-        provider._raise_if_updates_provider_attributes(net_data)
+        self._raise_if_updates_provider_attributes(net_data)
         self._raise_if_updates_external_attribute(net_data)
 
         with context.session.begin():
