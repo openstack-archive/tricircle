@@ -50,7 +50,7 @@ detailed in the LICENSE file.
 * Admin guide: https://docs.openstack.org/tricircle/latest/admin/index.html
 * Configuration guide: https://docs.openstack.org/tricircle/latest/configuration/index.html
 * Networking guide: https://docs.openstack.org/tricircle/latest/networking/index.html
-* Source: https://git.openstack.org/cgit/openstack/tricircle
+* Source: https://opendev.org/openstack/tricircle
 * Bugs: https://bugs.launchpad.net/tricircle
 * Blueprints: https://blueprints.launchpad.net/tricircle
 * Release notes: https://docs.openstack.org/releasenotes/tricircle

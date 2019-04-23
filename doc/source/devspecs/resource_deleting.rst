@@ -63,4 +63,4 @@ In addition, there is a timestamp in table that cloud administrator is able to
 delete a resource which is in deleting status over long time (too long to
 delete, or in abnormal status).
 
-[1] https://review.openstack.org/#/c/518421/
+[1] https://review.opendev.org/#/c/518421/

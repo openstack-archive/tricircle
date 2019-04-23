@@ -39,8 +39,8 @@ function _setup_tricircle_multinode {
     export OVERRIDE_ENABLED_SERVICES+="q-metering,q-svc,"
     export OVERRIDE_ENABLED_SERVICES+="dstat,peakmem_tracker,rabbit,mysql"
 
-    ENABLE_TRICIRCLE="enable_plugin tricircle https://git.openstack.org/openstack/tricircle/"
-    ENABLE_SFC="enable_plugin networking-sfc https://git.openstack.org/openstack/networking-sfc/"
+    ENABLE_TRICIRCLE="enable_plugin tricircle https://opendev.org/openstack/tricircle/"
+    ENABLE_SFC="enable_plugin networking-sfc https://opendev.org/openstack/networking-sfc/"
 
     # Configure primary node
     export DEVSTACK_LOCAL_CONFIG="$ENABLE_TRICIRCLE"
