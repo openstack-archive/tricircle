@@ -1,5 +1,5 @@
 # Git information
-TRICIRCLE_REPO=${TRICIRCLE_REPO:-https://git.openstack.org/cgit/openstack/tricircle/}
+TRICIRCLE_REPO=${TRICIRCLE_REPO:-https://opendev.org/openstack/tricircle/}
 TRICIRCLE_DIR=$DEST/tricircle
 TRICIRCLE_BRANCH=${TRICIRCLE_BRANCH:-master}
 

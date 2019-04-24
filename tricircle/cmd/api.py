@@ -14,7 +14,7 @@
 #    under the License.
 
 # Much of this module is based on the work of the Ironic team
-# see http://git.openstack.org/cgit/openstack/ironic/tree/ironic/cmd/api.py
+# see https://opendev.org/openstack/ironic/src/branch/master/ironic/cmd/api.py
 
 import sys
 
