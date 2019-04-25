@@ -22,6 +22,7 @@ import unittest
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
+import neutron.conf.common as q_config
 from neutron.services.trunk import exceptions as t_exc
 from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
@@ -264,6 +265,7 @@ class FakePlugin(plugin.TricirclePlugin):
 
 class PluginTest(unittest.TestCase):
     def setUp(self):
+        cfg.CONF.register_opts(q_config.core_opts)
         self.tenant_id = uuidutils.generate_uuid()
         self.plugin = FakePlugin()
         self.context = FakeContext()
@@ -580,6 +582,16 @@ class PluginTest(unittest.TestCase):
         # "agent" extension and body contains tunnel ip
         mock_agent.assert_has_calls([mock.call(self.context, agent_state)])
 
+    @patch.object(FakePlugin, '_ensure_trunk', new=mock.Mock)
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_get_port(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+
+        t_vm_port = self._prepare_vm_port(t_net, t_subnet, 1)
+        t_port = self.plugin.get_port(self.context, t_vm_port['id'])
+        b_port = get_resource('port', False, t_port['id'])
+        self.assertDictEqual(t_port, b_port)
+
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(plugin.TricirclePlugin, '_handle_security_group',
                   new=mock.Mock)
@@ -625,6 +637,154 @@ class PluginTest(unittest.TestCase):
             self.assertDictEqual(t_ports[i], b_port)
 
     @patch.object(t_context, 'get_context_from_neutron_context')
+    @patch.object(FakeNeutronHandle, 'handle_update')
+    def test_update_port(self, mock_update, mock_context):
+        t_net, t_subnet, _, _ = self._prepare_resource()
+        b_net = self.plugin.get_network(self.context, t_net['id'])
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        mock_context.return_value = self.context
+        port_id = 'fake_port_id'
+        host_id = 'fake_host'
+        fake_port = {
+            'id': port_id,
+            'network_id': b_net['id'],
+            'binding:vif_type': 'fake_vif_type',
+            'binding:host_id': host_id,
+            portbindings.VIF_DETAILS: {},
+            portbindings.VNIC_TYPE: 'normal'
+        }
+        fake_agent = {
+            'agent_type': 'Open vSwitch agent',
+            'host': host_id,
+            'configurations': {
+                'tunneling_ip': '192.168.1.101'}}
+        create_resource('port', False, fake_port)
+        create_resource('agent', False, fake_agent)
+        update_body = {'port': {'device_owner': 'compute:None',
+                                'binding:host_id': host_id}}
+
+        self.plugin.update_port(self.context, port_id, update_body)
+        # network is not vxlan type
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'fake_vif_type',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        # update network type from vlan to vxlan
+        update_resource('network', False, b_net['id'],
+                        {'provider:network_type': 'vxlan'})
+
+        self.plugin.update_port(self.context, port_id, update_body)
+        # port vif type is not recognized
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'fake_vif_type',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        # update network type from fake_vif_type to ovs
+        update_resource('port', False, port_id,
+                        {'binding:vif_type': 'ovs'})
+
+        self.plugin.update_port(self.context, port_id,
+                                {'port': {'device_owner': 'compute:None',
+                                 'binding:host_id': 'fake_another_host'}})
+        # agent in the specific host is not found
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id':
+                                              'fake_another_host',
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        self.plugin.update_port(self.context, port_id, update_body)
+        # default p2p mode, update with agent host tunnel ip
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'tunnel_ip': '192.168.1.101',
+                                          'type': 'Open vSwitch agent',
+                                          'host': host_id,
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
+        cfg.CONF.set_override('l2gw_tunnel_ip', '192.168.1.105', 'tricircle')
+        update_body = {'port': {'device_owner': 'compute:None',
+                                'binding:host_id': host_id}}
+        self.plugin.update_port(self.context, port_id, update_body)
+        # l2gw mode, update with configured l2 gateway tunnel ip
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'tunnel_ip': '192.168.1.105',
+                                          'type': 'Open vSwitch agent',
+                                          'host': 'fake_host',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        cfg.CONF.set_override('l2gw_tunnel_ip', None, 'tricircle')
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'l2gw', 'client')
+        self.plugin.update_port(self.context, port_id, update_body)
+        # l2gw mode, but l2 gateway tunnel ip is not configured
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        cfg.CONF.set_override('cross_pod_vxlan_mode', 'noop', 'client')
+        self.plugin.update_port(self.context, port_id, update_body)
+        # noop mode
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+
+        FakeCorePlugin.supported_extension_aliases = []
+        self.plugin.update_port(self.context, port_id, update_body)
+        # core plugin doesn't support "agent" extension
+        mock_update.assert_called_with(
+            self.context, 'port', port_id,
+            {'port': {'binding:profile': {'region': 'Pod1',
+                                          'device': 'compute:None',
+                                          'binding:vif_type': 'ovs',
+                                          'binding:host_id': host_id,
+                                          portbindings.VIF_DETAILS: {},
+                                          portbindings.VNIC_TYPE: 'normal'}}})
+        FakeCorePlugin.supported_extension_aliases = ['agent']
+
+        self.plugin.update_port(self.context, port_id,
+                                {'port': {portbindings.PROFILE: {
+                                    constants.PROFILE_FORCE_UP: True}}})
+        b_port = get_resource('port', False, port_id)
+        # port status is update to active
+        self.assertEqual(q_constants.PORT_STATUS_ACTIVE, b_port['status'])
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):
         _, t_subnet, t_port, _ = self._prepare_resource(enable_dhcp=False)
         mock_context.return_value = self.context
@@ -639,4 +799,5 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(b_port['device_owner'], 'network:dhcp')
 
     def tearDown(self):
+        cfg.CONF.unregister_opts(q_config.core_opts)
         test_utils.get_resource_store().clean()

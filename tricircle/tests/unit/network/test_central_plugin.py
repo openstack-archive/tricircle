@@ -1023,8 +1023,8 @@ class PluginTest(unittest.TestCase,
             if alias == 'trunk':
                 return FakeTrunkPlugin()
             return FakePlugin()
-        from neutron_lib.plugins import directory
-        directory.get_plugin = fake_get_plugin
+        # from neutron_lib.plugins import directory
+        # directory.get_plugin = fake_get_plugin
 
     def _basic_pod_route_setup(self):
         pod1 = {'pod_id': 'pod_id_1',
@@ -1325,6 +1325,7 @@ class PluginTest(unittest.TestCase,
         six.assertCountEqual(self, top_net[0]['availability_zone_hints'],
                              region_names)
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
     @patch.object(rbac_db, 'NetworkRBAC', new=FakeNetworkRBAC)
     def test_update_network(self, mock_context):
@@ -1414,6 +1415,70 @@ class PluginTest(unittest.TestCase,
             self.assertRaises(q_lib_exc.InvalidInput,
                               fake_plugin.update_network,
                               neutron_context, t_net_id, update_body)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_prepare_element(self, mock_context):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        for pod in db_api.list_pods(t_ctx):
+            if not pod['az_name']:
+                t_pod = pod
+            else:
+                b_pod = pod
+
+        # test _prepare_top_element
+        pool_id = fake_plugin._get_bridge_subnet_pool_id(
+            t_ctx, q_ctx, 'project_id', t_pod)
+        net, subnet = fake_plugin._get_bridge_network_subnet(
+            t_ctx, q_ctx, 'project_id', t_pod, pool_id)
+        port = fake_plugin._get_bridge_interface(t_ctx, q_ctx, 'project_id',
+                                                 pod, net['id'], 'b_router_id')
+
+        top_entry_map = {}
+        with t_ctx.session.begin():
+            for entry in core.query_resource(
+                    t_ctx, models.ResourceRouting,
+                    [{'key': 'pod_id', 'comparator': 'eq',
+                      'value': 'pod_id_0'}], []):
+                top_entry_map[entry['resource_type']] = entry
+        self.assertEqual(net['id'], subnet['network_id'])
+        self.assertEqual(net['id'], port['network_id'])
+        self.assertEqual(subnet['id'], port['fixed_ips'][0]['subnet_id'])
+        self.assertEqual(top_entry_map['network']['bottom_id'], net['id'])
+        self.assertEqual(top_entry_map['subnet']['bottom_id'], subnet['id'])
+        self.assertEqual(top_entry_map['port']['bottom_id'], port['id'])
+
+        # test _prepare_bottom_element
+        _, b_port_id, _, _ = fake_plugin._get_bottom_bridge_elements(
+            q_ctx, 'project_id', b_pod, net, False, subnet, port)
+        b_port = fake_plugin._get_client(b_pod['region_name']).get_ports(
+            t_ctx, b_port_id)
+
+        bottom_entry_map = {}
+        with t_ctx.session.begin():
+            for entry in core.query_resource(
+                    t_ctx, models.ResourceRouting,
+                    [{'key': 'pod_id', 'comparator': 'eq',
+                      'value': b_pod['pod_id']}], []):
+                bottom_entry_map[entry['resource_type']] = entry
+        self.assertEqual(bottom_entry_map['network']['top_id'], net['id'])
+        self.assertEqual(bottom_entry_map['network']['bottom_id'],
+                         b_port['network_id'])
+        self.assertEqual(bottom_entry_map['subnet']['top_id'], subnet['id'])
+        self.assertEqual(bottom_entry_map['subnet']['bottom_id'],
+                         b_port['fixed_ips'][0]['subnet_id'])
+        self.assertEqual(bottom_entry_map['port']['top_id'], port['id'])
+        self.assertEqual(bottom_entry_map['port']['bottom_id'], b_port_id)
 
     @staticmethod
     def _prepare_sg_test(project_id, ctx, pod_name):
@@ -1739,6 +1804,48 @@ class PluginTest(unittest.TestCase,
 
         return t_net_id, t_subnet_id, t_router_id, b_net_id, b_subnet_id
 
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_subnet_clean(self, mock_context, mock_check_if):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_admin_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = 'test_tenant_id'
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        t_port_id = fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+
+        port_num = len(TOP_PORTS)
+        pre_created_port_num = 0
+        for port in TOP_PORTS:
+            if port.get('name').startswith('dhcp_port_'):
+                pre_created_port_num += 1
+            elif port.get('name').startswith('interface_'):
+                pre_created_port_num += 1
+            elif port.get('device_owner') == 'network:router_interface':
+                pre_created_port_num += 1
+
+        fake_plugin.remove_router_interface(
+            q_ctx, t_router_id, {'port_id': t_port_id})
+        fake_plugin.delete_subnet(q_ctx, t_subnet_id)
+
+        # check pre-created ports are all deleted
+        self.assertEqual(port_num - pre_created_port_num, len(TOP_PORTS))
+
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(base_object.NeutronDbObject, '_load_object',
@@ -1861,6 +1968,94 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(bottom_subnet['enable_dhcp'],
                          body_copy['subnet']['enable_dhcp'])
 
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_update_ips_for_port', new=fake_update_ips_for_port)
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(db_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port(self, mock_context):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, t_ctx, 'pod_1', 1)
+        t_port_id, b_port_id = self._prepare_port_test(
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+        t_sg_id, _ = self._prepare_sg_test(project_id, t_ctx, 'pod_1')
+
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient('pod_1')
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'port': {
+                'description': 'new_description',
+                'extra_dhcp_opts': [
+                    {"opt_value": "123.123.123.45",
+                     "opt_name": "server-ip-address"},
+                    {"opt_value": "123.123.123.123",
+                     "opt_name": "tftp-server"}
+                ],
+                'device_owner': 'compute:new',
+                'device_id': 'new_device_id',
+                'name': 'new_name',
+                'admin_state_up': False,
+                'mac_address': 'fa:16:3e:cd:76:bb',
+                'security_groups': [t_sg_id],
+                'allowed_address_pairs': [{"ip_address": "23.23.23.1",
+                                           "mac_address": "fa:16:3e:c4:cd:3f"}]
+            }
+
+        }
+        body_copy = copy.deepcopy(update_body)
+        top_port = fake_plugin.update_port(
+            neutron_context, t_port_id, update_body)
+        self.assertEqual(top_port['name'], body_copy['port']['name'])
+        self.assertEqual(top_port['description'],
+                         body_copy['port']['description'])
+        self.assertEqual(top_port['extra_dhcp_opts'],
+                         body_copy['port']['extra_dhcp_opts'])
+        self.assertEqual(top_port['device_owner'],
+                         body_copy['port']['device_owner'])
+        self.assertEqual(top_port['device_id'],
+                         body_copy['port']['device_id'])
+        self.assertEqual(top_port['admin_state_up'],
+                         body_copy['port']['admin_state_up'])
+        self.assertEqual(top_port['mac_address'],
+                         body_copy['port']['mac_address'])
+        self.assertEqual(top_port['security_groups'],
+                         body_copy['port']['security_groups'])
+        self.assertEqual(top_port['allowed_address_pairs'][0],
+                         body_copy['port']['allowed_address_pairs'][0])
+
+        bottom_port = fake_client.get_ports(t_ctx, b_port_id)
+        # name is set to bottom resource id, which is used by lock_handle to
+        # retrieve bottom/local resources that have been created but not
+        # registered in the resource routing table, so it's not allowed
+        # to be updated
+        self.assertEqual(bottom_port['name'], b_port_id)
+        self.assertEqual(bottom_port['description'],
+                         body_copy['port']['description'])
+        self.assertEqual(bottom_port['extra_dhcp_opts'],
+                         body_copy['port']['extra_dhcp_opts'])
+        self.assertEqual(bottom_port['device_owner'],
+                         body_copy['port']['device_owner'])
+        self.assertEqual(bottom_port['device_id'],
+                         body_copy['port']['device_id'])
+        self.assertEqual(bottom_port['admin_state_up'],
+                         body_copy['port']['admin_state_up'])
+        self.assertEqual(bottom_port['mac_address'],
+                         body_copy['port']['mac_address'])
+        self.assertEqual(bottom_port['security_groups'],
+                         body_copy['port']['security_groups'])
+        self.assertEqual(bottom_port['allowed_address_pairs'][0],
+                         body_copy['port']['allowed_address_pairs'][0])
+
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(db_utils, 'filter_non_model_columns',
@@ -1978,6 +2173,89 @@ class PluginTest(unittest.TestCase,
         # we test the exact effect of setup_shadow_ports in
         # test_update_port_trigger_l2pop
         self.assertTrue(mock_setup.called)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(FakeClient, 'add_gateway_routers')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_add_interface(self, mock_context, mock_rpc, mock_action):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = TEST_TENANT_ID
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+
+        mock_rpc.assert_called_once_with(t_ctx, tenant_id, t_router_id)
+        for b_net in BOTTOM1_NETS:
+            if 'provider:segmentation_id' in b_net:
+                self.assertIn(b_net['provider:segmentation_id'], (2000, 2001))
+        # only one VLAN allocated since we just create one bridge network
+        allocations = [
+            allocation['allocated'] for allocation in TOP_VLANALLOCATIONS]
+        six.assertCountEqual(self, [True, False], allocations)
+        for segment in TOP_SEGMENTS:
+            self.assertIn(segment['segmentation_id'], (2000, 2001))
+
+        bridge_port_name = constants.bridge_port_name % (tenant_id,
+                                                         b_router_id)
+        _, t_bridge_port_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, bridge_port_name, 'port')[0]
+        for t_port in TOP_PORTS:
+            if t_port['id'] == t_bridge_port_id:
+                t_ns_bridge_net_id = t_port['network_id']
+                t_ns_bridge_subnet_id = t_port['fixed_ips'][0]['subnet_id']
+        b_ns_bridge_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_ns_bridge_net_id, 'pod_1', constants.RT_NETWORK)
+        b_ns_bridge_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_ns_bridge_subnet_id, 'pod_1', constants.RT_SUBNET)
+
+        (t_net_id, t_subnet_id, t_router_id,
+         b_another_net_id, b_another_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 2)
+
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_NS_ROUTER)
+        # router for north-south networking is not created since no external
+        # network created
+        self.assertEqual(len(mappings), 0)
+
+        device_ids = ['', '']
+        for port in BOTTOM1_PORTS:
+            if port['network_id'] == b_net_id and (
+                    port['device_owner'] == 'network:router_interface'):
+                device_ids[0] = port['device_id']
+            elif port['network_id'] == b_another_net_id and (
+                    port['device_owner'] == 'network:router_interface'):
+                device_ids[1] = port['device_id']
+
+        self.assertEqual(device_ids, [b_router_id, b_router_id])
+        call = mock.call(t_ctx, b_router_id,
+                         {'network_id': b_ns_bridge_net_id,
+                          'enable_snat': False,
+                          'external_fixed_ips': [
+                              {'subnet_id': b_ns_bridge_subnet_id,
+                               'ip_address': '100.0.0.2'}]})
+        # each router interface adding will call add_gateway once
+        mock_action.assert_has_calls([call, call])
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_validation_router_net_location_match(self, mock_context):
@@ -2175,6 +2453,143 @@ class PluginTest(unittest.TestCase,
 
         self.assertEqual(device_ids, [b_router_id, b_router_id])
 
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
+    @patch.object(FakeClient, 'action_routers')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_add_interface_exception(self, mock_context, mock_action,
+                                     mock_check_if):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = TEST_TENANT_ID
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+
+        with t_ctx.session.begin():
+            entries = core.query_resource(t_ctx, models.ResourceRouting,
+                                          [{'key': 'resource_type',
+                                            'comparator': 'eq',
+                                            'value': 'port'}], [])
+            entry_num = len(entries)
+
+        mock_action.side_effect = q_exceptions.ConnectionFailed
+        self.assertRaises(q_exceptions.ConnectionFailed,
+                          fake_plugin.add_router_interface,
+                          q_ctx, t_router_id, {'subnet_id': t_subnet_id})
+        self.assertEqual(0, len(TOP_ROUTERS[0]['attached_ports']))
+
+        with t_ctx.session.begin():
+            entries = core.query_resource(t_ctx, models.ResourceRouting,
+                                          [{'key': 'resource_type',
+                                            'comparator': 'eq',
+                                            'value': 'port'}], [])
+            # one new entry, for top bridge port
+            self.assertEqual(entry_num + 1, len(entries))
+        # top and bottom interface is deleted, only top bridge port left
+        self.assertEqual(1, len(TOP_PORTS))
+        self.assertEqual(0, len(BOTTOM1_PORTS))
+
+        mock_action.side_effect = None
+        fake_plugin.add_router_interface(q_ctx, t_router_id,
+                                         {'subnet_id': t_subnet_id})
+        # just bottom dhcp port, bottom interface is not created because
+        # action_routers function is mocked
+        self.assertEqual(1, len(BOTTOM1_PORTS))
+        with t_ctx.session.begin():
+            entries = core.query_resource(t_ctx, models.ResourceRouting,
+                                          [{'key': 'resource_type',
+                                            'comparator': 'eq',
+                                            'value': 'port'}], [])
+            # three more entries, for top and bottom dhcp ports, top interface
+            self.assertEqual(entry_num + 1 + 3, len(entries))
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
+    @patch.object(FakeClient, '_get_connection')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_add_interface_exception_port_left(self, mock_context,
+                                               mock_connect, mock_check_if):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_admin_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = TEST_TENANT_ID
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        mock_connect.side_effect = q_exceptions.ConnectionFailed
+        self.assertRaises(q_exceptions.ConnectionFailed,
+                          fake_plugin.add_router_interface,
+                          q_ctx, t_router_id, {'subnet_id': t_subnet_id})
+        # top interface is removed
+        self.assertEqual(0, len(TOP_ROUTERS[0]['attached_ports']))
+
+        mock_connect.side_effect = None
+        # test that we can success when bottom pod comes back
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})
+        # bottom dhcp port, bottom interface and bridge gateway port
+        self.assertEqual(3, len(BOTTOM1_PORTS))
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
+    @patch.object(FakeClient, 'remove_interface_routers')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_remove_interface(self, mock_context, mock_remove, mock_rpc,
+                              mock_check_if):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_admin_context()
+        mock_context.return_value = t_ctx
+
+        tenant_id = TEST_TENANT_ID
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1)
+        t_port_id = fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+        _, b_router_id = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_router_id, constants.RT_ROUTER)[0]
+
+        for port in BOTTOM1_PORTS:
+            if port['network_id'] == b_net_id and (
+                    port['device_owner'] == 'network:router_interface'):
+                b_interface_id = port['id']
+
+        fake_plugin.remove_router_interface(
+            q_ctx, t_router_id, {'port_id': t_port_id})
+
+        mock_remove.assert_called_with(
+            t_ctx, b_router_id, {'port_id': b_interface_id})
+        mock_rpc.assert_called_with(t_ctx, tenant_id, t_router_id)
+
     def _prepare_interface_port(self, t_ctx, t_subnet_id, ip_suffix):
         t_client = FakeClient()
         t_subnet = t_client.get_subnets(t_ctx, t_subnet_id)
@@ -2195,6 +2610,134 @@ class PluginTest(unittest.TestCase,
         }
         TOP_PORTS.append(test_utils.DotDict(t_port))
         return t_port_id
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(FakeClient, 'add_gateway_routers')
+    @patch.object(FakeBaseRPCAPI, 'configure_route')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_east_west_gw_router(self, mock_context, mock_rpc, mock_action):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        tenant_id = TEST_TENANT_ID
+
+        # prepare three networks, net1 in pod1, net2 in pod2, net3 is in both
+        # pod1 and pod2
+        (t_net1_id, t_subnet1_id, b_net1_id,
+         b_subnet1_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 1)
+        (t_net2_id, t_subnet2_id, b_net2_id,
+         b_subnet2_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_2', 2)
+        (t_net3_id, t_subnet3_id, b_net3_id,
+         b_subnet3_id) = self._prepare_network_subnet(
+            tenant_id, t_ctx, 'pod_1', 3)
+        self._prepare_network_subnet(tenant_id, t_ctx, 'pod_2', 3)
+        t_subnet_ids = [t_subnet1_id, t_subnet2_id, t_subnet3_id]
+        b_net_ids = [b_net1_id, b_net2_id, b_net3_id]
+
+        # prepare three routers, router1 and router2 are local routers
+        t_router1_id = self._prepare_router(tenant_id, ['pod_1'])
+        t_router2_id = self._prepare_router(tenant_id, ['pod_2'])
+        t_router3_id = self._prepare_router(tenant_id)
+        t_router_ids = [t_router1_id, t_router2_id, t_router3_id]
+
+        inf1_id = self._prepare_interface_port(t_ctx, t_subnet1_id, 5)
+        inf2_id = self._prepare_interface_port(t_ctx, t_subnet2_id, 5)
+        inf3_1_id = self._prepare_interface_port(t_ctx, t_subnet3_id, 5)
+        inf3_2_id = self._prepare_interface_port(t_ctx, t_subnet3_id, 6)
+
+        # attach router interface, net1 is attached to router1 and router3,
+        # default gateway is on router1; net2 is attached to router2 and
+        # router3, default gateway is on router2; net3 is attached to router1,
+        # router2 and router3
+        fake_plugin.add_router_interface(
+            q_ctx, t_router1_id, {'subnet_id': t_subnet1_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf1_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router2_id, {'subnet_id': t_subnet2_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf2_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router1_id, {'subnet_id': t_subnet3_id})['port_id']
+        fake_plugin.add_router_interface(
+            q_ctx, t_router2_id, {'port_id': inf3_1_id})
+        fake_plugin.add_router_interface(
+            q_ctx, t_router3_id, {'port_id': inf3_2_id})
+
+        b_router_id_map = {}
+        for pod_idx, router_idx in [(1, 1), (2, 2), (1, 3), (2, 3)]:
+            b_router_id = db_api.get_bottom_id_by_top_id_region_name(
+                t_ctx, t_router_ids[router_idx - 1], 'pod_%d' % pod_idx,
+                constants.RT_ROUTER)
+            b_router_id_map[(pod_idx, router_idx)] = b_router_id
+
+        actual_ips_map = {}
+        for pod_idx, net_idx, router_idx in [
+                (1, 1, 1), (1, 1, 3), (1, 3, 1), (1, 3, 3),
+                (2, 2, 2), (2, 2, 3), (2, 3, 2), (2, 3, 3)]:
+            b_router_id = b_router_id_map[(pod_idx, router_idx)]
+            b_ports = BOTTOM1_PORTS if pod_idx == 1 else BOTTOM2_PORTS
+            b_infs = [
+                e for e in b_ports if e['device_id'] == b_router_id and (
+                    e['network_id'] == b_net_ids[net_idx - 1])]
+            inf_ip = b_infs[0]['fixed_ips'][0]['ip_address']
+            actual_ips_map[(pod_idx, net_idx, router_idx)] = inf_ip
+
+        t_infs_ip_map = {}
+        for pod_idx, subnet_idx in [(1, 1), (1, 3), (2, 2), (2, 3)]:
+            inf_name = 'interface_pod_%d_%s' % (pod_idx,
+                                                t_subnet_ids[subnet_idx - 1])
+            infs = [e for e in TOP_PORTS if e.get('name') == inf_name]
+            t_infs_ip_map[(pod_idx, subnet_idx)] = infs[0][
+                'fixed_ips'][0]['ip_address']
+
+        t_client = FakeClient()
+        t_subnet1 = t_client.get_subnets(t_ctx, t_subnet1_id)
+        t_subnet2 = t_client.get_subnets(t_ctx, t_subnet2_id)
+        t_subnet3 = t_client.get_subnets(t_ctx, t_subnet3_id)
+        inf3_1 = t_client.get_ports(t_ctx, inf3_1_id)
+
+        # tuple means (pod_idx, net_idx, router_idx)
+        # (1, 1, 1) net1 attached to router1, subnet gateway is used as the
+        #           interface ip
+        # (1, 1, 3) net1 attached to router3, reserved gateway for non-local
+        #           router is used as the interface ip
+        # (1, 3, 1) net3 attached to router1, top and bottom interface ips
+        #           are the same
+        # (1, 3, 3) net3 attached to router3 in pod1, reserved gateway for
+        #           non-local router is used as the interface ip
+        # (2, 2, 2) net2 attached to router2, subnet gateway is used as the
+        #           interface ip
+        # (2, 2, 3) net2 attached to router3, reserved gateway for non-local
+        #           router is used as the interface ip
+        # (2, 3, 2) net3 attached to router2, top and bottom interface ips
+        #           are the same
+        # (2, 3, 3) net3 attached to router3 in pod2, reserved gateway for
+        #           non-local router is used as the interface ip
+        expect_ips_map = {
+            (1, 1, 1): t_subnet1['gateway_ip'],
+            (1, 1, 3): t_infs_ip_map[(1, 1)],
+            (1, 3, 1): t_subnet3['gateway_ip'],
+            (1, 3, 3): t_infs_ip_map[(1, 3)],
+            (2, 2, 2): t_subnet2['gateway_ip'],
+            (2, 2, 3): t_infs_ip_map[(2, 2)],
+            (2, 3, 2): inf3_1['fixed_ips'][0]['ip_address'],
+            (2, 3, 3): t_infs_ip_map[(2, 3)]
+        }
+
+        for key in actual_ips_map:
+            self.assertEqual(expect_ips_map[key], actual_ips_map[key])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(context, 'get_context_from_neutron_context')
@@ -2285,6 +2828,7 @@ class PluginTest(unittest.TestCase,
         self.assertEqual(1, len(BOTTOM1_NETS))
         self.assertEqual(1, len(BOTTOM2_NETS))
 
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     def _prepare_external_net_router_test(self, q_ctx, fake_plugin,
                                           router_az_hints=None):
 
@@ -2330,7 +2874,6 @@ class PluginTest(unittest.TestCase,
         TOP_ROUTERS.append(test_utils.DotDict(t_router))
         return t_net_id, t_subnet_id, t_router_id,
 
-    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
@@ -2350,6 +2893,33 @@ class PluginTest(unittest.TestCase,
 
         t_net_id, t_subnet_id, t_router_id = (
             self._prepare_external_net_router_test(q_ctx, fake_plugin))
+        fake_plugin.update_router(
+            q_ctx, t_router_id,
+            {'router': {'external_gateway_info': {
+                'network_id': TOP_NETS[0]['id'],
+                'enable_snat': False,
+                'external_fixed_ips': [{'subnet_id': TOP_SUBNETS[0]['id'],
+                                        'ip_address': '100.64.0.5'}]}}})
+
+        b_ns_router_id = BOTTOM1_ROUTERS[0]['id']
+        b_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_net_id, 'pod_1', constants.RT_NETWORK)
+        b_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_subnet_id, 'pod_1', constants.RT_SUBNET)
+
+        for subnet in TOP_SUBNETS:
+            if subnet['name'].startswith('bridge_subnet'):
+                t_bridge_subnet_id = subnet['id']
+        b_bridge_subnet_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_bridge_subnet_id, 'pod_1', constants.RT_SUBNET)
+        body = {'network_id': b_net_id,
+                'enable_snat': False,
+                'external_fixed_ips': [{'subnet_id': b_subnet_id,
+                                        'ip_address': '100.64.0.5'}]}
+        calls = [mock.call(t_ctx, 'add_gateway', b_ns_router_id, body),
+                 mock.call(t_ctx, 'add_interface', b_ns_router_id,
+                           {'subnet_id': b_bridge_subnet_id})]
+        mock_action.assert_has_calls(calls)
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -2399,6 +2969,71 @@ class PluginTest(unittest.TestCase,
                                        b_router_id, body)
         self.assertFalse(mock_get_bridge_network.called)
 
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(FakeClient, '_get_connection')
+    @patch.object(FakeClient, 'action_routers')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_unset_gateway(self, mock_context, mock_action, mock_connect):
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        router_az_hints = '["pod_1"]'
+        t_net_id, t_subnet_id, t_router_id = (
+            self._prepare_external_net_router_test(q_ctx, fake_plugin,
+                                                   router_az_hints))
+
+        # TOP_ROUTERS.append(test_utils.DotDict(t_router))
+        add_gw_body = {
+            'router': {'external_gateway_info': {
+                'network_id': t_net_id,
+                'enable_snat': False,
+                'external_fixed_ips': [{'subnet_id': t_subnet_id,
+                                        'ip_address': '100.64.0.5'}]}}}
+        del_gw_body = {'router': {'external_gateway_info': {}}}
+
+        # exception case, central router has been updated but local router has
+        # not been created
+        mock_connect.side_effect = q_exceptions.ConnectionFailed
+        mock_action.side_effect = q_exceptions.ConnectionFailed
+        self.assertRaises(q_exceptions.ConnectionFailed,
+                          fake_plugin.update_router, q_ctx, t_router_id,
+                          copy.deepcopy(add_gw_body))
+        mappings = db_api.get_bottom_mappings_by_top_id(t_ctx, t_router_id,
+                                                        constants.RT_NS_ROUTER)
+        self.assertEqual(0, len(mappings))
+        # local router is not created, but we can still remove gateway. local
+        # router is not touched, otherwise we will meet an exception here
+        # because mock_action is assigned a side effect
+        fake_plugin.update_router(q_ctx, t_router_id,
+                                  copy.deepcopy(del_gw_body))
+
+        # normal case
+        # mock_connect.side_effect = None
+        # mock_action.side_effect = None
+        # first add router gateway
+        # fake_plugin.update_router(q_ctx, t_router_id, add_gw_body)
+        # _, b_ns_router_id = db_api.get_bottom_mappings_by_top_id(
+        # t_ctx, t_router_id, constants.RT_NS_ROUTER)[0]
+
+        # then remove router gateway
+        # fake_plugin.update_router(q_ctx, t_router_id, del_gw_body)
+        # mock_action.assert_called_with(t_ctx, 'remove_gateway',
+        # b_ns_router_id)
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    def _create_network_with_plugin(self, q_ctx, fake_plugin, network):
+        return fake_plugin.create_network(q_ctx, network)
+
     def _prepare_associate_floatingip_test(self, t_ctx, q_ctx, fake_plugin,
                                            router_az_hints=None,
                                            net_az_hints=None,
@@ -2418,7 +3053,9 @@ class PluginTest(unittest.TestCase,
             'router:external': True,
             'availability_zone_hints': net_az_hints
         }
-        e_net = fake_plugin.create_network(q_ctx, {'network': net_body})
+        e_net = self._create_network_with_plugin(q_ctx,
+                                                 fake_plugin,
+                                                 {'network': net_body})
         subnet_body = {
             'network_id': e_net['id'],
             'name': 'ext_subnet',
@@ -2793,6 +3430,363 @@ class PluginTest(unittest.TestCase,
         # asynchronous job in pod_1 is registered
         mock_setup.assert_called_once_with(t_ctx, TEST_TENANT_ID,
                                            'pod_id_1', t_net_id)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(FakeBaseRPCAPI, 'configure_route', new=mock.Mock)
+    @patch.object(FakeBaseRPCAPI, 'setup_shadow_ports')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_add_interface_trigger_l2pop(self, mock_context, mock_setup):
+        cfg.CONF.set_override('bridge_network_type', 'vxlan',
+                              group='tricircle')
+        cfg.CONF.set_override('tenant_network_types', ['local', 'vxlan'],
+                              group='tricircle')
+        self._basic_pod_route_setup()
+
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+        tenant_id = TEST_TENANT_ID
+
+        (t_net_id, t_subnet_id,
+         t_router_id, b_net_id, b_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_1', 1, network_type=constants.NT_VxLAN)
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        (t_net_id, t_subnet_id, t_router_id,
+         b_another_net_id, b_another_subnet_id) = self._prepare_router_test(
+            tenant_id, t_ctx, 'pod_2', 2, network_type=constants.NT_VxLAN)
+        fake_plugin.add_router_interface(
+            q_ctx, t_router_id, {'subnet_id': t_subnet_id})['port_id']
+
+        b_router_id1 = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_router_id, 'pod_1', constants.RT_ROUTER)
+        b_router_id2 = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, t_router_id, 'pod_2', constants.RT_ROUTER)
+        t_bridge_port_name1 = constants.bridge_port_name % (TEST_TENANT_ID,
+                                                            b_router_id1)
+        t_bridge_port_name2 = constants.bridge_port_name % (TEST_TENANT_ID,
+                                                            b_router_id2)
+        t_bridge_port_id1 = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_bridge_port_name1, constants.RT_PORT)[0][1]
+        t_bridge_port_id2 = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_bridge_port_name2, constants.RT_PORT)[0][1]
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_1',
+                constants.PROFILE_DEVICE: 'network:router_gateway',
+                constants.PROFILE_HOST: 'host1',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.101'}}}
+        fake_plugin.update_port(q_ctx, t_bridge_port_id1, update_body)
+        update_body = {'port': {
+            'binding:profile': {
+                constants.PROFILE_REGION: 'pod_2',
+                constants.PROFILE_DEVICE: 'network:router_gateway',
+                constants.PROFILE_HOST: 'host2',
+                constants.PROFILE_AGENT_TYPE: q_constants.AGENT_TYPE_OVS,
+                constants.PROFILE_TUNNEL_IP: '192.168.1.102'}}}
+        fake_plugin.update_port(q_ctx, t_bridge_port_id2, update_body)
+
+        client = FakeClient('pod_2')
+        shadow_ports = client.list_ports(
+            t_ctx, [{'key': 'name', 'comparator': 'eq',
+                     'value': constants.shadow_port_name % t_bridge_port_id1}])
+        # shadow port for bridge port is created
+        self.assertEqual(len(shadow_ports), 1)
+        # shadow port for bridge port is updated to active
+        self.assertIn(constants.PROFILE_FORCE_UP,
+                      shadow_ports[0]['binding:profile'])
+        # asynchronous jobs are registered
+        calls = [mock.call(t_ctx, tenant_id, 'pod_id_2',
+                           shadow_ports[0]['network_id']),
+                 mock.call(t_ctx, tenant_id, 'pod_id_1',
+                           shadow_ports[0]['network_id'])]
+        mock_setup.assert_has_calls(calls)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_update_fip_assoc',
+                  new=_update_fip_assoc)
+    @patch.object(FakeClient, 'create_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_floatingip(self, mock_context, mock_create):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         _, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                             fake_plugin)
+        # in _prepare_associate_floatingip_test, we have created an empty fip,
+        # but here we just ignore it and create a new fip by specifying fix ip
+        # at the same time
+
+        # we manaully remove the resource routing for port to construct the
+        # scenario that bottom port has not been created
+        db_api.delete_mappings_by_bottom_id(t_ctx, b_port_id)
+        fip_body = {'floating_network_id': e_net['id'],
+                    'port_id': t_port_id,
+                    'tenant_id': TEST_TENANT_ID,
+                    'subnet_id': None,
+                    'floating_ip_address': None}
+        fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
+        self.assertFalse(mock_create.called)
+        fake_plugin.delete_floatingip(q_ctx, fip['id'])
+
+        # put the resource routing back for the scenario that bottom port has
+        # been created
+        db_api.create_resource_mapping(t_ctx, t_port_id, b_port_id, 'pod_id_1',
+                                       TEST_TENANT_ID, constants.RT_PORT)
+        fip_body = {'floating_network_id': e_net['id'],
+                    'port_id': t_port_id,
+                    'tenant_id': TEST_TENANT_ID,
+                    'subnet_id': None,
+                    'floating_ip_address': None}
+        fip = fake_plugin.create_floatingip(q_ctx, {'floatingip': fip_body})
+        b_ext_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, e_net['id'], 'pod_2', constants.RT_NETWORK)
+        calls = [mock.call(t_ctx,
+                           {'floatingip': {
+                               'floating_network_id': b_ext_net_id,
+                               'floating_ip_address': fip[
+                                   'floating_ip_address'],
+                               'port_id': b_port_id}})]
+        mock_create.assert_has_calls(calls)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakeClient, 'create_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_associate_floatingip(self, mock_context, mock_create):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+        # here we attach a subnet in pod2 to the router to test if the two
+        # bottom routers can be successfully created
+        _, t_subnet_id2, t_router_id, _, _ = self._prepare_router_test(
+            TEST_TENANT_ID, t_ctx, 'pod_2', 2)
+        fake_plugin.add_router_interface(q_ctx, t_router_id,
+                                         {'subnet_id': t_subnet_id2})
+
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        b_ext_net_id = db_api.get_bottom_id_by_top_id_region_name(
+            t_ctx, e_net['id'], 'pod_2', constants.RT_NETWORK)
+        calls = [mock.call(t_ctx,
+                           {'floatingip': {
+                               'floating_network_id': b_ext_net_id,
+                               'floating_ip_address': fip[
+                                   'floating_ip_address'],
+                               'port_id': b_port_id}})]
+        mock_create.assert_has_calls(calls)
+        # routers for east-west networking and north-south networking
+        self.assertEqual(2, len(BOTTOM2_ROUTERS))
+
+        # check routing entries for copied resources have been created
+        fake_client = FakeClient()
+        t_port = fake_client.get_ports(t_ctx, t_port_id)
+        cp_port_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_port_id, constants.RT_SD_PORT)
+        cp_subnet_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_port['fixed_ips'][0]['subnet_id'], constants.RT_SD_SUBNET)
+        cp_network_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_port['network_id'], constants.RT_SD_NETWORK)
+        # no resource routing entry for shadow port
+        self.assertEqual(0, len(cp_port_mappings))
+        self.assertEqual(1, len(cp_subnet_mappings))
+        self.assertEqual(1, len(cp_network_mappings))
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakePlugin, '_rollback_floatingip_data')
+    @patch.object(FakeRPCAPI, 'setup_bottom_router')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_associate_floatingip_port_exception(
+            self, mock_context, mock_setup, mock_rollback):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+
+        # associate floating ip and exception occurs
+        # actually we will not get this exception when calling
+        # setup_bottom_router, we set this exception for test purpose
+        mock_setup.side_effect = q_exceptions.ConnectionFailed
+        fip_body = {'port_id': t_port_id}
+        self.assertRaises(q_exceptions.ConnectionFailed,
+                          fake_plugin.update_floatingip, q_ctx, fip['id'],
+                          {'floatingip': fip_body})
+        data = {'fixed_port_id': None,
+                'fixed_ip_address': None,
+                'router_id': None}
+        mock_rollback.assert_called_once_with(q_ctx, fip['id'], data)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakeClient, 'delete_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_disassociate_floatingip(self, mock_context, mock_delete):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        # disassociate floating ip
+        fip_body = {'port_id': None}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        fip_id = BOTTOM2_FIPS[0]['id']
+        mock_delete.assert_called_once_with(t_ctx, fip_id)
+
+        # check the association information is cleared
+        self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_port_id'])
+        self.assertIsNone(TOP_FLOATINGIPS[0]['fixed_ip_address'])
+        self.assertIsNone(TOP_FLOATINGIPS[0]['router_id'])
+
+        # no resource routing entry for shadow port
+        cp_port_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_port_id, constants.RT_SD_PORT)
+        self.assertEqual(0, len(cp_port_mappings))
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(FakeClient, 'delete_floatingips')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_floatingip(self, mock_context, mock_delete):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        # disassociate floating ip
+        fake_plugin.delete_floatingip(q_ctx, fip['id'])
+
+        fip_id = BOTTOM2_FIPS[0]['id']
+        mock_delete.assert_called_once_with(t_ctx, fip_id)
+
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, '_make_router_dict',
+                  new=fake_make_router_dict)
+    @patch.object(db_base_plugin_common.DbBasePluginCommon,
+                  '_make_subnet_dict', new=fake_make_subnet_dict)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin, 'update_floatingip',
+                  new=update_floatingip)
+    @patch.object(l3_db.L3_NAT_dbonly_mixin,
+                  '_check_router_interface_not_in_use')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_delete_router(self, mock_context, mock_check_if):
+        fake_plugin = FakePlugin()
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_admin_context()
+        t_ctx.project_id = 'test_tenant_id'
+        mock_context.return_value = t_ctx
+
+        (t_port_id, b_port_id,
+         fip, e_net) = self._prepare_associate_floatingip_test(t_ctx, q_ctx,
+                                                               fake_plugin)
+        # associate floating ip
+        fip_body = {'port_id': t_port_id}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+        # disassociate floating ip
+        fip_body = {'port_id': None}
+        fake_plugin.update_floatingip(q_ctx, fip['id'],
+                                      {'floatingip': fip_body})
+
+        t_router_id = TOP_ROUTERS[0]['id']
+        for port in TOP_PORTS:
+            if port['id'] == t_port_id:
+                t_subnet_id = port['fixed_ips'][0]['subnet_id']
+        fake_plugin.remove_router_interface(q_ctx, t_router_id,
+                                            {'subnet_id': t_subnet_id})
+        fake_plugin.update_router(q_ctx, t_router_id,
+                                  {'router': {'external_gateway_info': {}}})
+
+        top_res_sets = [TOP_NETS, TOP_SUBNETS, TOP_PORTS]
+        top_res_nums = [len(top_res_set) for top_res_set in top_res_sets]
+        top_pre_created_res_nums = [0, 0, 0]
+        for i, top_res_set in enumerate(top_res_sets):
+            for top_res in top_res_set:
+                if top_res.get('name', '').find('bridge') != -1:
+                    top_pre_created_res_nums[i] += 1
+        fake_plugin.delete_router(q_ctx, t_router_id)
+
+        # check pre-created networks, subnets and ports are all deleted
+        for i, top_res_set in enumerate(top_res_sets):
+            self.assertEqual(top_res_nums[i] - top_pre_created_res_nums[i],
+                             len(top_res_set))
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

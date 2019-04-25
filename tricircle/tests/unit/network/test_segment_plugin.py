@@ -12,14 +12,20 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from mock import patch
 import unittest
 
+from neutron_lib.api.definitions import provider_net
 from neutron_lib.plugins import constants as plugin_constants
+from neutron_lib.plugins import directory
 
 import neutron.conf.common as q_config
+from neutron.extensions import segment as extension
 from neutron.plugins.ml2 import managers as n_managers
+from neutron.services.segments import exceptions as sg_excp
 from oslo_config import cfg
 from oslo_serialization import jsonutils
+from oslo_utils import uuidutils
 
 from tricircle.common import context
 import tricircle.db.api as db_api
@@ -28,10 +34,8 @@ from tricircle.db import models
 import tricircle.network.central_plugin as plugin
 from tricircle.network import helper
 from tricircle.network.segment_plugin import TricircleSegmentPlugin
-from tricircle.tests.unit.network.test_central_plugin \
-    import FakeClient as CentralFakeClient
-from tricircle.tests.unit.network.test_central_plugin \
-    import FakePlugin as CentralFakePlugin
+from tricircle.tests.unit.network.test_central_plugin import FakeClient as CFC
+from tricircle.tests.unit.network.test_central_plugin import FakePlugin as CFP
 
 import tricircle.tests.unit.utils as test_utils
 
@@ -49,7 +53,7 @@ FakeNeutronContext = test_utils.FakeNeutronContext
 TEST_TENANT_ID = test_utils.TEST_TENANT_ID
 
 
-class FakeClient(CentralFakeClient):
+class FakeClient(CFC):
     def __init__(self, region_name=None):
         super(FakeClient, self).__init__(region_name)
 
@@ -83,7 +87,7 @@ class FakePlugin(TricircleSegmentPlugin):
         self.extension_manager = FakeExtensionManager()
         self.extension_manager.initialize()
         self.helper = FakeHelper(self)
-        self.central_plugin = CentralFakePlugin()
+        self.central_plugin = CFP()
 
     def _get_client(self, region_name):
         return FakeClient(region_name)
@@ -100,10 +104,6 @@ class FakePlugin(TricircleSegmentPlugin):
         if 'project_id' in network:
             network['tenant_id'] = network['project_id']
         return network
-
-
-def fake_get_plugin(alias=plugin_constants.CORE):
-    return CentralFakePlugin()
 
 
 def fake_get_client(region_name):
@@ -139,7 +139,7 @@ class PluginTest(unittest.TestCase):
         cfg.CONF.set_override('enable_l3_route_network', True,
                               group='tricircle')
         plugin_path = \
-            'tricircle.tests.unit.network.test_central_plugin.FakePlugin'
+            'tricircle.tests.unit.network.test_segment_plugin.FakePlugin'
         cfg.CONF.set_override('core_plugin', plugin_path)
         cfg.CONF.set_override('enable_api_gateway', True)
         self.context = context.Context()
@@ -159,10 +159,7 @@ class PluginTest(unittest.TestCase):
                               group='tricircle')
 
         def fake_get_plugin(alias=plugin_constants.CORE):
-            if alias == 'trunk':
-                return FakeTrunkPlugin()
-            return CentralFakePlugin()
-        from neutron_lib.plugins import directory
+            return None
         directory.get_plugin = fake_get_plugin
 
         global segments_plugin
@@ -193,6 +190,112 @@ class PluginTest(unittest.TestCase):
         with self.context.session.begin():
             core.create_resource(self.context, models.ResourceRouting, route1)
             core.create_resource(self.context, models.ResourceRouting, route2)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(TricircleSegmentPlugin, '_get_client',
+                  new=fake_get_client)
+    @patch.object(plugin.TricirclePlugin, '_get_client',
+                  new=fake_get_client)
+    def test_create_segment(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        neutron_context = FakeNeutronContext()
+        tricircle_context = context.get_db_context()
+        mock_context.return_value = tricircle_context
+
+        # create a routed network
+        top_net_id = uuidutils.generate_uuid()
+        network = {'network': {
+            'id': top_net_id, 'name': 'multisegment1',
+            'tenant_id': TEST_TENANT_ID,
+            'admin_state_up': True, 'shared': False,
+            'availability_zone_hints': [],
+            provider_net.PHYSICAL_NETWORK: 'bridge',
+            provider_net.NETWORK_TYPE: 'vlan',
+            provider_net.SEGMENTATION_ID: '2016'}}
+        fake_plugin.central_plugin.create_network(neutron_context, network)
+        net_filter = {'name': ['multisegment1']}
+        top_net = fake_plugin.central_plugin.get_networks(
+            neutron_context, net_filter)
+        self.assertEqual(top_net[0]['id'], top_net_id)
+
+        res = fake_plugin.get_segments(neutron_context)
+        self.assertEqual(len(res), 1)
+
+        # creat segment's name normally
+        segment2_id = uuidutils.generate_uuid()
+        segment2_name = 'test-segment2'
+        segment2 = {'segment': {
+            'id': segment2_id,
+            'name': segment2_name,
+            'network_id': top_net_id,
+            extension.PHYSICAL_NETWORK: 'bridge2',
+            extension.NETWORK_TYPE: 'flat',
+            extension.SEGMENTATION_ID: '2016',
+            'tenant_id': TEST_TENANT_ID,
+            'description': None
+        }}
+        fake_plugin.create_segment(neutron_context, segment2)
+        res = fake_plugin.get_segment(neutron_context, segment2_id)
+        self.assertEqual(res['name'], segment2_name)
+        net_filter = {'name': [segment2_name]}
+        b_net = fake_plugin.central_plugin.get_networks(
+            neutron_context, net_filter)
+        self.assertFalse(b_net)
+
+    @patch.object(context, 'get_context_from_neutron_context')
+    @patch.object(TricircleSegmentPlugin, '_get_client',
+                  new=fake_get_client)
+    @patch.object(plugin.TricirclePlugin, '_get_client',
+                  new=fake_get_client)
+    @patch.object(plugin.TricirclePlugin, 'delete_network',
+                  new=fake_delete_network)
+    def test_delete_segment(self, mock_context):
+        self._basic_pod_route_setup()
+        fake_plugin = FakePlugin()
+        neutron_context = FakeNeutronContext()
+        tricircle_context = context.get_db_context()
+        mock_context.return_value = tricircle_context
+
+        # create a routed network
+        top_net_id = uuidutils.generate_uuid()
+        network = {'network': {
+            'id': top_net_id, 'name': 'multisegment1',
+            'tenant_id': TEST_TENANT_ID,
+            'admin_state_up': True, 'shared': False,
+            'availability_zone_hints': [],
+            provider_net.PHYSICAL_NETWORK: 'bridge',
+            provider_net.NETWORK_TYPE: 'vlan',
+            provider_net.SEGMENTATION_ID: '2016'}}
+        fake_plugin.central_plugin.create_network(neutron_context, network)
+
+        # create a normal segment
+        segment2_id = uuidutils.generate_uuid()
+        segment2_name = 'test-segment3'
+        segment2 = {'segment': {
+            'id': segment2_id,
+            'name': segment2_name,
+            'network_id': top_net_id,
+            extension.PHYSICAL_NETWORK: 'bridge2',
+            extension.NETWORK_TYPE: 'flat',
+            extension.SEGMENTATION_ID: '2016',
+            'tenant_id': TEST_TENANT_ID,
+            'description': None
+        }}
+        fake_plugin.create_segment(neutron_context, segment2)
+
+        res = fake_plugin.get_segment(neutron_context, segment2_id)
+        self.assertEqual(res['name'], segment2_name)
+        net_filter = {'name': [segment2_name]}
+        b_net = fake_plugin.central_plugin.get_networks(
+            neutron_context, net_filter)
+        self.assertFalse(b_net)
+
+        # delete a normal segment
+        fake_plugin.delete_segment(neutron_context, segment2_id)
+        self.assertRaises(sg_excp.SegmentNotFound,
+                          fake_plugin.get_segment,
+                          neutron_context, segment2_id)
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())

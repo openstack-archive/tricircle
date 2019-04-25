@@ -692,9 +692,119 @@ class PluginTest(unittest.TestCase):
     def test_get_port(self):
         self._basic_pod_setup()
         project_id = TEST_TENANT_ID
+        fake_plugin = FakeSfcPlugin()
         t_ctx = context.get_db_context()
         port_id = self._prepare_port_test(project_id, t_ctx, 'pod_1', None)
-        self.assertIsNotNone(port_id)
+        port = fake_plugin._get_port(context, port_id)
+        self.assertIsNotNone(port)
+
+    @patch.object(db_base_plugin_v2.NeutronDbPluginV2, 'get_port',
+                  new=FakeCorePlugin.get_port)
+    @patch.object(sfc_db.SfcDbPlugin, 'get_port_pairs',
+                  new=FakeSfcPlugin.get_port_pairs)
+    @patch.object(context, 'get_context_from_neutron_context',
+                  new=fake_get_context_from_neutron_context)
+    def test_create_port_chain(self):
+        project_id = TEST_TENANT_ID
+        q_ctx = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        self._basic_pod_setup()
+        fake_plugin = FakeSfcPlugin()
+
+        t_net_id = self._prepare_net_test(project_id, t_ctx, 'pod_1')
+        ingress = self._prepare_port_test(project_id, t_ctx, 'pod_1', t_net_id)
+        egress = self._prepare_port_test(project_id, t_ctx, 'pod_1', t_net_id)
+        src_port_id = self._prepare_port_test(project_id,
+                                              t_ctx, 'pod_1', t_net_id)
+        t_pp1_id, _ = self._prepare_port_pair_test(
+            project_id, t_ctx, 'pod_1', 0, ingress, egress, False)
+        t_ppg1_id, _ = self._prepare_port_pair_group_test(
+            project_id, t_ctx, 'pod_1', 0, [t_pp1_id], False, None)
+        ppg1_mapping = {t_pp1_id: t_ppg1_id}
+        self._update_port_pair_test(ppg1_mapping, TOP_PORTPAIRS)
+        t_fc1_id, _ = self._prepare_flow_classifier_test(
+            project_id, t_ctx, 'pod_1', 0, src_port_id, False)
+        body = {"port_chain": {
+            "tenant_id": project_id,
+            "name": "pc1",
+            "chain_parameters": {
+                "symmetric": False, "correlation": "mpls"},
+            "port_pair_groups": [t_ppg1_id],
+            "flow_classifiers": [t_fc1_id],
+            "project_id": project_id,
+            "chain_id": 1,
+            "description": ""}}
+        t_pc1 = fake_plugin.create_port_chain(q_ctx, body)
+        pp1_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_pp1_id, constants.RT_PORT_PAIR)
+        ppg1_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_ppg1_id, constants.RT_PORT_PAIR_GROUP)
+        fc1_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_fc1_id, constants.RT_FLOW_CLASSIFIER)
+        pc1_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_pc1['id'], constants.RT_PORT_CHAIN)
+        btm1_pp_ids = [btm_pp['id'] for btm_pp in BOTTOM1_PORTPAIRS]
+        btm1_ppg_ids = [btm_ppg['id'] for btm_ppg in BOTTOM1_PORTPAIRGROUPS]
+        btm1_fc_ids = [btm_fc['id'] for btm_fc in BOTTOM1_FLOWCLASSIFIERS]
+        btm1_pc_ids = [btm_pc['id'] for btm_pc in BOTTOM1_PORTCHAINS]
+        b_pp1_id = pp1_mappings[0][1]
+        b_ppg1_id = ppg1_mappings[0][1]
+        b_fc1_id = fc1_mappings[0][1]
+        b_pc1_id = pc1_mappings[0][1]
+        self.assertEqual([b_pp1_id], btm1_pp_ids)
+        self.assertEqual([b_ppg1_id], btm1_ppg_ids)
+        self.assertEqual([b_fc1_id], btm1_fc_ids)
+        self.assertEqual([b_pc1_id], btm1_pc_ids)
+
+        # make conflict
+        TOP_PORTCHAINS.pop()
+        TOP_FLOWCLASSIFIERS.pop()
+        TOP_PORTPAIRGROUPS.pop()
+        TOP_PORTPAIRS.pop()
+        b_ppg1_mapping = {b_pp1_id: b_ppg1_id}
+        self._update_port_pair_test(b_ppg1_mapping, BOTTOM1_PORTPAIRS)
+        db_api.create_recycle_resource(
+            t_ctx, t_ppg1_id, constants.RT_PORT_PAIR_GROUP, q_ctx.project_id)
+
+        t_pp2_id, _ = self._prepare_port_pair_test(
+            project_id, t_ctx, 'pod_1', 0, ingress, egress, False)
+        t_ppg2_id, _ = self._prepare_port_pair_group_test(
+            project_id, t_ctx, 'pod_1', 0, [t_pp2_id], False, None)
+        ppg2_mapping = {t_pp2_id: t_ppg2_id}
+        self._update_port_pair_test(ppg2_mapping, TOP_PORTPAIRS)
+        t_fc2_id, _ = self._prepare_flow_classifier_test(
+            project_id, t_ctx, 'pod_1', 0, src_port_id, False)
+        body2 = {"port_chain": {
+            "tenant_id": project_id,
+            "name": "pc1",
+            "chain_parameters": {
+                "symmetric": False, "correlation": "mpls"},
+            "port_pair_groups": [t_ppg2_id],
+            "flow_classifiers": [t_fc2_id],
+            "project_id": project_id,
+            "chain_id": 1,
+            "description": ""}}
+        t_pc2 = fake_plugin.create_port_chain(q_ctx, body2)
+        pp2_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_pp2_id, constants.RT_PORT_PAIR)
+        ppg2_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_ppg2_id, constants.RT_PORT_PAIR_GROUP)
+        fc2_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_fc2_id, constants.RT_FLOW_CLASSIFIER)
+        pc2_mappings = db_api.get_bottom_mappings_by_top_id(
+            t_ctx, t_pc2['id'], constants.RT_PORT_CHAIN)
+        btm1_pp_ids = [btm_pp['id'] for btm_pp in BOTTOM1_PORTPAIRS]
+        btm1_ppg_ids = [btm_ppg['id'] for btm_ppg in BOTTOM1_PORTPAIRGROUPS]
+        btm1_fc_ids = [btm_fc['id'] for btm_fc in BOTTOM1_FLOWCLASSIFIERS]
+        btm1_pc_ids = [btm_pc['id'] for btm_pc in BOTTOM1_PORTCHAINS]
+        b_pp2_id = pp2_mappings[0][1]
+        b_ppg2_id = ppg2_mappings[0][1]
+        b_fc2_id = fc2_mappings[0][1]
+        b_pc2_id = pc2_mappings[0][1]
+        self.assertEqual([b_pp2_id], btm1_pp_ids)
+        self.assertEqual([b_ppg2_id], btm1_ppg_ids)
+        self.assertEqual([b_fc2_id], btm1_fc_ids)
+        self.assertEqual([b_pc2_id], btm1_pc_ids)
 
     @patch.object(context, 'get_context_from_neutron_context',
                   new=fake_get_context_from_neutron_context)
@@ -837,8 +947,11 @@ class PluginTest(unittest.TestCase):
                   new=fake_get_context_from_neutron_context)
     def test_update_service_function_chain(self):
         project_id = TEST_TENANT_ID
+        q_ctx = FakeNeutronContext()
         t_ctx = context.get_db_context()
         self._basic_pod_setup()
+        fake_sfc_plugin = FakeSfcPlugin()
+        fake_fc_plugin = FakeFcPlugin()
 
         t_net_id = self._prepare_net_test(project_id, t_ctx, 'pod_1')
         src_port_id = self._prepare_port_test(project_id,
@@ -866,14 +979,50 @@ class PluginTest(unittest.TestCase):
         self._prepare_chain_group_assoc_test(t_pc1_id, t_ppg1_id)
         self._prepare_chain_classifier_assoc_test(t_pc1_id, t_fc1_id)
 
+        pp_body = {'port_pair': {
+            'name': 'new_name',
+            'description': 'new_pp_description'}}
+        fake_sfc_plugin.update_port_pair(q_ctx, t_pp1_id, pp_body)
+        self.assertEqual(TOP_PORTPAIRS[0]['description'], 'new_pp_description')
+        self.assertEqual(TOP_PORTPAIRS[0]['name'], 'new_name')
+        self.assertEqual(BOTTOM1_PORTPAIRS[0]['description'],
+                         'new_pp_description')
+        self.assertEqual(BOTTOM1_PORTPAIRS[0]['name'], 'new_name')
+
+        fc_body = {'flow_classifier': {
+            'name': 'new_name',
+            'description': 'new_fc_description'}}
+        fake_fc_plugin.update_flow_classifier(q_ctx, t_fc1_id, fc_body)
+        self.assertEqual(TOP_FLOWCLASSIFIERS[0]['name'], 'new_name')
+        self.assertEqual(TOP_FLOWCLASSIFIERS[0]['description'],
+                         'new_fc_description')
+        self.assertEqual(BOTTOM1_FLOWCLASSIFIERS[0]['name'], 'new_name')
+        self.assertEqual(BOTTOM1_FLOWCLASSIFIERS[0]['description'],
+                         'new_fc_description')
+
         ingress2 = self._prepare_port_test(project_id, t_ctx,
                                            'pod_1', t_net_id)
         egress2 = self._prepare_port_test(project_id, t_ctx, 'pod_1', t_net_id)
         t_pp2_id, b_pp2_id = self._prepare_port_pair_test(
             project_id, t_ctx, 'pod_1', 0, ingress2, egress2, True)
+        ppg_body = {'port_pair_group': {
+            'name': 'new_name',
+            'description': 'new_ppg_description',
+            'port_pairs': [t_pp1_id, t_pp2_id]}}
         ppg_mapping = {t_pp2_id: t_ppg1_id}
         self._update_port_pair_test(ppg_mapping, TOP_PORTPAIRS)
 
+        fake_sfc_plugin.update_port_pair_group(q_ctx, t_ppg1_id, ppg_body)
+        self.assertEqual(TOP_PORTPAIRGROUPS[0]['name'], 'new_name')
+        self.assertEqual(TOP_PORTPAIRGROUPS[0]['description'],
+                         'new_ppg_description')
+        self.assertEqual(TOP_PORTPAIRGROUPS[0]['port_pairs'],
+                         [t_pp1_id, t_pp2_id])
+        self.assertEqual(BOTTOM1_PORTPAIRGROUPS[0]['name'], 'new_name')
+        self.assertEqual(BOTTOM1_PORTPAIRGROUPS[0]['description'],
+                         'new_ppg_description')
+        self.assertEqual(BOTTOM1_PORTPAIRGROUPS[0]['port_pairs'],
+                         [b_pp1_id, b_pp2_id])
         t_ppg2_id, b_ppg2_id = self._prepare_port_pair_group_test(
             project_id, t_ctx, 'pod_1', 0,
             [], True, [])
@@ -881,6 +1030,27 @@ class PluginTest(unittest.TestCase):
             project_id, t_ctx, 'pod_1', 0, src_port_id, True)
         self._prepare_chain_group_assoc_test(t_pc1_id, t_ppg2_id)
         self._prepare_chain_classifier_assoc_test(t_pc1_id, t_fc2_id)
+        pc_body = {'port_chain': {
+            'name': 'new_name',
+            'description': 'new_pc_description',
+            'port_pair_groups': [t_ppg1_id, t_ppg2_id],
+            'flow_classifiers': [t_fc1_id, t_fc2_id]}}
+
+        fake_sfc_plugin.update_port_chain(q_ctx, t_pc1_id, pc_body)
+        self.assertEqual(TOP_PORTCHAINS[0]['name'], 'new_name')
+        self.assertEqual(TOP_PORTCHAINS[0]['description'],
+                         'new_pc_description')
+        self.assertEqual(TOP_PORTCHAINS[0]['port_pair_groups'],
+                         [t_ppg1_id, t_ppg2_id])
+        self.assertEqual(TOP_PORTCHAINS[0]['flow_classifiers'],
+                         [t_fc1_id, t_fc2_id])
+        self.assertEqual(BOTTOM1_PORTCHAINS[0]['name'], 'new_name')
+        self.assertEqual(BOTTOM1_PORTCHAINS[0]['description'],
+                         'new_pc_description')
+        self.assertEqual(BOTTOM1_PORTCHAINS[0]['port_pair_groups'],
+                         [b_ppg1_id, b_ppg2_id])
+        self.assertEqual(BOTTOM1_PORTCHAINS[0]['flow_classifiers'],
+                         [b_fc1_id, b_fc2_id])
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
