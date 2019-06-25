@@ -151,7 +151,7 @@ def get_session(expire_on_commit=False):
 def initialize():
     db_options.set_defaults(
         cfg.CONF,
-        connection='sqlite:///:memory:')
+        connection='sqlite://')
 
 
 def query_resource(context, model, filters, sorts):

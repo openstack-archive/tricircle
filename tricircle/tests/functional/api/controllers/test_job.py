@@ -62,7 +62,7 @@ class API_FunctionalTest(base.TestCase):
         self.CONF = self.useFixture(fixture_config.Config()).conf
 
         self.CONF.set_override('auth_strategy', 'noauth')
-        self.CONF.set_override('tricircle_db_connection', 'sqlite:///:memory:')
+        self.CONF.set_override('tricircle_db_connection', 'sqlite://')
 
         core.initialize()
         core.ModelBase.metadata.create_all(core.get_engine())

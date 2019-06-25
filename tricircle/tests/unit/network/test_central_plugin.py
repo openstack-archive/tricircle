@@ -3179,31 +3179,6 @@ class PluginTest(unittest.TestCase,
                              len(top_res_set))
 
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_create_security_group_rule(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_create_security_group_rule(fake_plugin, q_ctx, t_ctx,
-                                              'pod_id_1', TOP_SGS, BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_delete_security_group_rule(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_delete_security_group_rule(fake_plugin, q_ctx, t_ctx,
-                                              'pod_id_1', TOP_SGS,
-                                              TOP_SG_RULES, BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
     def test_handle_remote_group_invalid_input(self, mock_context):
         self._basic_pod_route_setup()
 
@@ -3215,74 +3190,6 @@ class PluginTest(unittest.TestCase,
         self._test_handle_remote_group_invalid_input(fake_plugin, q_ctx, t_ctx,
                                                      'pod_id_1', TOP_SGS,
                                                      TOP_SG_RULES, BOTTOM1_SGS)
-
-    @patch.object(FakeClient, 'create_security_group_rules')
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_create_security_group_rule_exception(self, mock_context,
-                                                  mock_create):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-        mock_create.side_effect = q_exceptions.ConnectionFailed
-
-        self._test_create_security_group_rule_exception(
-            fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, BOTTOM1_SGS)
-
-    @patch.object(FakeClient, 'delete_security_group_rules')
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_delete_security_group_rule_exception(self, mock_context,
-                                                  mock_delete):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-        mock_delete.side_effect = q_exceptions.ConnectionFailed
-
-        self._test_delete_security_group_rule_exception(
-            fake_plugin, q_ctx, t_ctx, 'pod_id_1', TOP_SGS, TOP_SG_RULES,
-            BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_update_default_sg(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_update_default_sg(fake_plugin, q_ctx, t_ctx,
-                                     'pod_id_1', TOP_SGS,
-                                     TOP_SG_RULES, BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_get_security_group(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_get_security_group(fake_plugin, q_ctx, t_ctx,
-                                      'pod_id_1', TOP_SGS, BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
-    def test_delete_security_group(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_delete_security_group(fake_plugin, q_ctx, t_ctx,
-                                         'pod_id_1', TOP_SGS, BOTTOM1_SGS)
 
     @patch.object(context, 'get_context_from_neutron_context')
     def test_create_policy(self, mock_context):
