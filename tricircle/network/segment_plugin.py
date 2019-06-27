@@ -20,6 +20,7 @@ import re
 from neutron.services.segments.plugin import Plugin
 from neutron_lib.api.definitions import availability_zone as az_def
 from neutron_lib.api.definitions import provider_net
+from neutron_lib.db import api as db_api
 from neutron_lib.exceptions import availability_zone as az_exc
 
 import tricircle.common.client as t_client
@@ -63,7 +64,7 @@ class TricircleSegmentPlugin(Plugin):
         if not az_list:
             return
         t_ctx = t_context.get_context_from_neutron_context(context)
-        with context.session.begin(subtransactions=True):
+        with db_api.CONTEXT_WRITER.using(context):
             pods = core.query_resource(t_ctx, models.Pod, [], [])
             az_set = set(az_list)
 
