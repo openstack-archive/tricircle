@@ -35,7 +35,6 @@ import tricircle.common.exceptions as t_exceptions
 import tricircle.common.lock_handle as t_lock
 from tricircle.common import utils
 import tricircle.db.api as db_api
-import tricircle.network.exceptions as t_network_exc
 
 
 # manually define these constants to avoid depending on neutron repos
@@ -693,37 +692,6 @@ class NetworkHelper(object):
             project_id, t_dhcp_port, b_subnet_id, b_net_id)
         self.prepare_bottom_element(ctx, project_id, b_pod, t_dhcp_port,
                                     t_constants.RT_PORT, dhcp_port_body)
-
-    @staticmethod
-    def _safe_create_bottom_floatingip(t_ctx, pod, client, fip_net_id,
-                                       fip_address, port_id):
-        try:
-            client.create_floatingips(
-                t_ctx, {'floatingip': {'floating_network_id': fip_net_id,
-                                       'floating_ip_address': fip_address,
-                                       'port_id': port_id}})
-        except q_cli_exceptions.IpAddressInUseClient:
-            fips = client.list_floatingips(t_ctx,
-                                           [{'key': 'floating_ip_address',
-                                             'comparator': 'eq',
-                                             'value': fip_address}])
-            if not fips:
-                # this is rare case that we got IpAddressInUseClient exception
-                # a second ago but now the floating ip is missing
-                raise t_network_exc.BottomPodOperationFailure(
-                    resource='floating ip', region_name=pod['region_name'])
-            associated_port_id = fips[0].get('port_id')
-            if associated_port_id == port_id:
-                # the internal port associated with the existing fip is what
-                # we expect, just ignore this exception
-                pass
-            elif not associated_port_id:
-                # the existing fip is not associated with any internal port,
-                # update the fip to add association
-                client.update_floatingips(t_ctx, fips[0]['id'],
-                                          {'floatingip': {'port_id': port_id}})
-            else:
-                raise
 
     def _get_top_element(self, t_ctx, q_ctx, _type, _id):
         if self.call_obj:

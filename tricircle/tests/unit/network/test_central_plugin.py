@@ -40,6 +40,7 @@ from neutron.db import models_v2
 from neutron.db import rbac_db_models as rbac_db
 import neutron.objects.base as base_object
 from neutron.services.qos.drivers import manager as q_manager
+from neutron.services.trunk import plugin as trunk_plugin
 
 from neutron.plugins.ml2 import managers as n_managers
 
@@ -67,6 +68,7 @@ import tricircle.network.central_plugin as plugin
 from tricircle.network import central_qos_plugin
 from tricircle.network import helper
 from tricircle.network import qos_driver
+from tricircle.tests.unit.network import test_central_trunk_plugin
 from tricircle.tests.unit.network import test_qos
 from tricircle.tests.unit.network import test_security_groups
 import tricircle.tests.unit.utils as test_utils
@@ -105,6 +107,12 @@ BOTTOM2_FIPS = _resource_store.BOTTOM2_FLOATINGIPS
 BOTTOM2_ROUTERS = _resource_store.BOTTOM2_ROUTERS
 BOTTOM2_POLICIES = _resource_store.BOTTOM2_QOS_POLICIES
 BOTTOM2_POLICY_RULES = _resource_store.BOTTOM2_QOS_BANDWIDTH_LIMIT_RULES
+TOP_TRUNKS = _resource_store.TOP_TRUNKS
+TOP_SUBPORTS = _resource_store.TOP_SUBPORTS
+BOTTOM1_TRUNKS = _resource_store.BOTTOM1_TRUNKS
+BOTTOM2_TRUNKS = _resource_store.BOTTOM2_TRUNKS
+BOTTOM1_SUBPORTS = _resource_store.BOTTOM1_SUBPORTS
+BOTTOM2_SUBPORTS = _resource_store.BOTTOM2_SUBPORTS
 TEST_TENANT_ID = test_utils.TEST_TENANT_ID
 FakeNeutronContext = test_utils.FakeNeutronContext
 
@@ -959,6 +967,8 @@ def fake_get_instance(cls, subnet_pool, context):
 
 
 def fake_get_plugin(alias=plugin_constants.CORE):
+    if alias == 'trunk':
+        return test_central_trunk_plugin.FakePlugin()
     return FakePlugin()
 
 
@@ -1615,6 +1625,71 @@ class PluginTest(unittest.TestCase,
         return t_port_id, b_port_id
 
     @staticmethod
+    def _prepare_trunk_test(project_id, ctx, pod_name, index, t_net_id,
+                            b_net_id, t_subnet_id, b_subnet_id):
+        t_trunk_id = uuidutils.generate_uuid()
+        b_trunk_id = uuidutils.generate_uuid()
+        t_parent_port_id = uuidutils.generate_uuid()
+        t_sub_port_id = PluginTest._prepare_port_test(
+            project_id, ctx, pod_name, index, t_net_id,
+            b_net_id, t_subnet_id, b_subnet_id)
+
+        t_subport = {
+            'segmentation_type': 'vlan',
+            'port_id': t_sub_port_id,
+            'segmentation_id': 164,
+            'trunk_id': t_trunk_id}
+
+        t_trunk = {
+            'id': t_trunk_id,
+            'name': 'top_trunk_%d' % index,
+            'status': 'DOWN',
+            'description': 'created',
+            'admin_state_up': True,
+            'port_id': t_parent_port_id,
+            'tenant_id': project_id,
+            'project_id': project_id,
+            'sub_ports': [t_subport]
+        }
+        TOP_TRUNKS.append(test_utils.DotDict(t_trunk))
+        TOP_SUBPORTS.append(test_utils.DotDict(t_subport))
+
+        b_subport = {
+            'segmentation_type': 'vlan',
+            'port_id': t_sub_port_id,
+            'segmentation_id': 164,
+            'trunk_id': b_trunk_id}
+
+        b_trunk = {
+            'id': b_trunk_id,
+            'name': 'top_trunk_%d' % index,
+            'status': 'UP',
+            'description': 'created',
+            'admin_state_up': True,
+            'port_id': t_parent_port_id,
+            'tenant_id': project_id,
+            'project_id': project_id,
+            'sub_ports': [b_subport]
+        }
+
+        if pod_name == 'pod_1':
+            BOTTOM1_SUBPORTS.append(test_utils.DotDict(t_subport))
+            BOTTOM1_TRUNKS.append(test_utils.DotDict(b_trunk))
+        else:
+            BOTTOM2_SUBPORTS.append(test_utils.DotDict(t_subport))
+            BOTTOM2_TRUNKS.append(test_utils.DotDict(b_trunk))
+
+        pod_id = 'pod_id_1' if pod_name == 'pod_1' else 'pod_id_2'
+        core.create_resource(ctx, models.ResourceRouting,
+                             {'top_id': t_trunk_id,
+                              'bottom_id': b_trunk_id,
+                              'pod_id': pod_id,
+                              'project_id': project_id,
+                              'resource_type': constants.RT_TRUNK})
+
+        return t_trunk, b_trunk
+
+    @staticmethod
     def _prepare_network_subnet(project_id, ctx, region_name, index,
                                 enable_dhcp=True, az_hints=None,
                                 network_type=constants.NT_LOCAL):
@@ -1969,6 +2044,48 @@ class PluginTest(unittest.TestCase,
                          body_copy['subnet']['enable_dhcp'])
 
     @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
+                  '_allocate_ips_for_port', new=fake_allocate_ips_for_port)
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(db_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_create_port(self, mock_context):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, self.context, 'pod_1', 1)
+        neutron_context = FakeNeutronContext()
+        fake_plugin = FakePlugin()
+        fake_client = FakeClient()
+        mock_context.return_value = self.context
+
+        t_pod = {'pod_id': 'pod_id_top', 'region_name': 'top-region',
+                 'az_name': ''}
+        db_api.create_pod(self.context, t_pod)
+
+        body_port = {
+            'port': {
+                'name': 'interface_top-region_port-1',
+                'description': 'top_description',
+                'extra_dhcp_opts': [],
+                'security_groups': [],
+                'device_id': 'reserved_gateway_port',
+                'admin_state_up': True,
+                'network_id': t_net_id,
+                'tenant_id': project_id,
+                'project_id': project_id,
+            }
+        }
+
+        port = fake_plugin.create_port(neutron_context, body_port)
+        t_gw_ports = fake_client.list_resources(
+            'port', None, [{'key': 'name', 'comparator': 'eq',
+                            'value': 'interface_top-region_port-1'}])
+        self.assertEqual(t_gw_ports[0]['id'], port['id'])
+
+    @patch.object(ipam_pluggable_backend.IpamPluggableBackend,
                   '_update_ips_for_port', new=fake_update_ips_for_port)
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
@@ -2055,6 +2172,88 @@ class PluginTest(unittest.TestCase,
                          body_copy['port']['security_groups'])
         self.assertEqual(bottom_port['allowed_address_pairs'][0],
                          body_copy['port']['allowed_address_pairs'][0])
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(db_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(trunk_plugin.TrunkPlugin, 'get_trunk')
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port_tunck(self, mock_context, mock_get_trunk):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        t_ctx = context.get_db_context()
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, t_ctx, 'pod_1', 1)
+        t_port_id, b_port_id = self._prepare_port_test(
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+        t_trunk, b_trunk = self._prepare_trunk_test(
+            project_id, t_ctx, 'pod_1', 2, t_net_id,
+            b_net_id, t_subnet_id, b_subnet_id)
+
+        fake_plugin = FakePlugin()
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'port': {
+                'binding:profile': {
+                    constants.PROFILE_REGION: 'pod_1',
+                    constants.PROFILE_DEVICE: 'compute:new'
+                },
+                'trunk_details': {'trunk_id': t_trunk['id'],
+                                  'sub_ports': []}
+            }
+
+        }
+
+        body_copy = copy.deepcopy(update_body)
+        q_ctx = test_central_trunk_plugin.FakeNeutronContext()
+        mock_get_trunk.return_value = t_trunk
+        top_port = fake_plugin.update_port(q_ctx, t_port_id, update_body)
+        self.assertEqual(top_port['binding:profile'],
+                         body_copy['port']['binding:profile'])
+        self.assertEqual(top_port['trunk_details'],
+                         body_copy['port']['trunk_details'])
+
+    @patch.object(directory, 'get_plugin', new=fake_get_plugin)
+    @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)
+    @patch.object(db_utils, 'filter_non_model_columns',
+                  new=fake_filter_non_model_columns)
+    @patch.object(context, 'get_context_from_neutron_context')
+    def test_update_port_mapping(self, mock_context):
+        project_id = TEST_TENANT_ID
+        self._basic_pod_route_setup()
+        neutron_context = FakeNeutronContext()
+        t_ctx = context.get_db_context()
+        (t_net_id, t_subnet_id,
+         b_net_id, b_subnet_id) = self._prepare_network_subnet(
+            project_id, t_ctx, 'pod_1', 1)
+        t_port_id, b_port_id = self._prepare_port_test(
+            project_id, t_ctx, 'pod_1', 1, t_net_id, b_net_id,
+            t_subnet_id, b_subnet_id)
+
+        fake_plugin = FakePlugin()
+        mock_context.return_value = t_ctx
+
+        update_body = {
+            'port': {
+                'binding:profile': {
+                    constants.PROFILE_REGION: 'pod_1',
+                    constants.PROFILE_DEVICE: '',
+                    constants.PROFILE_STATUS: 'DOWN'
+                }
+            }
+        }
+        b_update_body = {'port': {'device_id': None}}
+        fake_client = FakeClient('pod_1')
+        fake_client.update_ports(t_ctx, b_port_id, b_update_body)
+        fake_plugin.update_port(neutron_context, t_port_id, update_body)
+        routing_resources = core.query_resource(
+            t_ctx, models.ResourceRouting,
+            [{'key': 'bottom_id', 'comparator': 'eq', 'value': b_port_id}], [])
+        self.assertListEqual(routing_resources, [])
 
     @patch.object(directory, 'get_plugin', new=fake_get_plugin)
     @patch.object(driver.Pool, 'get_instance', new=fake_get_instance)

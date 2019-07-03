@@ -23,6 +23,7 @@ from tricircle.common import httpclient as hclient
 
 from tricircle.db import api
 from tricircle.db import core
+from tricircle.db import models
 
 
 def fake_get_pod_service_endpoint(ctx, region_name, st):
@@ -87,6 +88,10 @@ class HttpClientTest(unittest.TestCase):
         ver = hclient.get_version_from_url(url)
         self.assertEqual(ver, '')
 
+        url = 'sss/networks'
+        ver = hclient.get_version_from_url(url)
+        self.assertEqual(ver, 'sss')
+
     def test_get_bottom_url(self):
         b_endpoint = 'http://127.0.0.1:9696/v2.0/networks'
         t_url = 'http://127.0.0.1:9696/v2.0/networks'
@@ -95,6 +100,28 @@ class HttpClientTest(unittest.TestCase):
 
         self.assertEqual(t_ver, 'v2.0')
         self.assertEqual(b_ver, 'v2.0')
+
+        t_url_1 = 'http://127.0.0.1:9696/sss/v2.0/networks'
+        b_url = hclient.get_bottom_url(t_ver, t_url_1, b_ver, b_endpoint)
+        self.assertEqual(b_url, '')
+
+        t_url_1 = 'v2.0/networks'
+        b_url = hclient.get_bottom_url(t_ver, t_url_1, b_ver, b_endpoint)
+        self.assertEqual(b_url, 'http://127.0.0.1:9696/v2.0/networks')
+
+        b_url = hclient.get_bottom_url(t_ver, t_url, '', b_endpoint)
+        self.assertEqual(b_url, 'http://127.0.0.1:9696/networks')
+
+        t_url_1 = 'http://127.0.0.1:9696/v2.0/networks?qqq=123&sss=456'
+        b_url = hclient.get_bottom_url(t_ver, t_url_1, b_ver, b_endpoint)
+        self.assertEqual(b_url,
+                         'http://127.0.0.1:9696/v2.0/networks?qqq=123&sss=456')
+
+        t_url_1 = 'http://127.0.0.1:9696/v2.0/networks?' \
+                  'qqq=123&availability_zone=456'
+        b_url = hclient.get_bottom_url(t_ver, t_url_1, b_ver, b_endpoint)
+        self.assertEqual(b_url,
+                         'http://127.0.0.1:9696/v2.0/networks?qqq=123')
 
         b_url = hclient.get_bottom_url(t_ver, t_url, b_ver, b_endpoint)
         self.assertEqual(b_url,
@@ -210,6 +237,62 @@ class HttpClientTest(unittest.TestCase):
             pod_dict['region_name'],
             config_dict['service_type'])
         self.assertEqual(endpoint, config_dict['service_url'])
+
+        endpoint = hclient.get_pod_service_endpoint(
+            self.context,
+            'x_region_name',
+            config_dict['service_type'])
+        self.assertEqual(endpoint, '')
+
+    def test_get_res_routing_ref(self):
+        t_url = 'http://127.0.0.1:9696/v2.0/networks'
+
+        self.assertIsNone(hclient.get_res_routing_ref(
+            self.context, 'fake_pod_id', t_url, s_type=cons.ST_NEUTRON))
+
+        pod_dict = {
+            'pod_id': 'fake_pod_id',
+            'region_name': 'fake_region_name',
+            'az_name': 'fake_az'
+        }
+        api.create_pod(self.context, pod_dict)
+        routes = [
+            {
+                'top_id': 'top_id',
+                'bottom_id': 'bottom_id',
+                'pod_id': 'fake_pod_id',
+                'project_id': 'test_project_id',
+                'resource_type': 'network'
+            },
+        ]
+
+        with self.context.session.begin():
+            for route in routes:
+                core.create_resource(
+                    self.context, models.ResourceRouting, route)
+
+        config_dict = {
+            'service_id': 'fake_service_id',
+            'pod_id': 'fake_pod_id',
+            'service_type': cons.ST_NEUTRON,
+            'service_url': 'http://127.0.0.1:9696/v2.0/networks'
+        }
+        api.create_cached_endpoints(self.context, config_dict)
+
+        s_ctx = {'t_ver': 'v2.0', 'b_ver': 'v2.0',
+                 't_url': t_url, 'b_url': t_url}
+        self.assertEqual(s_ctx, hclient.get_res_routing_ref(
+            self.context, 'top_id', t_url, s_type=cons.ST_NEUTRON))
+
+    def test_convert_header(self):
+        header = {'header1': 'aaa', 'header2': 'bbb'}
+        self.assertEqual(header,
+                         hclient.convert_header('v1.0', 'v1.0', header))
+
+        header = {'header1': 'aaa', 'header2': None}
+        except_header = {'header1': 'aaa'}
+        self.assertEqual(except_header,
+                         hclient.convert_header('v1.0', 'v1.0', header))
 
     def tearDown(self):
         core.ModelBase.metadata.drop_all(core.get_engine())
