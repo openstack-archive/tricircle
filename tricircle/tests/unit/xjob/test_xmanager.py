@@ -22,6 +22,7 @@ from six.moves import xrange
 import unittest
 
 import neutron_lib.constants as q_constants
+import neutronclient.common.exceptions as q_cli_exceptions
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
@@ -30,6 +31,7 @@ from tricircle.common import context
 import tricircle.db.api as db_api
 from tricircle.db import core
 from tricircle.db import models
+import tricircle.network.exceptions as t_network_exc
 from tricircle.network import helper
 from tricircle.xjob import xmanager
 from tricircle.xjob import xservice
@@ -60,37 +62,71 @@ RES_MAP = {'top': {'network': TOP_NETWORK,
                    'subnet': TOP_SUBNET,
                    'router': TOP_ROUTER,
                    'security_group': TOP_SG,
-                   'floatingips': TOP_FIP},
+                   'floatingip': TOP_FIP},
            'pod_1': {'network': BOTTOM1_NETWORK,
                      'subnet': BOTTOM1_SUBNET,
                      'port': BOTTOM1_PORT,
                      'router': BOTTOM1_ROUTER,
                      'security_group': BOTTOM1_SG,
-                     'floatingips': BOTTOM1_FIP},
+                     'floatingip': BOTTOM1_FIP},
            'pod_2': {'network': BOTTOM2_NETWORK,
                      'subnet': BOTTOM2_SUBNET,
                      'port': BOTTOM2_PORT,
                      'router': BOTTOM2_ROUTER,
                      'security_group': BOTTOM2_SG,
-                     'floatingips': BOTTOM2_FIP}}
+                     'floatingip': BOTTOM2_FIP}}
 
 
 def fake_get_client(self, region_name=None):
     return FakeClient(region_name)
 
 
-class FakeXManager(xmanager.XManager):
+def fake_create_floatingips(self, ctx, filters=None):
+    raise q_cli_exceptions.IpAddressInUseClient(
+        message='fake_create_floatingips')
+
+
+class FakeBaseXManager(xmanager.XManager):
     def __init__(self):
         self.clients = {'top': FakeClient(),
                         'pod_1': FakeClient('pod_1'),
                         'pod_2': FakeClient('pod_2')}
         self.helper = helper.NetworkHelper()
+        self.job_handles = {
+            constants.JT_CONFIGURE_ROUTE: self.configure_route,
+            constants.JT_ROUTER_SETUP: self.setup_bottom_router,
+            constants.JT_SHADOW_PORT_SETUP: self.setup_shadow_ports,
+            constants.JT_PORT_DELETE: self.delete_server_port}
+
+    def _get_client(self, region_name=None):
+        return FakeClient(region_name)
+
+    def setup_bottom_router(self, ctx, payload):
+        super(FakeBaseXManager, self).setup_bottom_router(ctx, payload=payload)
+
+
+class FakeXManager(FakeBaseXManager):
+    def __init__(self):
+        super(FakeXManager, self).__init__()
         self.xjob_handler = FakeXJobAPI()
 
 
 class FakeXJobAPI(object):
-    def setup_shadow_ports(self, ctx, pod_id, t_net_id):
+    def __init__(self):
+        self.xmanager = FakeBaseXManager()
+
+    def configure_route(self, ctxt, project_id, router_id):
         pass
+
+    def setup_bottom_router(self, ctxt, project_id, net_id, router_id, pod_id):
+        combine_id = '%s#%s#%s' % (pod_id, router_id, net_id)
+        self.xmanager.setup_bottom_router(
+            ctxt, payload={constants.JT_ROUTER_SETUP: combine_id})
+
+    def setup_shadow_ports(self, ctxt, pod_id, net_id):
+        combine_id = '%s#%s' % (pod_id, net_id)
+        self.xmanager.setup_shadow_ports(
+            ctxt, payload={constants.JT_SHADOW_PORT_SETUP: combine_id})
 
 
 class FakeClient(object):
@@ -100,7 +136,7 @@ class FakeClient(object):
         else:
             self.region_name = 'top'
 
-    def list_resources(self, resource, cxt, filters=None):
+    def list_resources(self, resource, ctx, filters=None):
         res_list = []
         filters = filters or []
         for res in RES_MAP[self.region_name][resource]:
@@ -119,14 +155,14 @@ class FakeClient(object):
                 res_list.append(copy.copy(res))
         return res_list
 
-    def create_resources(self, resource, cxt, body):
+    def create_resources(self, resource, ctx, body):
         res = body[resource]
         if 'id' not in res:
             res['id'] = uuidutils.generate_uuid()
         RES_MAP[self.region_name][resource].append(res)
         return res
 
-    def update_resources(self, resource, cxt, _id, body):
+    def update_resources(self, resource, ctx, _id, body):
         for res in RES_MAP[self.region_name][resource]:
             if res['id'] == _id:
                 res.update(body[resource])
@@ -139,57 +175,70 @@ class FakeClient(object):
             return ret
         return self.create_resources('port', ctx, body)
 
-    def list_ports(self, cxt, filters=None):
-        return self.list_resources('port', cxt, filters)
+    def list_ports(self, ctx, filters=None):
+        return self.list_resources('port', ctx, filters)
 
-    def get_ports(self, cxt, port_id):
+    def get_ports(self, ctx, port_id):
         return self.list_resources(
-            'port', cxt,
+            'port', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': port_id}])[0]
 
-    def update_ports(self, cxt, _id, body):
-        self.update_resources('port', cxt, _id, body)
+    def update_ports(self, ctx, _id, body):
+        self.update_resources('port', ctx, _id, body)
 
-    def list_subnets(self, cxt, filters=None):
-        return self.list_resources('subnet', cxt, filters)
+    def list_subnets(self, ctx, filters=None):
+        return self.list_resources('subnet', ctx, filters)
 
-    def get_subnets(self, cxt, subnet_id):
+    def get_subnets(self, ctx, subnet_id):
         return self.list_resources(
-            'subnet', cxt,
+            'subnet', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': subnet_id}])[0]
 
-    def update_subnets(self, cxt, subnet_id, body):
+    def update_subnets(self, ctx, subnet_id, body):
         pass
 
-    def get_networks(self, cxt, net_id):
+    def list_networks(self, ctx, filters=None):
+        return self.list_resources('network', ctx, filters)
+
+    def get_networks(self, ctx, net_id):
         return self.list_resources(
-            'network', cxt,
+            'network', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': net_id}])[0]
 
-    def get_routers(self, cxt, router_id):
+    def get_routers(self, ctx, router_id):
         return self.list_resources(
-            'router', cxt,
+            'router', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': router_id}])[0]
 
-    def update_routers(self, cxt, *args, **kwargs):
+    def update_routers(self, ctx, *args, **kwargs):
         pass
 
-    def list_security_groups(self, cxt, filters=None):
-        return self.list_resources('security_group', cxt, filters)
+    def list_security_groups(self, ctx, filters=None):
+        return self.list_resources('security_group', ctx, filters)
 
-    def get_security_groups(self, cxt, sg_id):
+    def get_security_groups(self, ctx, sg_id):
         return self.list_resources(
-            'security_group', cxt,
+            'security_group', ctx,
             [{'key': 'id', 'comparator': 'eq', 'value': sg_id}])[0]
 
-    def delete_security_group_rules(self, cxt, sg_id):
+    def delete_security_group_rules(self, ctx, sg_id):
         pass
 
-    def create_security_group_rules(self, cxt, *args, **kwargs):
+    def create_security_group_rules(self, ctx, *args, **kwargs):
         pass
 
-    def list_floatingips(self, cxt, filters=None):
-        return self.list_resources('floatingips', cxt, filters)
+    def list_floatingips(self, ctx, filters=None):
+        return self.list_resources('floatingip', ctx, filters)
+
+    def create_floatingips(self, ctx, body):
+        fip = self.create_resources('floatingip', ctx, body)
+        for key in ['fixed_port_id']:
+            if key not in fip:
+                fip[key] = None
+        return fip
+
+    def update_floatingips(self, ctx, _id, body):
+        self.update_resources('floatingip', ctx, _id, body)
 
 
 class XManagerTest(unittest.TestCase):
@@ -363,6 +412,115 @@ class XManagerTest(unittest.TestCase):
             self.assertEqual(expect_ctx, ctx)
             six.assertCountEqual(self, expect_routes,
                                  routes_body['router']['routes'])
+
+    def _prepare_top_router(self, project_id):
+        for i in (0, 1, 2):
+            pod_dict = {'pod_id': 'pod_id_%d' % i,
+                        'region_name': 'pod_%d' % i,
+                        'az_name': 'az_name_%d' % i}
+            db_api.create_pod(self.context, pod_dict)
+        t_net = {'id': 'network_1_id'}
+        t_subnet = {'id': 'subnet_1_id',
+                    'network_id': t_net['id'],
+                    'cidr': '10.0.1.0/24',
+                    'gateway_ip': '10.0.1.1'}
+        bridge_network = {'id': 'bridge_network_1_id',
+                          'name': constants.bridge_net_name % project_id}
+        bridge_subnet = {
+            'id': 'bridge_subnet_1_id',
+            'name': constants.bridge_subnet_name % project_id,
+            'network_id': bridge_network['id'],
+            'cidr': '100.0.1.0/24',
+            'gateway_ip': '100.0.1.1',
+        }
+        RES_MAP['top']['network'].append(t_net)
+        RES_MAP['top']['subnet'].append(t_subnet)
+        RES_MAP['top']['network'].append(bridge_network)
+        RES_MAP['top']['subnet'].append(bridge_subnet)
+
+        top_router_id = 'router_id'
+        t_router = {'id': top_router_id, 'tenant_id': project_id,
+                    'extra_attributes': {
+                        'availability_zone_hints': ['pod_1']}}
+        TOP_ROUTER.append(t_router)
+        return t_net, t_subnet, t_router
+
+    @patch.object(helper.NetworkHelper, '_get_client', new=fake_get_client)
+    def test_redo_failed_or_new_job(self):
+        project_id = uuidutils.generate_uuid()
+        t_net, _, t_router = self._prepare_top_router(project_id)
+
+        resource_id = 'pod_id_1#%s#%s' % (t_router['id'], t_net['id'])
+        db_api.new_job(self.context, project_id, constants.JT_ROUTER_SETUP,
+                       resource_id)
+        self.xmanager.redo_failed_or_new_job(self.context)
+        self.assertEqual(len(RES_MAP['pod_1']['router']), 1)
+
+        TOP_ROUTER.remove(t_router)
+        router = {'id': t_router['id'], 'tenant_id': project_id,
+                  'extra_attributes': {'availability_zone_hints': ['pod_2']}}
+        TOP_ROUTER.append(router)
+        jobs = db_api.list_jobs(self.context)
+        for job in jobs:
+            db_api.delete_job(self.context, job['id'])
+        resource_id = 'pod_id_2#%s#%s' % (t_router['id'], t_net['id'])
+        with self.context.session.begin():
+            job_dict = {'id': uuidutils.generate_uuid(),
+                        'type': constants.JT_ROUTER_SETUP,
+                        'status': constants.JS_Fail,
+                        'project_id': project_id,
+                        'resource_id': resource_id,
+                        'extra_id': uuidutils.generate_uuid()}
+            core.create_resource(self.context, models.AsyncJob, job_dict)
+        self.xmanager.redo_failed_or_new_job(self.context)
+        self.assertEqual(len(RES_MAP['pod_2']['router']), 1)
+
+    @patch.object(helper.NetworkHelper, '_get_client', new=fake_get_client)
+    def test_setup_bottom_router_not_special(self):
+        project_id = uuidutils.generate_uuid()
+        t_net, _, t_router = self._prepare_top_router(project_id)
+        resource_id = 'pod_id_1#%s#%s' % (t_router['id'], t_net['id'])
+        db_api.new_job(self.context, project_id, constants.JT_ROUTER_SETUP,
+                       resource_id)
+        db_api.create_resource_mapping(
+            self.context, t_net['id'], t_net['id'],
+            'pod_id_1', project_id, constants.RT_NETWORK)
+        combine_id = '%s#%s#%s' % (constants.POD_NOT_SPECIFIED,
+                                   t_router['id'], t_net['id'])
+        db_api.new_job(self.context, project_id, constants.JT_ROUTER_SETUP,
+                       combine_id)
+        self.xmanager.setup_bottom_router(self.context, payload={
+            constants.JT_ROUTER_SETUP: combine_id
+        })
+        self.assertEqual(len(RES_MAP['pod_1']['router']), 1)
+
+    @patch.object(helper.NetworkHelper, '_get_client', new=fake_get_client)
+    @patch.object(FakeClient, 'create_floatingips',
+                  new=fake_create_floatingips)
+    def test__safe_create_bottom_floatingip(self):
+        client = FakeClient('pod_1')
+        pod = {'region_name': 'pod_1'}
+        self.assertRaises(t_network_exc.BottomPodOperationFailure,
+                          self.xmanager._safe_create_bottom_floatingip,
+                          self.context, pod, client, None, None, None)
+
+        fip_net_id = 'fip_net_id_1'
+        fip_address = '10.0.1.55'
+        port_id = 'port_id_1'
+        RES_MAP['pod_1']['floatingip'].append(
+            {'floating_network_id': fip_net_id,
+             'floating_ip_address': fip_address,
+             'port_id': port_id,
+             'id': uuidutils.generate_uuid()})
+        self.xmanager._safe_create_bottom_floatingip(
+            self.context, pod, client, fip_net_id, fip_address, port_id)
+        self.assertEqual(RES_MAP['pod_1']['floatingip'][0]['port_id'],
+                         port_id)
+        RES_MAP['pod_1']['floatingip'][0]['port_id'] = None
+        self.xmanager._safe_create_bottom_floatingip(
+            self.context, pod, client, fip_net_id, fip_address, 'fake_port_id')
+        self.assertEqual(RES_MAP['pod_1']['floatingip'][0]['port_id'],
+                         'fake_port_id')
 
     @patch.object(FakeClient, 'update_routers')
     def test_configure_extra_routes_with_floating_ips(self, mock_update):

@@ -23,6 +23,7 @@ from oslo_config import cfg
 from oslo_utils import uuidutils
 
 import neutron.conf.common as q_config
+import neutron.extensions.securitygroup as ext_sg
 from neutron.services.trunk import exceptions as t_exc
 from neutron_lib.api.definitions import portbindings
 import neutron_lib.constants as q_constants
@@ -91,6 +92,13 @@ def list_resource(_type, is_top, filters=None):
     return ret
 
 
+def delete_resource(_type, is_top, resource_id):
+    for resource in get_resource_list(_type, is_top):
+        if resource['id'] == resource_id:
+            return get_resource_list(_type, is_top).remove(resource)
+    raise q_exceptions.NotFound()
+
+
 class FakeTypeManager(object):
 
     def __init__(self):
@@ -121,6 +129,9 @@ class FakeCorePlugin(object):
     def update_subnet(self, context, _id, subnet):
         return update_resource('subnet', False, _id, subnet['subnet'])
 
+    def delete_subnet(self, context, _id):
+        return delete_resource('subnet', False, _id)
+
     def get_subnet(self, context, _id, fields=None):
         return get_resource('subnet', False, _id)
 
@@ -132,6 +143,13 @@ class FakeCorePlugin(object):
         create_resource('port', False, port['port'])
         return port['port']
 
+    def create_port_bulk(self, context, ports):
+        ret_ports = []
+        for port in ports['ports']:
+            create_resource('port', False, port['port'])
+            ret_ports.append(port['port'])
+        return ret_ports
+
     def update_port(self, context, _id, port):
         return update_resource('port', False, _id, port['port'])
 
@@ -142,6 +160,9 @@ class FakeCorePlugin(object):
                   limit=None, marker=None, page_reverse=False):
         return list_resource('port', False, filters)
 
+    def delete_port(self, context, _id, l3_port_check=False):
+        delete_resource('port', False, _id)
+
     def create_security_group(self, context, security_group, default_sg=False):
         create_resource('security_group', False,
                         security_group['security_group'])
@@ -149,6 +170,11 @@ class FakeCorePlugin(object):
 
     def get_security_group(self, context, _id, fields=None, tenant_id=None):
         return get_resource('security_group', False, _id)
+
+    def get_security_groups(self, context, filters=None, fields=None,
+                            sorts=None, limit=None, marker=None,
+                            page_reverse=False, default_sg=False):
+        return list_resource('security_group', False, filters)
 
     def get_agents(self, context, filters=None, fields=None):
         return list_resource('agent', False, filters)
@@ -253,6 +279,9 @@ class FakeNeutronHandle(object):
                 if trunk['port_id'] == filters[0]['value']:
                     return [trunk]
         return []
+
+    def handle_delete(self, context, _type, _id):
+        delete_resource(_type, True, _id)
 
 
 class FakePlugin(plugin.TricirclePlugin):
@@ -391,6 +420,61 @@ class PluginTest(unittest.TestCase):
         TOP_PORTS.append(t_port)
         return t_port
 
+    def test__in_subnet_delete(self):
+        self.context.request_id = None
+        self.assertEqual(False, self.plugin._in_subnet_delete(self.context))
+
+    def test__adapt_network_body(self):
+        network = {'provider:network_type': constants.NT_LOCAL}
+        self.plugin._adapt_network_body(network)
+        self.assertEqual({}, network)
+
+    def test__adapt_port_body_for_call(self):
+        port = {}
+        self.plugin._adapt_port_body_for_call(port)
+        self.assertIsNotNone(port['mac_address'])
+        self.assertIsNotNone(port['fixed_ips'])
+
+    def test__construct_params(self):
+        filters = {'filter': 'aaa'}
+        sorts = [['name', True]]
+        limit = 10
+        marker = 'bbb'
+        params = {'filter': 'aaa', 'sort_key': ['name'],
+                  'limit': limit, 'marker': marker}
+
+        params.update({'sort_dir': ['desc']})
+        self.assertEqual(params,
+                         self.plugin._construct_params(
+                             filters, sorts, limit, marker, True))
+
+        params.update({'sort_dir': ['asc']})
+        self.assertEqual(params,
+                         self.plugin._construct_params(
+                             filters, sorts, limit, marker, False))
+
+    def test__get_neutron_region(self):
+        cfg.CONF.set_override('local_region_name', None, 'tricircle')
+        cfg.CONF.set_override('region_name', 'Pod1', 'nova')
+        self.assertEqual('Pod1', self.plugin._get_neutron_region())
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test__ensure_subnet(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        b_net = copy.deepcopy(t_net)
+
+        subnet_ids = self.plugin._ensure_subnet(
+            self.context, b_net, is_top=False)
+        self.assertEqual(t_net['subnets'], subnet_ids)
+
+        b_net['subnets'] = []
+        subnet_ids = self.plugin._ensure_subnet(
+            self.context, b_net, is_top=False)
+        self.assertEqual(t_net['subnets'], subnet_ids)
+
+        t_net['subnets'] = []
+        self.assertEqual([], self.plugin._ensure_subnet(self.context, t_net))
+
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_subnet_no_bottom_network(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
@@ -399,8 +483,9 @@ class PluginTest(unittest.TestCase):
             t_subnet, t_port)
         self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
 
-    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
-    def test_get_subnet(self):
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    def test_get_subnet(self, mock_context):
+        mock_context.return_value = self.context
         t_net, t_subnet, t_port, _ = self._prepare_resource()
         self.plugin.get_network(self.context, t_net['id'])
         self.plugin.get_subnet(self.context, t_subnet['id'])
@@ -408,13 +493,72 @@ class PluginTest(unittest.TestCase):
             t_net, t_subnet, t_port)
         self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
 
+    def test_create_subnet(self):
+        _, t_subnet, _, _ = self._prepare_resource()
+        subnet = {'subnet': t_subnet}
+        self.plugin.create_subnet(self.context, subnet)
+        self.assertDictEqual(t_subnet,
+                             get_resource('subnet', False, t_subnet['id']))
+
+        delete_resource('subnet', False, t_subnet['id'])
+        t_subnet['name'] = t_subnet['id']
+        self.plugin.create_subnet(self.context, subnet)
+        self.assertDictEqual(t_subnet,
+                             get_resource('subnet', False, t_subnet['id']))
+
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
-    def test_get_network(self):
+    def test__create_bottom_network(self):
+        self.plugin.neutron_handle.handle_get = mock.Mock(return_value=None)
+        self.assertRaises(q_exceptions.NetworkNotFound,
+                          self.plugin._create_bottom_network,
+                          self.context, 'fake_net_id')
+
+        t_net, _, _, _ = self._prepare_resource()
+        self.plugin.neutron_handle.handle_get = mock.Mock(return_value=t_net)
+        _, b_net = self.plugin._create_bottom_network(
+            self.context, t_net['id'])
+        self.assertDictEqual(b_net,
+                             get_resource('network', False, t_net['id']))
+
+    def test_create_network(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
+        network = {'network': t_net}
+        self.plugin.create_network(self.context, network)
+        b_net = get_resource('network', False, t_net['id'])
+        self.assertDictEqual(t_net, b_net)
+
+        t_net['id'] = uuidutils.generate_uuid()
+        t_net['name'] = None
+        self.plugin.create_network(self.context, network)
+        b_net = get_resource('network', False, t_net['id'])
+        self.assertDictEqual(t_net, b_net)
+
+        t_net['id'] = None
+        t_net['name'] = uuidutils.generate_uuid()
+        self.plugin.create_network(self.context, network)
+        b_net = get_resource('network', False, t_net['id'])
+        t_net['id'] = t_net['name']
+        self.assertDictEqual(t_net, b_net)
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    def test_get_network(self, mock_context):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+
+        self.plugin._start_subnet_delete(self.context)
+        self.assertRaises(q_exceptions.NotFound,
+                          self.plugin.get_network, self.context, t_net['id'])
+        self.plugin._end_subnet_delete(self.context)
+
         self.plugin.get_network(self.context, t_net['id'])
         b_net, b_subnet, b_port = self._get_bottom_resources_with_net(
             t_net, t_subnet, t_port)
         self._validate(b_net, b_subnet, b_port, t_net, t_subnet, t_port)
+
+        mock_context.return_value = self.context
+        mock_context.return_value.auth_token = None
+        self.assertRaises(q_exceptions.NetworkNotFound,
+                          self.plugin.get_network,
+                          self.context, uuidutils.generate_uuid())
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     def test_get_network_no_gateway(self):
@@ -442,6 +586,21 @@ class PluginTest(unittest.TestCase):
         self._validate(b_net1, b_subnet1, b_port1, t_net1, t_subnet1, t_port1)
         self._validate(b_net2, b_subnet2, b_port2, t_net2, t_subnet2, t_port2)
 
+        except_networks = [{
+            'id': net['id'],
+            'name': net['name'],
+            'project_id': net['tenant_id'],
+            'provider:network_type': constants.NT_VLAN,
+            'subnets': net['subnets'],
+            'tenant_id': net['tenant_id']
+        } for net in [t_net1, t_net2]]
+        self.assertListEqual(
+            except_networks, self.plugin.get_networks(self.context))
+        self.assertListEqual(
+            except_networks, self.plugin.get_networks(self.context,
+                                                      {'id': [t_net1['id'],
+                                                              t_net2['id']]}))
+
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
     def test_get_invaild_networks(self):
@@ -454,10 +613,31 @@ class PluginTest(unittest.TestCase):
         nets = self.plugin.get_networks(self.context, net_filter)
         six.assertCountEqual(self, nets, [])
 
-    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    @patch.object(FakeNeutronHandle, 'handle_get')
+    def test_get_subnet_notfound(self, mock_handle_get, mock_context):
+        t_net, t_subnet, t_port, _ = self._prepare_resource(
+            az_hints='fake_region')
+        self.assertRaises(q_exceptions.SubnetNotFound,
+                          self.plugin.get_subnet,
+                          self.context, t_port['id'])
+
+        mock_handle_get.return_value = None
+        self.assertRaises(q_exceptions.SubnetNotFound,
+                          self.plugin.get_subnet,
+                          self.context, uuidutils.generate_uuid())
+
+        mock_context.return_value = self.context
+        mock_context.return_value.auth_token = None
+        self.assertRaises(q_exceptions.SubnetNotFound,
+                          self.plugin.get_subnet,
+                          self.context, uuidutils.generate_uuid())
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
-    def test_get_subnets(self):
+    def test_get_subnets(self, mock_context):
         az_hints = ['Pod1', 'Pod2']
+        mock_context.return_value = self.context
         t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
         t_net2, t_subnet2, t_port2, _ = self._prepare_resource(az_hints)
         cfg.CONF.set_override('region_name', 'Pod1', 'nova')
@@ -470,6 +650,20 @@ class PluginTest(unittest.TestCase):
             t_subnet2, t_port2)
         self._validate(b_net1, b_subnet1, b_port1, t_net1, t_subnet1, t_port1)
         self._validate(b_net2, b_subnet2, b_port2, t_net2, t_subnet2, t_port2)
+
+        delete_resource('subnet', False, t_subnet1['id'])
+        t_net1, t_subnet1, t_port1, _ = self._prepare_resource()
+        b_subnets = self.plugin.get_subnets(self.context)
+        self.assertEqual(len(b_subnets), 1)
+
+        b_subnets = self.plugin.get_subnets(self.context, {
+            'id': [t_subnet1['id'], t_subnet2['id']]})
+        self.assertEqual(len(b_subnets), 2)
+
+        mock_context.return_value.auth_token = None
+        b_subnets = self.plugin.get_subnets(self.context, {
+            'id': [t_subnet1['id'], t_subnet2['id'], 'fake_net_id']})
+        self.assertEqual(len(b_subnets), 2)
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(client.Client, 'get_admin_token', new=mock.Mock)
@@ -492,6 +686,42 @@ class PluginTest(unittest.TestCase):
                      'security_groups': []}
         }
         t_port = self.plugin.create_port(self.context, port)
+        b_port = get_resource('port', False, t_port['id'])
+        self.assertDictEqual(t_port, b_port)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_create_port_route_snat(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource()
+        port = {'name': 'route_snat',
+                'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                'network_id': t_net['id'],
+                'device_owner': q_constants.DEVICE_OWNER_ROUTER_SNAT}
+
+        t_port = self.plugin.create_port(self.context, {'port': port})
+        b_port = get_resource('port', False, t_port['id'])
+        self.assertDictEqual(t_port, b_port)
+
+        port = {'id': uuidutils.generate_uuid(),
+                'name': 'route_snat',
+                'fixed_ips': [{'subnet_id': t_subnet['id'],
+                               'ip_address': '10.0.1.3'}],
+                'network_id': t_net['id'],
+                'device_owner': q_constants.DEVICE_OWNER_ROUTER_SNAT}
+
+        t_snat_port = {'id': uuidutils.generate_uuid(),
+                       'tenant_id': self.tenant_id,
+                       'admin_state_up': True,
+                       'name': constants.snat_port_name % t_subnet['id'],
+                       'network_id': t_net['id'],
+                       'mac_address': 'fa:16:3e:96:41:03',
+                       'device_owner': q_constants.DEVICE_OWNER_ROUTER_SNAT,
+                       'device_id': 'reserved_snat_port',
+                       'fixed_ips': [{'subnet_id': t_subnet['id'],
+                                      'ip_address': '10.0.1.3'}],
+                       'binding:profile': {}}
+        TOP_PORTS.append(t_snat_port)
+
+        t_port = self.plugin.create_port(self.context, {'port': port})
         b_port = get_resource('port', False, t_port['id'])
         self.assertDictEqual(t_port, b_port)
 
@@ -582,8 +812,37 @@ class PluginTest(unittest.TestCase):
         # "agent" extension and body contains tunnel ip
         mock_agent.assert_has_calls([mock.call(self.context, agent_state)])
 
-    @patch.object(FakePlugin, '_ensure_trunk', new=mock.Mock)
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_create_port_bulk(self):
+        t_net, t_subnet, t_port, t_sg = self._prepare_resource()
+        t_ports = []
+        for i in (1, 2):
+            t_vm_port = self._prepare_vm_port(t_net, t_subnet, i, [t_sg['id']])
+            t_ports.append(t_vm_port)
+        self.plugin.get_ports(self.context,
+                              {'id': [t_ports[0]['id'], t_ports[1]['id'],
+                                      'fake_port_id']})
+        b_ports = []
+        b_port1 = get_resource('port', False, t_ports[0]['id'])
+        b_port1['device_owner'] = constants.DEVICE_OWNER_SHADOW
+        b_port1['name'] = 'shadow_' + b_port1['id']
+        b_ports.append({'port': b_port1})
+        b_port2 = get_resource('port', False, t_ports[1]['id'])
+        b_port2['device_owner'] = constants.DEVICE_OWNER_SUBPORT
+        b_port2['device_id'] = b_port2['id']
+        b_ports.append({'port': b_port2})
+
+        t_vm_port = self._prepare_vm_port(t_net, t_subnet, 3, [t_sg['id']])
+        t_vm_port['device_owner'] = None
+        b_ports.append({'port': t_vm_port})
+
+        ret_b_ports = self.plugin.create_port_bulk(
+            self.context, {'ports': b_ports})
+        self.assertEqual(len(ret_b_ports), 2)
+        self.assertListEqual(b_ports, [{'port': b_port2}, {'port': t_vm_port}])
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(FakePlugin, '_ensure_trunk', new=mock.Mock)
     def test_get_port(self):
         t_net, t_subnet, t_port, _ = self._prepare_resource()
 
@@ -591,6 +850,21 @@ class PluginTest(unittest.TestCase):
         t_port = self.plugin.get_port(self.context, t_vm_port['id'])
         b_port = get_resource('port', False, t_port['id'])
         self.assertDictEqual(t_port, b_port)
+
+    @patch.object(FakePlugin, '_ensure_trunk', new=mock.Mock)
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    @patch.object(FakeNeutronHandle, 'handle_get')
+    def test_get_port_notfound(self, mock_handle_get, mock_context):
+        mock_context.return_value = self.context
+        mock_context.return_value.auth_token = None
+        self.assertRaises(q_exceptions.PortNotFound,
+                          self.plugin.get_port, self.context, 'fake_port_id')
+
+        mock_context.return_value.auth_token = 'fake_auth_token'
+        mock_handle_get.return_value = None
+        self.assertRaises(q_exceptions.PortNotFound,
+                          self.plugin.get_port,
+                          self.context, uuidutils.generate_uuid())
 
     @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
     @patch.object(plugin.TricirclePlugin, '_handle_security_group',
@@ -621,8 +895,10 @@ class PluginTest(unittest.TestCase):
         mock_create_trunk.assert_called_once_with(self.context,
                                                   {'trunk': t_trunk})
 
-    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
-    def test_get_ports(self):
+    @patch.object(t_context, 'get_context_from_neutron_context')
+    @patch.object(FakeCorePlugin, 'get_ports')
+    def test_get_ports(self, mock_get_ports, mock_context):
+        mock_context.return_value = self.context
         t_net, t_subnet, t_port, t_sg = self._prepare_resource()
         t_ports = []
         for i in (1, 2):
@@ -635,6 +911,21 @@ class PluginTest(unittest.TestCase):
             b_port = get_resource('port', False, t_ports[i]['id'])
             b_port.pop('project_id')
             self.assertDictEqual(t_ports[i], b_port)
+
+        self.plugin.get_ports(self.context)
+        mock_get_ports.assert_called_with(self.context,
+                                          None, None, None, None, None, False)
+
+        mock_get_ports.return_value = t_ports
+        b_ports = self.plugin.get_ports(
+            self.context, {'id': [t_ports[0]['id'], t_ports[1]['id']]})
+        self.assertEqual(len(b_ports), 2)
+
+        mock_context.return_value.auth_token = None
+        b_ports = self.plugin.get_ports(
+            self.context, {'id': [t_ports[0]['id'], t_ports[1]['id'],
+                                  'fake_port_id']})
+        self.assertEqual(len(b_ports), 2)
 
     @patch.object(t_context, 'get_context_from_neutron_context')
     @patch.object(FakeNeutronHandle, 'handle_update')
@@ -785,6 +1076,45 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(q_constants.PORT_STATUS_ACTIVE, b_port['status'])
 
     @patch.object(t_context, 'get_context_from_neutron_context')
+    def test_delete_port(self, mock_context):
+        mock_context.return_value = self.context
+        t_net, _, t_port, _ = self._prepare_resource()
+
+        port = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'device_owner': q_constants.DEVICE_OWNER_ROUTER_SNAT,
+                     'name': 'test-port',
+                     'security_groups': []}
+        }
+        b_port = self.plugin.create_port(self.context, port)
+        b_port_valid = get_resource('port', False, b_port['id'])
+        self.assertEqual(b_port_valid['id'], b_port['id'])
+
+        self.plugin.delete_port(self.context, b_port['id'])
+        self.assertRaises(q_exceptions.NotFound,
+                          get_resource, 'port', False, b_port['id'])
+
+        port = {
+            'port': {'network_id': t_net['id'],
+                     'fixed_ips': q_constants.ATTR_NOT_SPECIFIED,
+                     'device_owner': q_constants.DEVICE_OWNER_COMPUTE_PREFIX,
+                     'name': 'test-port',
+                     'security_groups': []}
+        }
+        b_port = self.plugin.create_port(self.context, port)
+        b_port_valid = get_resource('port', False, b_port['id'])
+        self.assertEqual(b_port_valid['id'], b_port['id'])
+        t_port = get_resource('port', True, b_port['id'])
+        self.assertEqual(b_port['id'], t_port['id'])
+
+        self.plugin.delete_port(self.context, b_port['id'])
+        self.assertRaises(q_exceptions.NotFound,
+                          get_resource, 'port', False, b_port['id'])
+        self.assertRaises(q_exceptions.NotFound,
+                          get_resource, 'port', True, t_port['id'])
+
+    @patch.object(t_context, 'get_context_from_neutron_context')
     def test_update_subnet(self, mock_context):
         _, t_subnet, t_port, _ = self._prepare_resource(enable_dhcp=False)
         mock_context.return_value = self.context
@@ -797,6 +1127,64 @@ class PluginTest(unittest.TestCase):
         self.plugin.update_subnet(self.context, subnet_id, subnet)
         b_port = get_resource('port', False, port_id)
         self.assertEqual(b_port['device_owner'], 'network:dhcp')
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_delete_subnet(self):
+        t_net, t_subnet, t_port, _ = self._prepare_resource(enable_dhcp=False)
+        self.plugin.get_network(self.context, t_net['id'])
+        self.plugin.delete_subnet(self.context, t_subnet['id'])
+        self.assertRaises(q_exceptions.NotFound,
+                          get_resource, 'subnet', False, t_subnet['id'])
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test__handle_security_group(self):
+        t_ctx = t_context.get_db_context()
+
+        port = {'security_groups': q_constants.ATTR_NOT_SPECIFIED}
+        self.plugin._handle_security_group(t_ctx, self.context, port)
+        b_sgs = list_resource('security_group', False)
+        self.assertListEqual(b_sgs, [])
+
+        port = {'security_groups': []}
+        self.plugin._handle_security_group(t_ctx, self.context, port)
+        b_sgs = list_resource('security_group', False)
+        self.assertEqual(b_sgs, [])
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(FakeNeutronHandle, 'handle_get')
+    def test_get_security_group(self, mock_handle_get):
+        sg_id = uuidutils.generate_uuid()
+        mock_handle_get.return_value = None
+        self.assertRaises(ext_sg.SecurityGroupNotFound,
+                          self.plugin.get_security_group,
+                          self.context, sg_id)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    @patch.object(FakeCorePlugin, 'get_security_groups')
+    def test_get_security_groups_mock(self, mock_get_sgs):
+        _, _, _, t_sg1 = self._prepare_resource()
+        _, _, _, t_sg2 = self._prepare_resource()
+        self.plugin.get_security_groups(self.context)
+        mock_get_sgs.assert_called_with(self.context,
+                                        None, None, None, None, None,
+                                        False, False)
+
+    @patch.object(t_context, 'get_context_from_neutron_context', new=mock.Mock)
+    def test_get_security_groups(self):
+        _, _, _, t_sg1 = self._prepare_resource()
+        _, _, _, t_sg2 = self._prepare_resource()
+        self.plugin.get_security_groups(self.context,
+                                        {'id': [t_sg1['id'], t_sg2['id'],
+                                                'fake_sg_id']})
+        b_sg = get_resource('security_group', False, t_sg1['id'])
+        self.assertEqual(b_sg['id'], t_sg1['id'])
+        b_sg = get_resource('security_group', False, t_sg2['id'])
+        self.assertEqual(b_sg['id'], t_sg2['id'])
+
+        b_sgs = self.plugin.get_security_groups(self.context,
+                                                {'id': [t_sg1['id'],
+                                                        t_sg2['id']]})
+        self.assertEqual(len(b_sgs), 2)
 
     def tearDown(self):
         cfg.CONF.unregister_opts(q_config.core_opts)

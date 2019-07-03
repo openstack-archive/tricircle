@@ -14,18 +14,21 @@
 #    under the License.
 
 
+import six
+
 from oslo_log import log
 
 from neutron.services.trunk import exceptions as trunk_exc
 from neutron.services.trunk import plugin as trunk_plugin
 from neutron_lib.db import utils as db_utils
+from neutron_lib.plugins import directory
 
-import six
 import tricircle.common.client as t_client
 import tricircle.common.constants as t_constants
 import tricircle.common.context as t_context
 from tricircle.common import xrpcapi
 import tricircle.db.api as db_api
+from tricircle.network import central_plugin
 from tricircle.network import helper
 
 LOG = log.getLogger(__name__)
@@ -191,6 +194,12 @@ class TricircleTrunkDriver(trunk_plugin.TrunkPlugin):
                 filters, remainder, None)
             ret.extend(next_ret)
             return ret
+        else:
+            # get from top pod
+            top_ret = self._get_trunks_from_top_with_limit(
+                context, top_bottom_map, filters, remainder, None)
+            ret.extend(top_ret)
+            return ret
 
     def _map_trunks_from_bottom_to_top(self, trunks, bottom_top_map):
         trunk_list = []
@@ -294,18 +303,21 @@ class TricircleTrunkDriver(trunk_plugin.TrunkPlugin):
         except trunk_exc.TrunkNotFound:
             return ret
 
-        ret = super(TricircleTrunkDriver, self).get_ports(context, filters)
+        core_plugin = directory.get_plugin()
+        ret = super(central_plugin.TricirclePlugin, core_plugin).get_ports(
+            context, filters)
         return ret
 
     def update_subports_device_id(self, context,
                                   subports, device_id, device_owner):
         if not subports['sub_ports']:
             return
+        core_plugin = directory.get_plugin()
         body = {'port': {
             'device_id': device_id,
             'device_owner': device_owner}}
         for subport in subports['sub_ports']:
-            super(TricircleTrunkDriver, self).update_port(
+            super(central_plugin.TricirclePlugin, core_plugin).update_port(
                 context, subport['port_id'], body)
 
     def add_subports(self, context, trunk_id, subports):
