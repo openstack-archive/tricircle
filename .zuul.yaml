@@ -54,7 +54,7 @@
 - project:
     templates:
       - openstack-python-jobs-neutron
-      - openstack-python36-jobs-neutron
+      - openstack-python3-train-jobs-neutron
       - openstack-python3-train-jobs
       - check-requirements
       - publish-openstack-docs-pti
