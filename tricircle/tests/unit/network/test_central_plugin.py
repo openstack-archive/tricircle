@@ -631,6 +631,9 @@ def update_floatingip_dict(fip_dict, update_dict):
         update_dict['fixed_ip_address'] = None
         update_dict['router_id'] = None
         _update()
+        if 'tenant_id' not in fip_dict.keys():
+            fip_dict['tenant_id'] = TEST_TENANT_ID
+        update_dict['tenant_id'] = TEST_TENANT_ID
         return fip_dict
     for port in TOP_PORTS:
         if port['id'] != update_dict['port_id']:
@@ -646,6 +649,9 @@ def update_floatingip_dict(fip_dict, update_dict):
                     update_dict['router_id'] = router_port['router_id']
 
     _update()
+    if 'tenant_id' not in fip_dict.keys():
+        fip_dict['tenant_id'] = TEST_TENANT_ID
+    update_dict['tenant_id'] = TEST_TENANT_ID
     return fip_dict
 
 
