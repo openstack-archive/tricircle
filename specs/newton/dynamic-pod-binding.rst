@@ -229,8 +229,8 @@ None
 Reference
 ==========
 
-[1] https://developer.openstack.org/api-ref-compute-v2.1.html#showCellCapacities
+[1] https://docs.openstack.org/api-ref-compute-v2.1.html#showCellCapacities
 
-[2] https://developer.openstack.org/api-ref-blockstorage-v2.html#os-vol-pool-v2
+[2] https://docs.openstack.org/api-ref-blockstorage-v2.html#os-vol-pool-v2
 
-[3] https://developer.openstack.org/api-ref-compute-v2.1.html#showinfo
+[3] https://docs.openstack.org/api-ref-compute-v2.1.html#showinfo

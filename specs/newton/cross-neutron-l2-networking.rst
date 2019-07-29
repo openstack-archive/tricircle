@@ -557,7 +557,7 @@ References
 
 [3] https://github.com/openstack/networking-l2gw/blob/master/specs/kilo/l2-gateway-api.rst
 
-[4] https://developer.openstack.org/api-ref-networking-v2-ext.html#networks-multi-provider-ext
+[4] https://docs.openstack.org/api-ref/network/v2/index.html#networks-multi-provider-ext
 
 [5] https://docs.openstack.org/mitaka/networking-guide/config-az.html
 
