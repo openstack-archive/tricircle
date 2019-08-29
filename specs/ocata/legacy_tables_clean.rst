@@ -108,4 +108,4 @@ References
 ==========
 [1] https://github.com/openstack/trio2o
 
-[2] https://review.openstack.org/#/c/412325/
+[2] https://review.opendev.org/#/c/412325/
