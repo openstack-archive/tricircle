@@ -553,7 +553,7 @@ References
 ==========
 [1] https://docs.google.com/document/d/18kZZ1snMOCD9IQvUKI5NVDzSASpw-QKj7l2zNqMEd3g/
 
-[2] https://review.openstack.org/#/c/270786/
+[2] https://review.opendev.org/#/c/270786/
 
 [3] https://github.com/openstack/networking-l2gw/blob/master/specs/kilo/l2-gateway-api.rst
 
@@ -561,4 +561,4 @@ References
 
 [5] https://docs.openstack.org/mitaka/networking-guide/config-az.html
 
-[6] https://review.openstack.org/#/c/306224/
+[6] https://review.opendev.org/#/c/306224/
