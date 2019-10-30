@@ -32,6 +32,7 @@
           export PROJECTS="openstack/networking-sfc $PROJECTS"
           export DEVSTACK_GATE_CONFIGDRIVE=0
           export DEVSTACK_GATE_NEUTRON=1
+          export DEVSTACK_GATE_USE_PYTHON3=True
           export DEVSTACK_GATE_TEMPEST=0
           export DEVSTACK_GATE_TEMPEST_ALL_PLUGINS=0
           export DEVSTACK_GATE_TEMPEST_REGEX="tricircle.tempestplugin"

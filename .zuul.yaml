@@ -1,16 +1,4 @@
 - job:
-    name: tricircle-functional
-    parent: legacy-dsvm-base
-    run: playbooks/tricircle-dsvm-functional/run.yaml
-    post-run: playbooks/tricircle-dsvm-functional/post.yaml
-    timeout: 7800
-    required-projects:
-      - openstack/devstack-gate
-      - openstack/tricircle
-      - openstack/neutron
-      - openstack/networking-sfc
-
-- job:
     name: tricircle-functional-python3
     parent: legacy-dsvm-base
     run: playbooks/tricircle-dsvm-functional/run.yaml
@@ -53,7 +41,6 @@
 
 - project:
     templates:
-      - openstack-python-jobs-neutron
       - openstack-python3-ussuri-jobs-neutron
       - openstack-python3-ussuri-jobs
       - check-requirements
@@ -67,14 +54,10 @@
             required-projects:
               - openstack/neutron
               - openstack/networking-sfc
-        - openstack-tox-py27:
-            required-projects:
-              - openstack/neutron
         - openstack-tox-py36:
             required-projects:
               - openstack/neutron
               - openstack/networking-sfc
-        - tricircle-functional
         - tricircle-functional-python3
         - tricircle-multiregion
     gate:
@@ -84,12 +67,8 @@
             required-projects:
               - openstack/neutron
               - openstack/networking-sfc
-        - openstack-tox-py27:
-            required-projects:
-              - openstack/neutron
         - openstack-tox-py36:
             required-projects:
               - openstack/neutron
               - openstack/networking-sfc
-        - tricircle-functional
         - tricircle-multiregion
