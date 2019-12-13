@@ -1,8 +1,3 @@
-# tempest.api.network.admin.test_agent_management.AgentManagementTestJSON.test_list_agent[id-9c80f04d-11f3-44a4-8738-ed2f879b0ff4]
-# tempest.api.network.admin.test_agent_management.AgentManagementTestJSON.test_list_agents_non_admin[id-e335be47-b9a1-46fd-be30-0874c0b751e6]
-# tempest.api.network.admin.test_agent_management.AgentManagementTestJSON.test_show_agent[id-869bc8e8-0fda-4a30-9b71-f8a7cf58ca9f]
-# tempest.api.network.admin.test_agent_management.AgentManagementTestJSON.test_update_agent_description[id-68a94a14-1243-46e6-83bf-157627e31556]
-# tempest.api.network.admin.test_agent_management.AgentManagementTestJSON.test_update_agent_status[id-371dfc5b-55b9-4cb5-ac82-c40eadaac941]
 # tempest.api.network.admin.test_dhcp_agent_scheduler.DHCPAgentSchedulersTestJSON.test_add_remove_network_from_dhcp_agent[id-a0856713-6549-470c-a656-e97c8df9a14d]
 # tempest.api.network.admin.test_dhcp_agent_scheduler.DHCPAgentSchedulersTestJSON.test_list_dhcp_agent_hosting_network[id-5032b1fe-eb42-4a64-8f3b-6e189d8b5c7d]
 # tempest.api.network.admin.test_dhcp_agent_scheduler.DHCPAgentSchedulersTestJSON.test_list_networks_hosted_by_one_dhcp[id-30c48f98-e45d-4ffb-841c-b8aad57c7587]
