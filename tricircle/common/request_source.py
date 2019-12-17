@@ -9,11 +9,11 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+from neutron_lib import constants as cons
 from oslo_log import log as logging
 from oslo_middleware import base
 import webob
-
-import constants as cons
 
 LOG = logging.getLogger(__name__)
 

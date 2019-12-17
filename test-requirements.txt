@@ -2,15 +2,15 @@
 # of appearance. Changing the order has an impact on the overall integration
 # process, which may cause wedges in the gate later.
 hacking!=0.13.0,<0.14,>=0.12.0 # Apache-2.0
-
 coverage!=4.4,>=4.0 # Apache-2.0
 fixtures>=3.0.0 # Apache-2.0/BSD
-mock>=2.0.0 # BSD
+mock>=3.0.0 # BSD
 python-subunit>=1.0.0 # Apache-2.0/BSD
 requests-mock>=1.2.0 # Apache-2.0
 docutils>=0.11 # OSI-Approved Open Source, Public Domain
-sphinx!=1.6.6,>=1.6.2 # BSD
-openstackdocstheme>=1.18.1 # Apache-2.0
+sphinx!=1.6.6,!=1.6.7,>=1.6.5,<2.0.0;python_version=='2.7'  # BSD
+sphinx!=1.6.6,!=1.6.7,>=1.6.5,!=2.1.0;python_version>='3.4' # BSD
+openstackdocstheme>=1.30.0 # Apache-2.0
 testrepository>=0.0.18 # Apache-2.0/BSD
 testtools>=2.2.0 # MIT
 testresources>=2.0.0 # Apache-2.0/BSD

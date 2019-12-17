@@ -54,8 +54,8 @@
 - project:
     templates:
       - openstack-python-jobs-neutron
-      - openstack-python3-train-jobs-neutron
-      - openstack-python3-train-jobs
+      - openstack-python3-ussuri-jobs-neutron
+      - openstack-python3-ussuri-jobs
       - check-requirements
       - publish-openstack-docs-pti
       - release-notes-jobs-python3
@@ -70,7 +70,6 @@
         - openstack-tox-py27:
             required-projects:
               - openstack/neutron
-              - openstack/networking-sfc
         - openstack-tox-py36:
             required-projects:
               - openstack/neutron
@@ -88,7 +87,6 @@
         - openstack-tox-py27:
             required-projects:
               - openstack/neutron
-              - openstack/networking-sfc
         - openstack-tox-py36:
             required-projects:
               - openstack/neutron

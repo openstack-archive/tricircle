@@ -2663,19 +2663,6 @@ class PluginTest(unittest.TestCase,
         return t_port_id, b_port_id, fip, e_net
 
     @patch.object(context, 'get_context_from_neutron_context')
-    def test_handle_remote_group_invalid_input(self, mock_context):
-        self._basic_pod_route_setup()
-
-        fake_plugin = FakePlugin()
-        q_ctx = FakeNeutronContext()
-        t_ctx = context.get_db_context()
-        mock_context.return_value = t_ctx
-
-        self._test_handle_remote_group_invalid_input(fake_plugin, q_ctx, t_ctx,
-                                                     'pod_id_1', TOP_SGS,
-                                                     TOP_SG_RULES, BOTTOM1_SGS)
-
-    @patch.object(context, 'get_context_from_neutron_context')
     def test_create_policy(self, mock_context):
         fake_plugin = FakePlugin()
         q_ctx = FakeNeutronContext()
