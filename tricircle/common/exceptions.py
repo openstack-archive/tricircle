@@ -90,7 +90,7 @@ class TricircleException(Exception):
     def _should_format(self):
 
         if self.kwargs['message'] is None and '%(message)' in self.message:
-            LOG.error('\%(message)s in message '
+            LOG.error(r'\%(message)s in message '
                       'but init parameter is None')
 
         return self.kwargs['message'] is None or '%(message)' in self.message

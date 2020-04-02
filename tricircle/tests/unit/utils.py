@@ -621,7 +621,7 @@ class FakeClient(object):
         return None
 
     def delete_resources(self, _type, ctx, _id):
-        if _type is 'policy':
+        if _type == 'policy':
             _type = 'qos_policy'
         index = -1
         res_list = self._res_map[self.region_name][_type]

@@ -624,9 +624,9 @@ class XManagerTest(unittest.TestCase):
                    'net2_pod2_inf': '10.0.2.3',
                    'net3_pod1_inf': '10.0.3.5',
                    'net3_pod2_inf': '10.0.3.6'}
-        get_gw_map = lambda n_idx, p_idx: gw_map[
+        get_gw_map = lambda n_idx, p_idx: gw_map[  # noqa: E731
             'net%d_pod%d_gw' % (n_idx, p_idx)]
-        get_inf_map = lambda n_idx, p_idx: inf_map[
+        get_inf_map = lambda n_idx, p_idx: inf_map[  # noqa: E731
             'net%d_pod%d_inf' % (n_idx, p_idx)]
         bridge_infos = []
 

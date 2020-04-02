@@ -84,13 +84,13 @@ class AsyncJobController(rest.RestController):
         redundant_fields = request_fields - require_fields
 
         if missing_fields:
-                return utils.format_api_error(
-                    400, _('Some required fields are not specified:'
-                           ' %(field)s') % {'field': missing_fields})
+            return utils.format_api_error(
+                400, _('Some required fields are not specified:'
+                       ' %(field)s') % {'field': missing_fields})
         if redundant_fields:
-                return utils.format_api_error(
-                    400, _('Some fields are redundant: %(field)s') % {
-                        'field': redundant_fields})
+            return utils.format_api_error(
+                400, _('Some fields are redundant: %(field)s') % {
+                    'field': redundant_fields})
 
         # validate whether the project id is legal
         resource_type_1, resource_id_1 = (

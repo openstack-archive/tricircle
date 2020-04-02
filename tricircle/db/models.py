@@ -154,7 +154,7 @@ class DeletingResources(core.ModelBase, core.DictBase):
 
     __table_args__ = (
         schema.UniqueConstraint(
-            'resource_id',  'resource_type',
+            'resource_id', 'resource_type',
             name='deleting_resources0resource_id0resource_type'),
     )
 

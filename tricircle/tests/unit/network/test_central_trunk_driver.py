@@ -299,8 +299,6 @@ class PluginTest(unittest.TestCase):
                 'id': t_port_id,
                 'name': t_port_id,
                 'description': 'old_bottom_description',
-                'extra_dhcp_opts': [],
-                'device_owner': device_onwer,
                 'security_groups': [],
                 'device_id': '68f46ee4-d66a-4c39-bb34-ac2e5eb85470',
                 'admin_state_up': True,

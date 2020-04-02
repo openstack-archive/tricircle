@@ -43,6 +43,7 @@ def add_command_parsers(subparsers):
     parser.set_defaults(func=do_db_sync)
     parser.add_argument('version', nargs='?')
 
+
 command_opt = cfg.SubCommandOpt('command',
                                 title='Commands',
                                 help='Show available commands.',

@@ -138,7 +138,7 @@ class FakeClient(test_utils.FakeClient):
             if not pp:
                 raise client_exceptions.NotFound()
             if pp['portpairgroup_id']:
-                    raise client_exceptions.Conflict(constants.STR_IN_USE)
+                raise client_exceptions.Conflict(constants.STR_IN_USE)
         elif _type == constants.RT_FLOW_CLASSIFIER:
             pc_list = self._res_map[self.region_name][constants.RT_PORT_CHAIN]
             for pc in pc_list:

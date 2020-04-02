@@ -173,7 +173,7 @@ class RoutingControllerTest(base.TestCase):
             self.assertEqual(1, len(items))
 
         # test when pagination limit varies in range [1, total_routings+1)
-        for i in xrange(1, total_routings+1):
+        for i in xrange(1, total_routings + 1):
             routings = []
             total_pages = 0
 
@@ -201,7 +201,7 @@ class RoutingControllerTest(base.TestCase):
             self.assertEqual(pages, total_pages)
             self.assertEqual(total_routings - 1, len(routings))
 
-            for i in xrange(total_routings-1):
+            for i in xrange(total_routings - 1):
                 self.assertEqual(total_routings - i, routings[i]['id'])
 
             set1 = set(['router', 'security_group', 'network'])

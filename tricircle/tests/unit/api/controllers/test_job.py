@@ -482,7 +482,7 @@ class AsyncJobControllerTest(base.TestCase):
 
         # test marker and limit
         limit = 2
-        pt = '/v1.0/jobs\?limit=\w+&marker=([\w-]+)'
+        pt = r'/v1.0/jobs\?limit=\w+&marker=([\w-]+)'
         job_paginate_filter = {'status': 'new', 'limit': limit}
         res = self.controller.get_all(**job_paginate_filter)
         while 'jobs_links' in res:

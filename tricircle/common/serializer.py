@@ -26,6 +26,7 @@ class Mapping(object):
         for key, value in six.iteritems(mapping):
             self.reverse_mapping[value] = key
 
+
 _SINGLETON_MAPPING = Mapping({
     ATTR_NOT_SPECIFIED: "@@**ATTR_NOT_SPECIFIED**@@",
 })
