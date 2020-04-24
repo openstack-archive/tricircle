@@ -41,8 +41,8 @@
 
 - project:
     templates:
-      - openstack-python3-ussuri-jobs-neutron
-      - openstack-python3-ussuri-jobs
+      - openstack-python3-victoria-jobs-neutron
+      - openstack-python3-victoria-jobs
       - check-requirements
       - publish-openstack-docs-pti
       - release-notes-jobs-python3
