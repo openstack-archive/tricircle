@@ -47,6 +47,9 @@ def init_application():
 
     # initialize the config system
     conf_file = _get_config_file()
+    # NOTE(hberaud): Call reset to ensure the ConfigOpts object doesn't
+    # already contain registered options if the app is reloaded.
+    CONF.reset()
     config.init(app.common_opts, ['--config-file', conf_file])
 
     LOG.info("Configuration:")
