@@ -1,4 +1,0 @@
----
-features:
-  - North-south bridge network and east-west bridge network are combined into
-    one to bring better DVR and shared VxLAN network support.

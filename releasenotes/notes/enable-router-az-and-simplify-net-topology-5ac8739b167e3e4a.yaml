@@ -1,9 +1,0 @@
----
-features:
-  - |
-    Router
-
-    * Support availability zone for router
-    * Local router, which will reside only inside one region, can be
-      attached with external network directly, no additional intermediate
-      router is needed.

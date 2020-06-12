@@ -1,5 +1,0 @@
----
-features:
-  - |
-    Support VxLAN network type for tenant network and bridge network to be
-    stretched into multiple OpenStack clouds
